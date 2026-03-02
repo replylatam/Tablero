@@ -52,12 +52,13 @@
     .urgentTopFlag{display:inline-block;background:#b91c1c;color:#fff;padding:6px 10px;border-radius:999px;font-weight:700;box-shadow:0 8px 24px rgba(185,28,28,.45)}
     .detailLayout{display:grid;grid-template-columns:1fr;gap:12px}
     .codeBadge{display:inline-block;background:rgba(59,130,246,.2);color:#bfdbfe;padding:6px 10px;border-radius:10px;font-weight:700;border:1px solid rgba(59,130,246,.45)}
-    @media (min-width:980px){.detailLayout.withSidebar{grid-template-columns:1.3fr .8fr}.detailSidebar{border-left:1px solid rgba(148,163,184,.25);padding-left:12px}}
-    body.light .ticket,body.light .column,body.light .feedItem,body.light .commentItem{background:#ffffff;color:#0f172a}
+    @media (min-width:980px){.detailLayout.withSidebar{grid-template-columns:1.55fr .55fr}.detailSidebar{border-left:1px solid rgba(148,163,184,.25);padding-left:12px}}
+    body.light .ticket,body.light .column,body.light .feedItem,body.light .commentItem{background:#ffffff;color:#0f172a;border-color:#64748b}
     body.light .ticket .meta,body.light .small,body.light .feedMeta,body.light label{color:#1f2937}
     body.light input,body.light select,body.light textarea{background:#fff;color:#0f172a;border-color:#94a3b8}
     body.light .column h4{color:#0f172a}
     body.light .detailSidebar{background:#eaf2ff;border-radius:12px;padding:12px}
+    body.light .codeBadge{background:#1e3a8a;color:#ffffff;border-color:#1e40af}
 
     .boardWrap{overflow-x:auto;overflow-y:visible;padding-bottom:4px}
     .board{display:grid;grid-template-columns:repeat(5,minmax(260px,1fr));gap:12px;overflow:visible;align-items:start}
@@ -441,6 +442,7 @@
         const rawError = String(data.error || "Error al guardar en Google Sheets")
         if(rawError.includes("setHeaders")) throw new Error("Tu Apps Script está desactualizado (usa response.setHeaders). Reemplazá el script por APPS_SCRIPT.gs y volvé a desplegar la Web App.")
         if(rawError.includes("Acción no soportada") && (action === "upsertUser" || action === "deleteUser")) return { ok: true, ignored: true }
+        if(rawError.includes("Acción no soportada") && action === "uploadDriveFile") throw new Error("Tu Apps Script desplegado no soporta uploadDriveFile. Reemplazá APPS_SCRIPT.gs y volvé a desplegar la Web App.")
         throw new Error(rawError)
       }
       return data
@@ -707,7 +709,7 @@
       const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticket.status===key?"selected":""}>${label}</option>`).join("")
 
       document.getElementById("ticketDetailContent").innerHTML = `
-        <div class="inline" style="justify-content:space-between;align-items:flex-start">
+        <div class="inline" style="justify-content:flex-start;align-items:center;gap:10px">
           <div><label>Código</label><div class="codeBadge">${htmlEscape(ticket.id||"-")}</div></div>
           ${canEdit && ticket.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
         </div>
@@ -932,7 +934,7 @@
         let attachment = null
         if(file){
           showToast("Subiendo archivo...", "info", 2000)
-          attachment = await uploadAttachmentFile(file)
+          try{ attachment = await uploadAttachmentFile(file) }catch(err){ console.error("Fallo upload adjunto:", err); showToast(err?.message || "No se pudo subir adjunto, se enviará comentario sin archivo", "error", 3500) }
         }
         comments[generateId()] = { message, author: currentUser.email, createdAt: new Date().toISOString(), attachment }
         const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -955,31 +957,6 @@
         console.error("Error comentando:", err)
         showToast(err?.message || "No se pudo subir el archivo/comentario", "error", 3500)
       }
-    }
-
-
-
-    async function reactToComment(ticketId, commentId, emoji){
-      const ticket = cachedTickets.find(t => t.id === ticketId)
-      if(!ticket || !commentId) return
-      const comments = { ...(ticket.comments || {}) }
-      const comment = { ...(comments[commentId] || {}) }
-      const reactions = { ...(comment.reactions || {}) }
-      const key = emoji === "👍" ? "thumbsUp" : emoji === "❤️" ? "heart" : "eyes"
-      const users = { ...(reactions[key] || {}) }
-      const me = emailKey(currentUser.email)
-      if(users[me]) delete users[me]; else users[me] = true
-      reactions[key] = users
-      comment.reactions = reactions
-      comments[commentId] = comment
-      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
-      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
-      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
-      const ix = cachedTickets.findIndex(t => t.id === ticketId)
-      if(ix >= 0) cachedTickets[ix] = updated
-      renderTicketsFromData(cachedTickets)
-      const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
-      if(detailOpen) openTicketDetailModal(ticketId)
     }
 
 
