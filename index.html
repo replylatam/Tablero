@@ -51,10 +51,13 @@
     .commentActions{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
     .urgentTopFlag{display:inline-block;background:#b91c1c;color:#fff;padding:6px 10px;border-radius:999px;font-weight:700;box-shadow:0 8px 24px rgba(185,28,28,.45)}
     .detailLayout{display:grid;grid-template-columns:1fr;gap:12px}
-    @media (min-width:980px){.detailLayout{grid-template-columns:1.3fr .8fr}.detailSidebar{border-left:1px solid rgba(148,163,184,.25);padding-left:12px}}
+    .codeBadge{display:inline-block;background:rgba(59,130,246,.2);color:#bfdbfe;padding:6px 10px;border-radius:10px;font-weight:700;border:1px solid rgba(59,130,246,.45)}
+    @media (min-width:980px){.detailLayout.withSidebar{grid-template-columns:1.3fr .8fr}.detailSidebar{border-left:1px solid rgba(148,163,184,.25);padding-left:12px}}
     body.light .ticket,body.light .column,body.light .feedItem,body.light .commentItem{background:#ffffff;color:#0f172a}
     body.light .ticket .meta,body.light .small,body.light .feedMeta,body.light label{color:#1f2937}
     body.light input,body.light select,body.light textarea{background:#fff;color:#0f172a;border-color:#94a3b8}
+    body.light .column h4{color:#0f172a}
+    body.light .detailSidebar{background:#eaf2ff;border-radius:12px;padding:12px}
 
     .boardWrap{overflow-x:auto;overflow-y:visible;padding-bottom:4px}
     .board{display:grid;grid-template-columns:repeat(5,minmax(260px,1fr));gap:12px;overflow:visible;align-items:start}
@@ -70,7 +73,7 @@
     .ticket p{margin:0 0 8px;font-size:13px;color:#cbd5e1}
     .ticket .meta{font-size:11px;color:var(--muted)}
     .modalBack{position:fixed;inset:0;background:rgba(2,6,23,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:99}
-    .modal{width:min(760px,100%);max-height:90vh;overflow:auto}
+    .modal{width:min(1120px,100%);max-height:90vh;overflow:auto}
     .hidden{display:none!important}
     .urgentBtn{background:linear-gradient(135deg,#f59e0b,#ef4444);box-shadow:0 6px 18px rgba(239,68,68,.35)}
     .urgentFlag{font-size:11px;color:#fecaca;margin-top:6px}
@@ -141,7 +144,7 @@
     var cachedClients = globalThis.cachedClients || []
     var consultorRefreshTimer = globalThis.consultorRefreshTimer || null
     var loginInProgress = false
-    var uiTheme = localStorage.getItem("uiTheme") || "dark"
+    var uiTheme = localStorage.getItem("uiTheme") || "light"
     var adminPanelTab = "panel"
     var ticketFilterAnalyst = ""
 
@@ -159,7 +162,7 @@
     const SHEET_ADMINS_NAME = "BD_ADMINS"
     // Reemplazar por tu URL de Web App de Apps Script para habilitar escritura en la hoja.
     // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
-    const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx0kIHsXepl03Z47uCCwVAXWAG5xiU6oGammEjc0oSwaNcOJqK1aINTquqCHCuEBbxy8A/exec"
+    const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwUyvGndwr5K7uhvgNyC_CBGt8FI6JlW62GExQsl5sxvGIYv_mHBKxotgDgaEN7EmFTwA/exec"
     const DRIVE_FOLDER_ID = "1IZ0GHXqSQzbHLnBmSAitnah3xDq8vy94"
     let cachedTickets = []
 
@@ -705,24 +708,24 @@
 
       document.getElementById("ticketDetailContent").innerHTML = `
         <div class="inline" style="justify-content:space-between;align-items:flex-start">
-          <div><label>Código</label><div class="badge">${htmlEscape(ticket.id||"-")}</div></div>
+          <div><label>Código</label><div class="codeBadge">${htmlEscape(ticket.id||"-")}</div></div>
           ${canEdit && ticket.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
         </div>
-        <div class="detailLayout">
+        <div class="detailLayout ${canEdit ? "withSidebar" : ""}">
           <div>
             <div class="row">
-              <div><label>Título</label><input id="detail-title-${ticket.id}" value="${htmlEscape(ticket.title||"")}" ${canEdit?"":"disabled"}></div>
-              <div><label>Prioridad</label><select id="detail-priority-${ticket.id}" ${canEdit?"":"disabled"}><option value="Alta" ${ticket.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticket.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticket.priority==='Baja'?'selected':''}>Baja</option></select></div>
-              <div><label>Deadline</label><input id="detail-deadline-${ticket.id}" type="date" value="${htmlEscape(ticket.deadline||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Título</label><input id="detail-title-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.title||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Prioridad</label><select id="detail-priority-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticket.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticket.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticket.priority==='Baja'?'selected':''}>Baja</option></select></div>
+              <div><label>Deadline</label><input id="detail-deadline-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} type="date" value="${htmlEscape(ticket.deadline||"")}" ${canEdit?"":"disabled"}></div>
             </div>
-            <div><label>Detalle</label><textarea id="detail-description-${ticket.id}" ${canEdit?"":"disabled"}>${htmlEscape(ticket.description||"")}</textarea></div>
-            <div><label>Cliente/Área</label><input id="detail-client-${ticket.id}" value="${htmlEscape(ticket.client||"")}" ${canEdit?"":"disabled"}></div>
+            <div><label>Detalle</label><textarea id="detail-description-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticket.description||"")}</textarea></div>
+            <div><label>Cliente/Área</label><input id="detail-client-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.client||"")}" ${canEdit?"":"disabled"}></div>
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticket.id}')">${ticket.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button><input id="requestedDeadline-${ticket.id}" type="date" value="${htmlEscape(ticket.requestedDeadline||"")}" style="margin:0;max-width:180px" onfocus="this.showPicker && this.showPicker()" onkeydown="return false" /><button class="ghost" onclick="requestDeadlineChange('${ticket.id}')">Solicitar cambiar deadline</button></div>${ticket.deadlineChangeStatus === "pending" ? `<div class="small">Cambio solicitado para: ${htmlEscape(ticket.requestedDeadline||"-")}</div>` : ""}` : `${ticket.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticket.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticket.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticket.id}', false)">Rechazar</button></div></div>` : ""}` }
 
             ${renderComments(id, ticket.comments || {})}
           </div>
-          ${canEdit ? `<div class="detailSidebar"><div><label>Estado</label><select id="detail-status-${ticket.id}">${statusOptions}</select></div><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div><div class="inline" style="margin-top:8px"><button class="ghost" onclick="saveTicketEdits('${ticket.id}')">Guardar cambios</button></div></div>` : ''}
+          ${canEdit ? `<div class="detailSidebar"><div><label>Estado</label><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')">${statusOptions}</select></div><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div></div>` : ''}
         </div>
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
@@ -736,10 +739,10 @@
 
     async function assignTicketToMe(id){
       const owner = document.getElementById(`detail-owner-${id}`)
-      if(owner) owner.value = (currentUser.email||"").toLowerCase()
+      if(owner){ owner.value = (currentUser.email||"").toLowerCase(); autoSaveTicketDetail(id) }
     }
 
-    async function saveTicketEdits(id){
+    async function autoSaveTicketDetail(id){
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
@@ -802,7 +805,7 @@
       return `
         <div style="margin-top:10px;border-top:1px solid rgba(148,163,184,.2);padding-top:8px">
           <div class="small" style="margin-bottom:6px">Comentarios</div>
-          ${list.length ? list.map(c=>`<div class="commentItem"><div class="commentHead"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong><span class="small" style="margin-left:8px">${formatAgo(c.createdAt)}</span></div></div><div>${htmlEscape(c.message||"")}</div>${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentActions" style="margin-top:6px"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button><span>· Editar · Eliminar</span></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+          ${list.length ? list.map(c=>`<div class="commentItem"><div class="commentHead"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong><span class="small" style="margin-left:8px">${formatAgo(c.createdAt)}</span></div></div><div>${htmlEscape(c.message||"")}</div>${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentActions" style="margin-top:6px"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
           <div class="inline" style="margin-top:6px">
             <input id="comment-${id}" placeholder="Escribí un comentario" style="margin:0" />
             <input id="comment-file-${id}" type="file" style="margin:0;max-width:220px" />
@@ -921,32 +924,62 @@
       const file = document.getElementById(`comment-file-${id}`)?.files?.[0] || null
       if(!message && !file) return
 
-      showToast("Enviando comentario...", "info", 1600)
-      const ticket = cachedTickets.find(t => t.id === id)
-      if(!ticket) return
-      const comments = { ...(ticket.comments || {}) }
-      let attachment = null
-      if(file){
-        showToast("Subiendo archivo...", "info", 1600)
-        attachment = await uploadAttachmentFile(file)
-      }
-      comments[generateId()] = { message, author: currentUser.email, createdAt: new Date().toISOString(), attachment }
-      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      try{
+        showToast("Enviando comentario...", "info", 1600)
+        const ticket = cachedTickets.find(t => t.id === id)
+        if(!ticket) return
+        const comments = { ...(ticket.comments || {}) }
+        let attachment = null
+        if(file){
+          showToast("Subiendo archivo...", "info", 2000)
+          attachment = await uploadAttachmentFile(file)
+        }
+        comments[generateId()] = { message, author: currentUser.email, createdAt: new Date().toISOString(), attachment }
+        const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
 
+        await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+        mirrorToSheet("updateTicket", { id, ...updated })
+        const ix = cachedTickets.findIndex(t => t.id === id)
+        if(ix >= 0) cachedTickets[ix] = updated
+        renderTicketsFromData(cachedTickets)
+        const input = document.getElementById(`comment-${id}`)
+        if(input) input.value = ""
+        const fileInput = document.getElementById(`comment-file-${id}`)
+        if(fileInput) fileInput.value = ""
+        logActivity("ticket_comentario", { ticketId: id })
+        const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+        if(detailOpen) openTicketDetailModal(id)
+        loadDashboard()
+        showToast("Comentario enviado correctamente", "ok")
+      }catch(err){
+        console.error("Error comentando:", err)
+        showToast(err?.message || "No se pudo subir el archivo/comentario", "error", 3500)
+      }
+    }
+
+
+
+    async function reactToComment(ticketId, commentId, emoji){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || !commentId) return
+      const comments = { ...(ticket.comments || {}) }
+      const comment = { ...(comments[commentId] || {}) }
+      const reactions = { ...(comment.reactions || {}) }
+      const key = emoji === "👍" ? "thumbsUp" : emoji === "❤️" ? "heart" : "eyes"
+      const users = { ...(reactions[key] || {}) }
+      const me = emailKey(currentUser.email)
+      if(users[me]) delete users[me]; else users[me] = true
+      reactions[key] = users
+      comment.reactions = reactions
+      comments[commentId] = comment
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
-      mirrorToSheet("updateTicket", { id, ...updated })
-      const ix = cachedTickets.findIndex(t => t.id === id)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
       if(ix >= 0) cachedTickets[ix] = updated
       renderTicketsFromData(cachedTickets)
-      const input = document.getElementById(`comment-${id}`)
-      if(input) input.value = ""
-      const fileInput = document.getElementById(`comment-file-${id}`)
-      if(fileInput) fileInput.value = ""
-      logActivity("ticket_comentario", { ticketId: id })
       const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
-      if(detailOpen) openTicketDetailModal(id)
-      loadDashboard()
-      showToast("Comentario enviado correctamente", "ok")
+      if(detailOpen) openTicketDetailModal(ticketId)
     }
 
 
