@@ -158,7 +158,10 @@
     <div class="card modal">
       <div class="inline" style="justify-content:space-between;margin-bottom:8px">
         <h3 id="ticketDetailTitle" style="margin:0">Detalle del ticket</h3>
-        <button class="secondary" onclick="closeTicketDetailModal()">Cerrar</button>
+        <div class="inline" style="gap:8px;align-items:center">
+          <div id="ticketDetailHeaderControls"></div>
+          <button class="secondary" onclick="closeTicketDetailModal()">Cerrar</button>
+        </div>
       </div>
       <div id="ticketDetailContent"></div>
     </div>
@@ -191,6 +194,7 @@
     var loginInProgress = false
     var uiTheme = localStorage.getItem("uiTheme") || "dark"
     var adminPanelTab = "panel"
+    var analystActivityTab = "comments"
     var ticketFilterAnalyst = ""
     var commentSortOrderByTicket = {}
     var ticketActivityTabById = {}
@@ -815,7 +819,7 @@ Cliente B`)
               </div>
               ${currentRole !== "consultor" ? `<div id="urgentAlerts" style="margin-top:10px"></div>` : ``}
             </div>
-            ${currentRole === "consultor" ? `<div class="card"><h3 style="margin:0">Actividad de comentarios</h3><div id="consultorCommentsActivity" style="margin-top:10px;max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div id="recentActivity" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>`}
+            ${currentRole === "consultor" ? `<div class="card"><h3 style="margin:0">Actividad de comentarios</h3><div id="consultorCommentsActivity" style="margin-top:10px;max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div>${currentRole === "analista" ? `<div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas y deadlines</button></div>` : ``}<div id="recentActivity" class="${currentRole === "analista" && analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div>${currentRole === "analista" ? `<div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div>` : ``}</div>`}
           </div>
 
           <div class="card">
@@ -937,7 +941,7 @@ Cliente B`)
     function renderTicketCard(ticket, status){
       const assignedTo = String(ticket.assignedTo||"").toLowerCase()
       const assignedAvatar = assignedTo ? userAvatarByEmail(assignedTo) : ""
-      const canDrag = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
+      const canDrag = currentRole === "admin" || currentRole === "analista"
       return `
         <div class="ticket ${priorityClass(ticket.priority)}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""}>
           <h5><span class="ticketCode">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
@@ -954,11 +958,12 @@ Cliente B`)
     async function openTicketDetailModal(id){
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return alert("No se encontró el ticket")
-      const canEdit = currentRole === "admin" || currentRole === "analista"
+      const canEdit = currentRole === "admin"
+      const canManageStatus = currentRole === "admin" || currentRole === "analista"
       const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
       cachedUsersByEmail = usersByEmail
       let analysts = []
-      if(canEdit){
+      if(canManageStatus){
         analysts = Object.values(usersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
       }
       const consultors = Object.values(usersByEmail).filter(u => u && u.role === "consultor" && u.active !== false).map(u => (u.email||"").toLowerCase()).sort()
@@ -969,13 +974,19 @@ Cliente B`)
 
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticket.id||"-"}`
+      const headerControls = document.getElementById("ticketDetailHeaderControls")
+      if(headerControls){
+        headerControls.innerHTML = canManageStatus
+          ? `<div class="inline" style="gap:8px;align-items:center"><label style="margin:0" class="small">Estado</label><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
+          : `<span class="small">Estado: <strong>${htmlEscape(STATUS[ticket.status] || "-")}</strong></span>`
+      }
 
       document.getElementById("ticketDetailContent").innerHTML = `
         <div class="inline" style="justify-content:flex-start;align-items:center;gap:10px">
           <div class="codeBadge">${htmlEscape(ticket.id||"-")}</div>
-          ${canEdit && ticket.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
+          ${(currentRole === "admin" || currentRole === "analista") && ticket.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
         </div>
-        <div class="detailLayout ${canEdit ? "withSidebar" : ""}">
+        <div class="detailLayout ${canManageStatus ? "withSidebar" : ""}">
           <div>
             <div class="row">
               <div><label>Título</label><input id="detail-title-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.title||"")}" ${canEdit?"":"disabled"}></div>
@@ -990,7 +1001,7 @@ Cliente B`)
 
             ${renderComments(id, ticket.comments || {}, usersByEmail)}
           </div>
-          ${canEdit ? `<div class="detailSidebar"><div><label>Estado</label><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')">${statusOptions}</select></div><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div><div class="timeBox"><h4 style="margin:0 0 8px">Tiempo del ticket</h4><div class="small">Consolidado: <strong>${fmtMinutes(ticket.timeTracking?.consolidatedMinutes||0)}</strong></div></div></div>` : ''}
+          ${canManageStatus ? `<div class="detailSidebar"><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div></div>` : ''}
         </div>
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
@@ -1015,6 +1026,8 @@ Cliente B`)
       if(openId) clearLiveTimer(openId)
       document.getElementById("ticketDetailModal").classList.add("hidden")
       document.getElementById("ticketDetailContent").innerHTML = ""
+      const headerControls = document.getElementById("ticketDetailHeaderControls")
+      if(headerControls) headerControls.innerHTML = ""
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = "Detalle del ticket"
     }
@@ -1029,15 +1042,16 @@ Cliente B`)
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
+      const canEditFields = currentRole === "admin"
       const updated = {
         ...ticket,
-        title: (document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title,
-        description: (document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description,
-        priority: (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority),
-        client: (document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client,
-        informer: (document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase(),
+        title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
+        description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
+        priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
+        client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
+        informer: canEditFields ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
         assignedTo: (document.getElementById(`detail-owner-${id}`)?.value || "").trim().toLowerCase(),
-        deadline: (document.getElementById(`detail-deadline-${id}`)?.value || "").trim(),
+        deadline: canEditFields ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
         status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
@@ -1132,11 +1146,11 @@ Cliente B`)
       return `
         <div class="commentsSection">
           <div class="commentsHeader">
-            <div class="commentsTitle">Comentarios</div>
+            <div><div class="commentsTitle">Información interna del ticket</div><div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div></div>
             <button class="ghost sortBtn" onclick="toggleCommentsSort('${id}')">${sortOrder === "asc" ? "Más antiguos primero" : "Más recientes primero"}</button>
           </div>
           <div class="activityTabs">
-            <button id="activity-btn-comments-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "comments" ? "active" : ""}" onclick="setTicketActivityTab('${id}','comments')">Comentarios</button>
+            <button id="activity-btn-comments-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "comments" ? "active" : ""}" onclick="setTicketActivityTab('${id}','comments')">Información interna del ticket</button>
             <button id="activity-btn-history-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "history" ? "active" : ""}" onclick="setTicketActivityTab('${id}','history')">Historial</button>
             <button id="activity-btn-times-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "times" ? "active" : ""}" onclick="setTicketActivityTab('${id}','times')">Tiempos</button>
           </div>
@@ -1205,7 +1219,7 @@ Cliente B`)
       if(!ticketId) return
       const ticket = cachedTickets.find(t => t.id === ticketId)
       if(!ticket || ticket.status === status) return
-      if(!(currentRole === "admin" || currentRole === "analista" || currentRole === "consultor")) return
+      if(!(currentRole === "admin" || currentRole === "analista")) return
       const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       showToast("Moviendo ticket...", "info", 1400)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
@@ -1661,6 +1675,72 @@ Cliente B`)
       await loadFilterOptions()
     }
 
+    function setAnalystActivityTab(tab){
+      analystActivityTab = tab === "alerts" ? "alerts" : "comments"
+      const comments = document.getElementById("recentActivity")
+      const alerts = document.getElementById("recentActivityAlerts")
+      const btnComments = document.getElementById("analyst-tab-comments")
+      const btnAlerts = document.getElementById("analyst-tab-alerts")
+      if(comments) comments.classList.toggle("hidden", analystActivityTab !== "comments")
+      if(alerts) alerts.classList.toggle("hidden", analystActivityTab !== "alerts")
+      if(btnComments) btnComments.classList.toggle("ghost", analystActivityTab !== "comments")
+      if(btnAlerts) btnAlerts.classList.toggle("ghost", analystActivityTab !== "alerts")
+    }
+
+    function toLocalDateOnly(date){
+      const y = date.getFullYear()
+      const m = String(date.getMonth()+1).padStart(2,'0')
+      const d = String(date.getDate()).padStart(2,'0')
+      return `${y}-${m}-${d}`
+    }
+
+    function businessDaysBetweenArg(today, target){
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const end = new Date(target.getFullYear(), target.getMonth(), target.getDate())
+      if(Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+      if(end < start) return 0
+      let count = 0
+      const day = new Date(start)
+      while(day <= end){
+        const dow = day.getDay()
+        if(dow !== 0 && dow !== 6) count++
+        day.setDate(day.getDate()+1)
+      }
+      return Math.max(0, count-1)
+    }
+
+    async function requestDeadlineChangeFromDashboard(ticketId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return alert("No se encontró el ticket")
+      if(currentRole !== "analista") return alert("Solo analista puede solicitar cambio de deadline desde actividad")
+      const currentValue = ticket.deadline || toLocalDateOnly(new Date())
+      const requestedDeadline = (prompt("¿Cuál sería la nueva fecha? (YYYY-MM-DD)", currentValue) || "").trim()
+      if(!requestedDeadline) return
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(requestedDeadline)) return alert("Formato inválido. Usá YYYY-MM-DD")
+      const comments = { ...(ticket.comments || {}) }
+      const autoMessage = `Solicitud automática: ${currentUser.email} solicita cambio de deadline a ${requestedDeadline} para revisión del consultor.`
+      comments[generateId()] = { message: autoMessage, author: currentUser.email, createdAt: new Date().toISOString(), internal: false, maximumAttention: true }
+      const updated = {
+        ...ticket,
+        requestedDeadline,
+        deadlineChangeStatus: "pending",
+        deadlineChangeRequestedBy: currentUser.email,
+        deadlineChangeRequestedAt: new Date().toISOString(),
+        deadlineChangeReviewedBy: "",
+        comments,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      await logActivity("deadline_change_requested", { ticketId, requestedDeadline, source: "analyst_dashboard" })
+      await logActivity("ticket_comentario", { ticketId, source: "deadline_request_auto_comment" })
+      await loadDashboard()
+      showToast("Solicitud enviada al consultor", "ok")
+    }
+
     async function loadDashboard(){
       try{
         const ticketsArr = await fetchTicketsFromDb()
@@ -1717,9 +1797,53 @@ Cliente B`)
         if(!container) return
         let sorted = activity.sort((a,b)=>new Date(b.timestampIso||0)-new Date(a.timestampIso||0))
         if(currentRole === "analista"){
-          const myTickets = new Set(normalizedTickets.filter(t => String(t.assignedTo||"").toLowerCase() === String(currentUser.email||"").toLowerCase()).map(t => t.id))
+          const myTickets = normalizedTickets.filter(t => String(t.assignedTo||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
+          const myTicketIds = new Set(myTickets.map(t => t.id))
           const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
-          sorted = sorted.filter(it => it.eventType === "ticket_comentario" && myTickets.has(it.ticketId) && roleByEmail[String(it.email||"").toLowerCase()] === "consultor")
+          sorted = sorted.filter(it => it.eventType === "ticket_comentario" && myTicketIds.has(it.ticketId) && roleByEmail[String(it.email||"").toLowerCase()] === "consultor")
+
+          if(!sorted.length) container.innerHTML = `<p class="small">Sin comentarios recientes.</p>`
+          else{
+            container.innerHTML = sorted.map(it => `
+              <div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${it.ticketId||"-"}')">
+                <div class="feedTop">
+                  <div>
+                    <div class="feedType">Comentario reciente</div>
+                    <div class="feedMeta">${htmlEscape(it.email || "sin-usuario")} · ${it.timestampIso ? new Date(it.timestampIso).toLocaleString() : ""}</div>
+                  </div>
+                  <span class="badge">${htmlEscape(it.ticketId || "-")}</span>
+                </div>
+              </div>
+            `).join("")
+          }
+
+          const alertsContainer = document.getElementById("recentActivityAlerts")
+          if(alertsContainer){
+            const today = new Date()
+            const alerts = myTickets
+                            .map(t => {
+                const businessDays = t.deadline ? businessDaysBetweenArg(today, new Date(`${t.deadline}T00:00:00`)) : null
+                return { ticket: t, businessDays }
+              })
+              .filter(x => x.ticket.urgentRequested || (x.businessDays !== null && x.businessDays <= 5))
+              .sort((a,b)=>a.businessDays-b.businessDays)
+
+            alertsContainer.innerHTML = alerts.length
+              ? alerts.map(({ticket, businessDays}) => `
+                  <div class="feedItem">
+                    <div class="feedTop">
+                      <div>
+                        <div class="feedType">${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</div>
+                        <div class="feedMeta">${ticket.urgentRequested ? "🚨 Alerta urgente · " : ""}Deadline: ${htmlEscape(ticket.deadline||"-")} ${businessDays === null ? "" : `· Faltan ${businessDays} día(s) hábil(es) ARG`}</div>
+                      </div>
+                      <button class="ghost" onclick="requestDeadlineChangeFromDashboard('${ticket.id}')">Solicitar cambio de deadline</button>
+                    </div>
+                  </div>
+                `).join("")
+              : `<p class="small">Sin alertas ni tickets cerca de la deadline.</p>`
+          }
+          setAnalystActivityTab(analystActivityTab)
+          return
         }
         if(!sorted.length){
           container.innerHTML = `<p class="small">Sin actividad reciente.</p>`
