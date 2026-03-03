@@ -304,6 +304,30 @@
     }
 
 
+    async function readFileAsDataUrl(file){
+      return await new Promise((resolve,reject)=>{
+        const r = new FileReader()
+        r.onload = () => resolve(String(r.result||""))
+        r.onerror = reject
+        r.readAsDataURL(file)
+      })
+    }
+
+    async function uploadUserPhotoFile(file){
+      try{
+        return await uploadAttachmentFile(file)
+      }catch(err){
+        const msg = String(err?.message || "")
+        if(msg.includes("no soporta uploadDriveFile") || msg.includes("Acción no soportada")){
+          const dataUrl = await readFileAsDataUrl(file)
+          showToast("Apps Script sin uploadDriveFile: usando guardado local temporal de foto", "error", 4200)
+          return { name: file.name, url: dataUrl, fileId: "", fallbackLocal: true }
+        }
+        throw err
+      }
+    }
+
+
     function showToast(message, type="info", keepMs=2200){
       const old = document.getElementById("globalToast")
       if(old) old.remove()
@@ -1226,8 +1250,9 @@
       showToast("Guardando usuario...", "info", 1600)
       let photoUrl = ""
       let photoFileId = ""
+      let uploaded = null
       if(photoFile){
-        const uploaded = await uploadAttachmentFile(photoFile)
+        uploaded = await uploadUserPhotoFile(photoFile)
         photoUrl = uploaded.url || ""
         photoFileId = uploaded.fileId || ""
       }
@@ -1241,7 +1266,8 @@
       }
       await adminWrite("upsertUser", payload)
       await db.ref("users_by_email").child(emailKey(email)).set(payload)
-      alert("Usuario creado correctamente")
+      if(uploaded && uploaded.fallbackLocal) alert("Usuario creado. Foto en modo local (Apps Script sin uploadDriveFile).")
+      else alert("Usuario creado correctamente")
       document.getElementById("uEmail").value = ""
       document.getElementById("uPassword").value = ""
       document.getElementById("uPhoto").value = ""
@@ -1270,7 +1296,7 @@
       try{
         if(button){ button.disabled = true; button.textContent = "Cambiando..." }
         showToast("Guardando foto...", "info", 1800)
-        const uploaded = await uploadAttachmentFile(file)
+        const uploaded = await uploadUserPhotoFile(file)
         const users = await fetchUsersFromSheet()
         const existing = users.find(u => emailKey(u.email) === key) || {}
         const payload = {
@@ -1287,7 +1313,8 @@
         }
         await adminWrite("upsertUser", payload)
         await db.ref("users_by_email").child(key).update(payload)
-        showToast("Foto actualizada", "ok")
+        if(uploaded.fallbackLocal) showToast("Foto actualizada (modo local). Para Drive, redeploy Apps Script.", "error", 4200)
+        else showToast("Foto actualizada", "ok")
         await loadUsersAdmin()
         await loadFilterOptions()
       }catch(err){
