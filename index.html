@@ -46,14 +46,15 @@
     .feedTop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .feedType{font-weight:600}
     .feedMeta{font-size:12px;color:var(--muted);margin-top:4px}
-    .commentItem{padding:10px;border:1px solid rgba(148,163,184,.18);border-radius:12px;background:rgba(2,6,23,.25);margin-bottom:8px}
+    .commentsSection{margin-top:12px;border-top:2px dashed rgba(148,163,184,.35);padding-top:10px;background:rgba(15,23,42,.25);padding:10px;border-radius:12px}
+    .commentItem{padding:10px;border:1px solid rgba(148,163,184,.28);border-radius:12px;background:rgba(2,6,23,.35);margin-bottom:8px}
     .commentHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
     .commentActions{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
     .urgentTopFlag{display:inline-block;background:#b91c1c;color:#fff;padding:6px 10px;border-radius:999px;font-weight:700;box-shadow:0 8px 24px rgba(185,28,28,.45)}
     .detailLayout{display:grid;grid-template-columns:1fr;gap:12px}
     .codeBadge{display:inline-block;background:rgba(59,130,246,.2);color:#bfdbfe;padding:6px 10px;border-radius:10px;font-weight:700;border:1px solid rgba(59,130,246,.45)}
     @media (min-width:980px){.detailLayout.withSidebar{grid-template-columns:1.55fr .55fr}.detailSidebar{border-left:1px solid rgba(148,163,184,.25);padding-left:12px}}
-    body.light .ticket,body.light .column,body.light .feedItem,body.light .commentItem{background:#ffffff;color:#0f172a;border-color:#64748b}
+    body.light .ticket,body.light .column,body.light .feedItem,body.light .commentItem{background:#ffffff;color:#0f172a;border-color:#64748b;box-shadow:0 8px 20px rgba(15,23,42,.10)}
     body.light .ticket .meta,body.light .small,body.light .feedMeta,body.light label{color:#1f2937}
     body.light input,body.light select,body.light textarea{background:#fff;color:#0f172a;border-color:#94a3b8}
     body.light .column h4{color:#0f172a}
@@ -101,6 +102,7 @@
       <div class="row">
         <div><label>Cliente/Área</label><select id="tClient"></select></div>
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
+        <div><label>Informador</label><select id="tInformer"></select></div>
       </div>
 
       <div class="inline" style="justify-content:flex-end">
@@ -113,7 +115,7 @@
   <div id="ticketDetailModal" class="modalBack hidden">
     <div class="card modal">
       <div class="inline" style="justify-content:space-between;margin-bottom:8px">
-        <h3 style="margin:0">Detalle de ticket</h3>
+        <h3 id="ticketDetailTitle" style="margin:0">Detalle del ticket</h3>
         <button class="secondary" onclick="closeTicketDetailModal()">Cerrar</button>
       </div>
       <div id="ticketDetailContent"></div>
@@ -163,7 +165,7 @@
     const SHEET_ADMINS_NAME = "BD_ADMINS"
     // Reemplazar por tu URL de Web App de Apps Script para habilitar escritura en la hoja.
     // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
-    const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx_tbQVx5N_Yup_9qVXhjuxS6nKhTVtwHCrV0W4m1fTk4qb2xrppr4n0KpwGoRwgvo4gw/exec"
+    const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwUyvGndwr5K7uhvgNyC_CBGt8FI6JlW62GExQsl5sxvGIYv_mHBKxotgDgaEN7EmFTwA/exec"
     const DRIVE_FOLDER_ID = "1IZ0GHXqSQzbHLnBmSAitnah3xDq8vy94"
     let cachedTickets = []
 
@@ -348,6 +350,15 @@
         analystFilterSelect.value = ticketFilterAnalyst
       }
 
+      const informerSelect = document.getElementById("tInformer")
+      if(informerSelect){
+        const consultors = Object.values((await db.ref("users_by_email").once("value")).val() || {}).filter(u => u && u.role === "consultor" && u.active !== false).map(u => (u.email||"").toLowerCase()).sort()
+        const defaultInformer = currentRole === "consultor" ? (currentUser?.email||"").toLowerCase() : ""
+        informerSelect.innerHTML = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
+        informerSelect.value = defaultInformer
+        if(currentRole === "consultor") informerSelect.disabled = true
+      }
+
       const ticketClientSelect = document.getElementById("tClient")
       if(ticketClientSelect){
         ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
@@ -388,7 +399,7 @@
     }
 
     async function fetchTicketsFromSheet(){
-      const query = encodeURIComponent("select A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S")
+      const query = encodeURIComponent("select A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T")
       const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(SHEET_TICKETS_NAME)}&tq=${query}`
       const res = await fetch(url)
       if(!res.ok) throw new Error("No se pudo leer la planilla")
@@ -417,7 +428,8 @@
           deadlineChangeStatus: String(cols[15]||"none"),
           deadlineChangeRequestedBy: String(cols[16]||""),
           deadlineChangeRequestedAt: String(cols[17]||""),
-          deadlineChangeReviewedBy: String(cols[18]||"")
+          deadlineChangeReviewedBy: String(cols[18]||""),
+          informer: String(cols[19]||cols[9]||"")
         }))
     }
 
@@ -610,8 +622,10 @@
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
+      const informer = (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase()
 
       if(!title || !description || !client) return alert("Completá título, detalle y cliente/área")
+      if(!informer) return alert("Seleccioná informador")
 
       showToast("Creando ticket...", "info", 1600)
       const now = new Date().toISOString()
@@ -626,6 +640,7 @@
         createdBy: currentUser.email,
         updatedAt: now,
         updatedBy: currentUser.email,
+        informer,
         requestedDeadline: "",
         deadlineChangeStatus: "none",
         deadlineChangeRequestedBy: "",
@@ -661,7 +676,7 @@
       const grouped = { unassigned: [], todo: [], doing: [], recurrent: [], done: [] }
 
       Object.entries(data).forEach(([_, t]) => {
-        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && (t.createdBy||"") === currentUser.email)
+        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && ((t.informer||t.createdBy||"").toLowerCase() === (currentUser.email||"").toLowerCase()))
         if(!canSeeTicket) return
 
         const haystack = `${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
@@ -689,6 +704,7 @@
         <div class="ticket ${priorityClass(ticket.priority)}">
           <h5><span class="ticketCode">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">Cliente/Área: ${htmlEscape(ticket.client||"-")}</div>
+          <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
           <div class="meta">Asignado a: ${htmlEscape(ticket.assignedTo||"Sin asignar")}</div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? htmlEscape(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
@@ -708,9 +724,12 @@
       const analystOptions = analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||"").toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join("")
       const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticket.status===key?"selected":""}>${label}</option>`).join("")
 
+      const titleEl = document.getElementById("ticketDetailTitle")
+      if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticket.id||"-"}`
+
       document.getElementById("ticketDetailContent").innerHTML = `
         <div class="inline" style="justify-content:flex-start;align-items:center;gap:10px">
-          <div><label>Código</label><div class="codeBadge">${htmlEscape(ticket.id||"-")}</div></div>
+          <div class="codeBadge">${htmlEscape(ticket.id||"-")}</div>
           ${canEdit && ticket.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
         </div>
         <div class="detailLayout ${canEdit ? "withSidebar" : ""}">
@@ -722,20 +741,69 @@
             </div>
             <div><label>Detalle</label><textarea id="detail-description-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticket.description||"")}</textarea></div>
             <div><label>Cliente/Área</label><input id="detail-client-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.client||"")}" ${canEdit?"":"disabled"}></div>
+            <div><label>Informador</label><input id="detail-informer-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.informer||ticket.createdBy||"")}" ${canEdit?"":"disabled"}></div>
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticket.id}')">${ticket.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button><input id="requestedDeadline-${ticket.id}" type="date" value="${htmlEscape(ticket.requestedDeadline||"")}" style="margin:0;max-width:180px" onfocus="this.showPicker && this.showPicker()" onkeydown="return false" /><button class="ghost" onclick="requestDeadlineChange('${ticket.id}')">Solicitar cambiar deadline</button></div>${ticket.deadlineChangeStatus === "pending" ? `<div class="small">Cambio solicitado para: ${htmlEscape(ticket.requestedDeadline||"-")}</div>` : ""}` : `${ticket.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticket.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticket.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticket.id}', false)">Rechazar</button></div></div>` : ""}` }
 
             ${renderComments(id, ticket.comments || {})}
+            ${currentRole === "admin" ? `<div style="margin-top:10px"><h4 style="margin:0 0 8px">Historial del ticket</h4><div id="ticketHistory-${ticket.id}" class="small">Cargando...</div></div>` : ""}
           </div>
           ${canEdit ? `<div class="detailSidebar"><div><label>Estado</label><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')">${statusOptions}</select></div><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div></div>` : ''}
         </div>
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
+      if(currentRole === "admin") loadTicketHistory(id)
+    }
+
+
+
+    async function loadTicketHistory(ticketId){
+      const el = document.getElementById(`ticketHistory-${ticketId}`)
+      if(!el) return
+      const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
+        .filter(l => l.ticketId === ticketId)
+        .sort((a,b)=>new Date(a.timestampIso||0)-new Date(b.timestampIso||0))
+      if(!logs.length){ el.innerHTML = "Sin historial."; return }
+      el.innerHTML = logs.map(l => `<div class="feedItem"><div class="feedType">${htmlEscape(l.eventType||"evento")}</div><div class="feedMeta">${htmlEscape(l.email||"-")} · ${l.timestampIso?new Date(l.timestampIso).toLocaleString():""}</div></div>`).join("")
     }
 
     function closeTicketDetailModal(){
       document.getElementById("ticketDetailModal").classList.add("hidden")
       document.getElementById("ticketDetailContent").innerHTML = ""
+      const titleEl = document.getElementById("ticketDetailTitle")
+      if(titleEl) titleEl.textContent = "Detalle del ticket"
+    }
+
+
+    async function assignTicketToMe(id){
+      const owner = document.getElementById(`detail-owner-${id}`)
+      if(owner){ owner.value = (currentUser.email||"").toLowerCase(); autoSaveTicketDetail(id) }
+    }
+
+    async function autoSaveTicketDetail(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const updated = {
+        ...ticket,
+        title: (document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title,
+        description: (document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description,
+        priority: (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority),
+        client: (document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client,
+        informer: (document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase(),
+        assignedTo: (document.getElementById(`detail-owner-${id}`)?.value || "").trim().toLowerCase(),
+        deadline: (document.getElementById(`detail-deadline-${id}`)?.value || "").trim(),
+        status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      renderTicketsFromData(cachedTickets)
+      await loadDashboard()
+      showToast("Ticket actualizado", "ok")
     }
 
 
@@ -803,14 +871,14 @@
     }
 
     function renderComments(id, comments){
-      const list = Object.entries(comments || {}).map(([cid,c]) => ({ id: cid, ...(c||{}) })).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
+      const list = Object.entries(comments || {}).map(([cid,c]) => ({ id: cid, ...(c||{}) })).filter(c => currentRole !== "consultor" || !c.internal).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
       return `
-        <div style="margin-top:10px;border-top:1px solid rgba(148,163,184,.2);padding-top:8px">
-          <div class="small" style="margin-bottom:6px">Comentarios</div>
-          ${list.length ? list.map(c=>`<div class="commentItem"><div class="commentHead"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong><span class="small" style="margin-left:8px">${formatAgo(c.createdAt)}</span></div></div><div>${htmlEscape(c.message||"")}</div>${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentActions" style="margin-top:6px"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+        <div class="commentsSection">
+          <div class="small" style="margin-bottom:6px">Comentarios ${currentRole === "consultor" ? "" : "(incluye internos)"}</div>
+          ${list.length ? list.map(c=>`<div class="commentItem"><div class="commentHead"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong><span class="small" style="margin-left:8px">${formatAgo(c.createdAt)}</span></div></div><div>${htmlEscape(c.message||"")}</div>${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentActions" style="margin-top:6px"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="deleteComment('${id}','${c.id||""}')">🗑️</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
           <div class="inline" style="margin-top:6px">
             <input id="comment-${id}" placeholder="Escribí un comentario" style="margin:0" />
-            <input id="comment-file-${id}" type="file" style="margin:0;max-width:220px" />
+            <input id="comment-file-${id}" type="file" style="margin:0;max-width:220px" />${currentRole !== "consultor" ? `<label style="margin:0 0 0 8px"><input type="checkbox" id="comment-internal-${id}" style="width:auto;margin:0 6px 0 0"/> Interno</label>` : ""}
             <button class="ghost" onclick="addComment('${id}')">Comentar</button>
           </div>
         </div>
@@ -896,7 +964,7 @@
       const updated = { ...ticket, status: next, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
-      logActivity("ticket_movido", { ticketId: id, nextStatus: next })
+      logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status })
       loadTickets()
       await loadDashboard()
       showToast("Ticket movido correctamente", "ok")
@@ -916,7 +984,7 @@
       const updated = { ...ticket, assignedTo, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
-      logActivity("ticket_asignado", { ticketId: id, assignedTo })
+      logActivity("ticket_asignado", { ticketId: id, assignedTo, assignedAt: new Date().toISOString() })
       loadTickets()
       showToast("Ticket asignado correctamente", "ok")
     }
@@ -924,6 +992,7 @@
     async function addComment(id){
       const message = (document.getElementById(`comment-${id}`)?.value || "").trim()
       const file = document.getElementById(`comment-file-${id}`)?.files?.[0] || null
+      const internal = currentRole !== "consultor" ? !!document.getElementById(`comment-internal-${id}`)?.checked : false
       if(!message && !file) return
 
       try{
@@ -936,7 +1005,7 @@
           showToast("Subiendo archivo...", "info", 2000)
           try{ attachment = await uploadAttachmentFile(file) }catch(err){ console.error("Fallo upload adjunto:", err); showToast(err?.message || "No se pudo subir adjunto, se enviará comentario sin archivo", "error", 3500) }
         }
-        comments[generateId()] = { message, author: currentUser.email, createdAt: new Date().toISOString(), attachment }
+        comments[generateId()] = { message, author: currentUser.email, createdAt: new Date().toISOString(), attachment, internal }
         const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
 
         await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
@@ -960,6 +1029,27 @@
     }
 
 
+
+
+
+    async function deleteComment(ticketId, commentId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || !commentId) return
+      const comments = { ...(ticket.comments || {}) }
+      const c = comments[commentId]
+      if(!c) return
+      const mine = String(c.author||"").toLowerCase() === String(currentUser.email||"").toLowerCase()
+      if(!(mine || currentRole === "admin")) return alert("No tenés permiso para borrar este comentario")
+      delete comments[commentId]
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+      if(detailOpen) openTicketDetailModal(ticketId)
+      loadDashboard()
+    }
 
     async function reactToComment(ticketId, commentId, emoji){
       const ticket = cachedTickets.find(t => t.id === ticketId)
@@ -1038,7 +1128,8 @@
         const activity = Object.values((await db.ref("activity_logs").limitToLast(10).once("value")).val() || {})
 
         let total = 0, unassigned = 0, doing = 0, done = 0
-        normalizedTickets.forEach(t => {
+        const kpiSource = currentRole === "consultor" ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) : normalizedTickets
+        kpiSource.forEach(t => {
           total++
           if(t.status === "unassigned") unassigned++
           if(t.status === "doing") doing++
@@ -1069,9 +1160,9 @@
         if(currentRole === "consultor") {
           const commentsContainer = document.getElementById("consultorCommentsActivity")
           if(commentsContainer){
-            const onlyMine = normalizedTickets.filter(t => (t.createdBy||"") === currentUser.email)
+            const onlyMine = normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
             const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
-            const comments = onlyMine.flatMap(t => Object.values(t.comments||{}).map(c => ({ ticketId: t.id, ticketTitle: t.title, ...c })))
+            const comments = onlyMine.flatMap(t => Object.values(t.comments||{}).filter(c => !c?.internal).map(c => ({ ticketId: t.id, ticketTitle: t.title, ...c })))
               .filter(c => { const r = roleByEmail[String(c.author||"").toLowerCase()]; return r === "admin" || r === "analista" })
               .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
             commentsContainer.innerHTML = comments.length
