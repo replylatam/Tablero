@@ -8,6 +8,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <style>
     :root{--bg-1:#030712;--bg-2:#0b1220;--surface:rgba(15,23,42,.58);--stroke:rgba(148,163,184,.24);--text:#e2e8f0;--muted:#94a3b8;--accent:#7c3aed;--accent-2:#06b6d4;--danger:#dc2626;--ok:#16a34a}
@@ -81,6 +82,10 @@
     .commentItem.maximumAttention{border-color:rgba(239,68,68,.75);background:rgba(220,38,38,.18)}
     .attentionBadge{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(220,38,38,.28);color:#fecaca;border:1px solid rgba(239,68,68,.65);margin-left:8px}
     .commentToolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+    .colorBtn{width:34px;height:30px;border-radius:8px;border:1px solid var(--stroke);display:inline-flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:linear-gradient(135deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#8b5cf6)}
+    .colorBtn span{font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+    .colorBtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+    .timeBox{margin-top:10px;padding:10px;border:1px solid var(--stroke);border-radius:12px;background:rgba(2,6,23,.2)}
     .commentEditor{min-height:90px;border:1px solid var(--stroke);border-radius:10px;padding:10px;background:rgba(2,6,23,.35);outline:none}
     .commentEditor:empty:before{content:attr(data-placeholder);color:var(--muted)}
     .commentBody.formatted p{margin:.25rem 0}
@@ -182,7 +187,7 @@
     var cachedClients = globalThis.cachedClients || []
     var consultorRefreshTimer = globalThis.consultorRefreshTimer || null
     var loginInProgress = false
-    var uiTheme = localStorage.getItem("uiTheme") || "light"
+    var uiTheme = localStorage.getItem("uiTheme") || "dark"
     var adminPanelTab = "panel"
     var ticketFilterAnalyst = ""
     var commentSortOrderByTicket = {}
@@ -302,7 +307,7 @@
     function safeCommentHtml(html){
       return String(html || "")
         .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-        .replace(/\son\w+=(["']).*?/gi, "")
+        .replace(/\son\w+=(["']).*?\1/gi, "")
     }
 
     function commentPlainTextFromHtml(html){
@@ -316,6 +321,84 @@
       if(!editor) return
       editor.focus()
       document.execCommand(command, false, value)
+    }
+
+    function fmtMinutes(minutes){
+      const m = Math.max(0, Number(minutes||0))
+      const h = Math.floor(m/60)
+      const rem = Math.round(m%60)
+      return `${h}h ${rem}m`
+    }
+
+    function recomputeConsolidatedMinutes(timeTracking){
+      const users = timeTracking?.users || {}
+      return Object.values(users).reduce((acc,u)=> acc + Number(u?.totalMinutes||0), 0)
+    }
+
+    function parseCsvRows(text){
+      const normalized = String(text || "").split(String.fromCharCode(13)).join("")
+      return normalized.split("\n").map(r=>r.trim()).filter(Boolean).map(r=>r.split(',').map(c=>c.trim()))
+    }
+
+    async function parseSpreadsheetRows(file){
+      const ext = String(file?.name||"").toLowerCase()
+      if(ext.endsWith('.csv')){
+        const txt = await file.text()
+        return parseCsvRows(txt)
+      }
+      if(typeof XLSX === 'undefined') throw new Error('No se pudo cargar el parser de Excel (XLSX)')
+      const buffer = await file.arrayBuffer()
+      const wb = XLSX.read(buffer, { type: 'array' })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+      return rows.map(r => (r||[]).map(c => String(c??'').trim())).filter(r => r.some(Boolean))
+    }
+
+    async function importUsersFromFile(){
+      if(currentRole !== 'admin') return alert('Solo admin puede importar usuarios')
+      const file = document.getElementById('uImportFile')?.files?.[0]
+      if(!file) return alert('Seleccioná un archivo')
+      const rows = await parseSpreadsheetRows(file)
+      if(rows.length < 2) return alert('Archivo sin datos')
+      const header = rows[0].map(h=>h.toLowerCase())
+      const iEmail = header.indexOf('email'); const iPass = header.indexOf('password'); const iRole = header.indexOf('role')
+      if(iEmail < 0 || iPass < 0 || iRole < 0) return alert('Columnas requeridas: email,password,role')
+      let count = 0
+      for(const row of rows.slice(1)){
+        const email = String(row[iEmail]||'').trim().toLowerCase()
+        const password = String(row[iPass]||'').trim()
+        const role = String(row[iRole]||'consultor').trim().toLowerCase()
+        if(!email || !password) continue
+        const payload = { key: emailKey(email), email, password, role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, photoUrl:'', photoFileId:'' }
+        await adminWrite('upsertUser', payload)
+        await db.ref('users_by_email').child(payload.key).set(payload)
+        count++
+      }
+      showToast(`Usuarios importados: ${count}`, 'ok')
+      await loadUsersAdmin(); await loadFilterOptions()
+    }
+
+    async function importClientsFromFile(){
+      if(currentRole !== 'admin') return alert('Solo admin puede importar clientes')
+      const file = document.getElementById('cImportFile')?.files?.[0]
+      if(!file) return alert('Seleccioná un archivo')
+      const rows = await parseSpreadsheetRows(file)
+      if(rows.length < 2) return alert('Archivo sin datos')
+      const header = rows[0].map(h=>h.toLowerCase())
+      const iName = header.indexOf('name') >= 0 ? header.indexOf('name') : header.indexOf('cliente')
+      if(iName < 0) return alert('Columna requerida: name (o cliente)')
+      let count = 0
+      for(const row of rows.slice(1)){
+        const name = String(row[iName]||'').trim()
+        if(!name) continue
+        const key = emailKey(name)
+        const payload = { key, name, createdAt: new Date().toISOString(), createdBy: currentUser.email }
+        await db.ref('clients').child(key).set({ name, createdAt: payload.createdAt, createdBy: payload.createdBy })
+        mirrorToSheet('upsertClient', payload)
+        count++
+      }
+      showToast(`Clientes importados: ${count}`, 'ok')
+      await loadClientsAdmin(); await loadFilterOptions()
     }
 
     async function uploadAttachmentFile(file){
@@ -686,10 +769,12 @@
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Email</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
             <div class="row"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
+            <div class="row"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button></div></div>
             <div id="usersList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Clientes</h4>
             <div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient()">Agregar cliente</button></div></div>
+            <div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div></div>
             <div id="clientsList" class="small"></div>
           </div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : `
           <div class="grid">
@@ -768,7 +853,9 @@
         deadlineChangeStatus: "none",
         deadlineChangeRequestedBy: "",
         deadlineChangeRequestedAt: "",
-        deadlineChangeReviewedBy: ""
+        deadlineChangeReviewedBy: "",
+        helpers: [],
+        timeTracking: { users: {}, consolidatedMinutes: 0 }
       }
 
       const dbKey = emailKey(code)
@@ -878,7 +965,7 @@
 
             ${renderComments(id, ticket.comments || {}, usersByEmail)}
           </div>
-          ${canEdit ? `<div class="detailSidebar"><div><label>Estado</label><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')">${statusOptions}</select></div><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div></div>` : ''}
+          ${canEdit ? `<div class="detailSidebar"><div><label>Estado</label><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')">${statusOptions}</select></div><div><label>OWNER DE LA TAREA</label><select id="detail-owner-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')"><option value="">Sin asignar</option>${analystOptions}</select><div class="inline"><button class="ghost" onclick="assignTicketToMe('${ticket.id}')">Asignar a mí</button></div></div><div class="timeBox"><h4 style="margin:0 0 8px">Tiempo del ticket</h4><div class="small">Consolidado: <strong>${fmtMinutes(ticket.timeTracking?.consolidatedMinutes||0)}</strong></div><div class="small" style="margin-top:6px">Ayudantes: ${htmlEscape((ticket.helpers||[]).join(', ') || 'Ninguno')}</div><div class="inline" style="margin-top:8px"><button class="ghost" onclick="joinAsHelper('${ticket.id}')">Sumarme como ayudante</button></div><div class="inline" style="margin-top:8px"><input id="manual-minutes-${ticket.id}" type="number" min="1" placeholder="Minutos manuales" style="margin:0;max-width:140px"><button class="ghost" onclick="logManualTime('${ticket.id}')">Cargar manual</button></div><div class="inline" style="margin-top:8px"><button class="ghost" onclick="startTicketTimer('${ticket.id}')">Iniciar timer</button><button class="ghost" onclick="stopTicketTimer('${ticket.id}')">Finalizar timer</button></div></div></div>` : ''}
         </div>
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
@@ -1010,7 +1097,7 @@
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','bold')"><b>B</b></button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','italic')"><i>I</i></button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertUnorderedList')">• Lista</button>
-                <input type="color" title="Color" onchange="formatCommentEditor('${id}','foreColor', this.value)">
+                <label class="colorBtn" title="Color de letra"><span>A</span><input type="color" onchange="formatCommentEditor('${id}','foreColor', this.value)"></label>
               </div>
               <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario" onkeydown="handleCommentKeydown(event,'${id}')"></div>
               <div class="inline" style="align-items:flex-start;margin-top:8px">
@@ -1018,7 +1105,7 @@
                 <input id="comment-file-${id}" class="attachInput" type="file" />
                 <button class="ghost" onclick="addComment('${id}')">Comentar</button>
               </div>
-              ${currentRole !== "consultor" ? `<div class="switchWrap" style="margin-top:8px"><label class="switch"><input type="checkbox" id="comment-internal-${id}"><span class="slider"></span></label><span>Comentario interno</span></div><div class="switchWrap" style="margin-top:8px"><label class="switch"><input type="checkbox" id="comment-max-attention-${id}"><span class="slider"></span></label><span>Atención máxima</span></div>` : ""}
+              ${currentRole !== "consultor" ? `<div class="inline" style="margin-top:8px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-internal-${id}"><span class="slider"></span></label><span>Comentario interno</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-max-attention-${id}"><span class="slider"></span></label><span>Atención máxima</span></div></div>` : ""}
             </div>
           </div>
 
@@ -1076,6 +1163,74 @@
       renderTicketsFromData(cachedTickets)
       await loadDashboard()
       showToast("Ticket movido correctamente", "ok")
+    }
+
+    async function joinAsHelper(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const me = String(currentUser.email||"").toLowerCase()
+      const helpers = Array.from(new Set([...(ticket.helpers||[]), me]))
+      const updated = { ...ticket, helpers, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      openTicketDetailModal(id)
+    }
+
+    async function applyTimeUpdate(id, mutate){
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      mutate(tracking)
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      openTicketDetailModal(id)
+    }
+
+    async function logManualTime(id){
+      const minutes = Number(document.getElementById(`manual-minutes-${id}`)?.value || 0)
+      if(minutes <= 0) return alert("Ingresá minutos válidos")
+      const meKey = emailKey(currentUser.email)
+      await applyTimeUpdate(id, (tracking)=>{
+        const u = tracking.users[meKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:"" }
+        u.totalMinutes = Number(u.totalMinutes||0) + minutes
+        tracking.users[meKey] = u
+      })
+      showToast("Tiempo manual cargado", "ok")
+    }
+
+    async function startTicketTimer(id){
+      const meKey = emailKey(currentUser.email)
+      await applyTimeUpdate(id, (tracking)=>{
+        const u = tracking.users[meKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:"" }
+        if(!u.timerStartAt) u.timerStartAt = new Date().toISOString()
+        tracking.users[meKey] = u
+      })
+      showToast("Timer iniciado", "ok")
+    }
+
+    async function stopTicketTimer(id){
+      const meKey = emailKey(currentUser.email)
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const u = (ticket.timeTracking?.users||{})[meKey] || {}
+      if(!u.timerStartAt) return alert("El timer no está iniciado")
+      const elapsed = Math.max(1, Math.round((Date.now() - new Date(u.timerStartAt).getTime())/60000))
+      const acceptClock = confirm(`Tiempo medido: ${elapsed} min. ¿Cargar este tiempo del reloj?`)
+      let minutes = elapsed
+      if(!acceptClock){
+        const manual = Number(prompt("Ingresá minutos manuales:", String(elapsed)) || 0)
+        if(manual <= 0) return
+        minutes = manual
+      }
+      await applyTimeUpdate(id, (tracking)=>{
+        const curr = tracking.users[meKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:"" }
+        curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
+        curr.timerStartAt = ""
+        tracking.users[meKey] = curr
+      })
+      showToast("Tiempo cargado", "ok")
     }
 
     async function toggleUrgent(id){
