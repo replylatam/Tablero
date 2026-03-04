@@ -88,6 +88,8 @@
     .timeBox{margin-top:10px;padding:10px;border:1px solid var(--stroke);border-radius:12px;background:rgba(2,6,23,.2)}
     .helpIcon{width:24px;height:24px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;padding:0}
     .timerLive{font-size:12px;color:var(--muted);margin-top:6px}
+    .readTick{font-weight:700;color:#64748b;margin-left:4px}
+    .readTick.read{color:#2563eb}
     .commentEditor{min-height:90px;border:1px solid var(--stroke);border-radius:10px;padding:10px;background:rgba(2,6,23,.35);outline:none}
     .commentEditor:empty:before{content:attr(data-placeholder);color:var(--muted)}
     .commentBody.formatted p{margin:.25rem 0}
@@ -102,6 +104,8 @@
     body.light .column h4{color:#0f172a}
     body.light .detailSidebar{background:#eaf2ff;border-radius:12px;padding:12px}
     body.light .codeBadge{background:#1e3a8a;color:#ffffff;border-color:#1e40af}
+    body.light .commentItem.internal,body.light .commentItem.maximumAttention{color:#111827}
+    body.light .commentItem.internal .commentBody,body.light .commentItem.maximumAttention .commentBody,body.light .commentItem.internal strong,body.light .commentItem.maximumAttention strong{color:#111827}
 
     .boardWrap{overflow-x:auto;overflow-y:visible;padding-bottom:4px}
     .board{display:grid;grid-template-columns:repeat(5,minmax(260px,1fr));gap:12px;overflow:visible;align-items:start}
@@ -327,22 +331,42 @@
     }
 
     function commentReadIcon(comment, usersByEmail){
+      const authorEmail = String(comment?.author || '').toLowerCase()
+      const authorRole = String(usersByEmail?.[emailKey(authorEmail)]?.role || '').toLowerCase()
       const readBy = comment?.readBy || {}
-      const readers = Object.keys(readBy).filter(k => {
-        const email = String(readBy[k]?.email || "").toLowerCase()
-        const role = String(readBy[k]?.role || usersByEmail?.[k]?.role || "").toLowerCase()
-        return email && (role === 'analista' || role === 'consultor')
-      })
-      return readers.length ? '✓✓' : '✓'
+
+      const isTrackedAuthor = authorRole === 'consultor' || authorRole === 'analista' || authorRole === 'admin'
+      if(!isTrackedAuthor) return ''
+
+      let read = false
+      if(authorRole === 'consultor'){
+        read = Object.values(readBy).some(v => {
+          const r = String(v?.role || usersByEmail?.[emailKey(v?.email||'')]?.role || '').toLowerCase()
+          return r === 'admin' || r === 'analista'
+        })
+      }else{
+        read = Object.values(readBy).some(v => {
+          const r = String(v?.role || usersByEmail?.[emailKey(v?.email||'')]?.role || '').toLowerCase()
+          return r === 'consultor'
+        })
+      }
+      return `<span class="readTick ${read ? 'read' : ''}">${read ? '✓✓' : '✓'}</span>`
     }
 
     async function markCommentsReadOnOpen(ticket, usersByEmail){
-      if(!(currentRole === 'analista' || currentRole === 'consultor')) return ticket
+      if(!(currentRole === 'analista' || currentRole === 'consultor' || currentRole === 'admin')) return ticket
       const comments = { ...(ticket.comments || {}) }
       const myKey = emailKey(currentUser.email)
       let changed = false
       Object.entries(comments).forEach(([cid,c]) => {
         const item = { ...(c || {}) }
+        const authorEmail = String(item.author || '').toLowerCase()
+        const authorRole = String(usersByEmail?.[emailKey(authorEmail)]?.role || '').toLowerCase()
+
+        const shouldMark = (currentRole === 'consultor' && (authorRole === 'admin' || authorRole === 'analista'))
+          || ((currentRole === 'admin' || currentRole === 'analista') && authorRole === 'consultor')
+        if(!shouldMark) return
+
         const readBy = { ...(item.readBy || {}) }
         if(!readBy[myKey]){
           readBy[myKey] = { email: currentUser.email, role: currentRole, at: new Date().toISOString() }
@@ -496,9 +520,7 @@ Cliente B`)
       }catch(err){
         const msg = String(err?.message || "")
         if(msg.includes("no soporta uploadDriveFile") || msg.includes("Acción no soportada")){
-          const dataUrl = await readFileAsDataUrl(file)
-          showToast("Apps Script sin uploadDriveFile: usando guardado local temporal de foto", "error", 4200)
-          return { name: file.name, url: dataUrl, fileId: "", fallbackLocal: true }
+          throw new Error("El Apps Script actual no soporta uploadDriveFile. Debés redeployar el script para guardar fotos en Drive.")
         }
         throw err
       }
@@ -901,7 +923,7 @@ Cliente B`)
         ${showAdminPanel ? (adminPanelTab==='config' ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
-            <div class="row"><div><label>Email</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
+            <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
             <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
             <div class="row" style="align-items:end"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button><button class="ghost helpIcon" onclick="showImportFormatHelp('users')">?</button></div></div>
             <div id="usersList" class="small"></div>
@@ -1252,7 +1274,7 @@ Cliente B`)
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
 
       return `<div>
-        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="inline" style="margin-bottom:8px;align-items:center;gap:8px;flex-wrap:nowrap"><label style="margin:0" class="small">OWNER DE LA TAREA</label><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar</button></div>` : ''}
+        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar</button></div></div>` : ''}
         <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="assignHelperFromDropdown('${ticketId}')">Asignar</button><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button>${currentRole === 'admin' ? `<button class="ghost" onclick="joinAsAnalyst('${ticketId}')">Sumarme como analista</button>` : ''}</div>
         <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
         ${helpersHtml}
@@ -1276,7 +1298,7 @@ Cliente B`)
           </div>
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} · ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -1753,8 +1775,7 @@ Cliente B`)
       }
       await adminWrite("upsertUser", payload)
       await db.ref("users_by_email").child(emailKey(email)).set(payload)
-      if(uploaded && uploaded.fallbackLocal) alert("Usuario creado. Foto en modo local (Apps Script sin uploadDriveFile).")
-      else alert("Usuario creado correctamente")
+      alert("Usuario creado correctamente")
       document.getElementById("uEmail").value = ""
       document.getElementById("uPassword").value = ""
       document.getElementById("uPhoto").value = ""
@@ -1802,8 +1823,7 @@ Cliente B`)
         }
         await adminWrite("upsertUser", payload)
         await db.ref("users_by_email").child(key).update(payload)
-        if(uploaded.fallbackLocal) showToast("Foto actualizada (modo local). Para Drive, redeploy Apps Script.", "error", 4200)
-        else showToast("Foto actualizada", "ok")
+        showToast("Foto actualizada", "ok")
         await loadUsersAdmin()
         await loadFilterOptions()
       }catch(err){
