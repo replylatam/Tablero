@@ -593,6 +593,10 @@ Cliente B`)
       if(ticketClientSelect){
         ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
       }
+
+      if(cachedTickets && cachedTickets.length){
+        renderTicketsFromData(cachedTickets)
+      }
     }
 
     async function saveClient(){
@@ -699,7 +703,7 @@ Cliente B`)
           timestampIso: new Date().toISOString(),
           ...details
         })
-      }catch(_){ }
+      }catch(err){ console.error("Error registrando actividad:", err) }
     }
 
     async function ensureDefaultUsers(){
@@ -948,7 +952,7 @@ Cliente B`)
           <h5><span class="ticketCode">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
-          <div class="assignedAvatarRow">${assignedAvatar ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar)}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
+          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
           <div class="inline" style="margin-top:8px"><button class="ghost" onclick="openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
@@ -1846,10 +1850,16 @@ Cliente B`)
 
     async function loadDashboard(){
       try{
-        const ticketsArr = await fetchTicketsFromDb()
+        let ticketsArr = []
+        try{ ticketsArr = await fetchTicketsFromDb() }catch(_){ ticketsArr = cachedTickets || [] }
+        if(!ticketsArr.length && cachedTickets?.length) ticketsArr = cachedTickets
         const normalizedTickets = ticketsArr.map(t => ({ ...t, comments: parseCommentsValue(t.comments) }))
-        const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
-        const activity = Object.values((await db.ref("activity_logs").limitToLast(10).once("value")).val() || {})
+
+        let users = []
+        try{ users = Object.values((await db.ref("users_by_email").once("value")).val() || {}) }catch(_){ users = Object.values(cachedUsersByEmail || {}) }
+
+        let activity = []
+        try{ activity = Object.values((await db.ref("activity_logs").limitToLast(30).once("value")).val() || {}) }catch(_){ activity = [] }
 
         let total = 0, unassigned = 0, doing = 0, done = 0
         const kpiSource = currentRole === "consultor" ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) : normalizedTickets
@@ -1990,7 +2000,7 @@ Cliente B`)
             </div>
           `).join("")
         }
-      }catch(_){ }
+      }catch(err){ console.error("Error loadDashboard", err) }
     }
 
     async function ensureDefaultClients(){
