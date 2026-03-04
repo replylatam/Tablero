@@ -142,7 +142,7 @@
       </div>
       <div><label>Detalle</label><textarea id="tDescription"></textarea></div>
       <div class="row">
-        <div><label>Cliente/Área</label><select id="tClient"></select></div>
+        <div><label>Cliente</label><select id="tClient"></select></div>
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
         <div><label>Informador</label><select id="tInformer"></select></div>
       </div>
@@ -324,6 +324,40 @@
       const div = document.createElement("div")
       div.innerHTML = String(html || "")
       return (div.textContent || "").trim()
+    }
+
+    function commentReadIcon(comment, usersByEmail){
+      const readBy = comment?.readBy || {}
+      const readers = Object.keys(readBy).filter(k => {
+        const email = String(readBy[k]?.email || "").toLowerCase()
+        const role = String(readBy[k]?.role || usersByEmail?.[k]?.role || "").toLowerCase()
+        return email && (role === 'analista' || role === 'consultor')
+      })
+      return readers.length ? '✓✓' : '✓'
+    }
+
+    async function markCommentsReadOnOpen(ticket, usersByEmail){
+      if(!(currentRole === 'analista' || currentRole === 'consultor')) return ticket
+      const comments = { ...(ticket.comments || {}) }
+      const myKey = emailKey(currentUser.email)
+      let changed = false
+      Object.entries(comments).forEach(([cid,c]) => {
+        const item = { ...(c || {}) }
+        const readBy = { ...(item.readBy || {}) }
+        if(!readBy[myKey]){
+          readBy[myKey] = { email: currentUser.email, role: currentRole, at: new Date().toISOString() }
+          item.readBy = readBy
+          comments[cid] = item
+          changed = true
+        }
+      })
+      if(!changed) return ticket
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update({ comments })
+      mirrorToSheet("updateTicket", { id: ticket.id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticket.id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      return updated
     }
 
     function formatCommentEditor(ticketId, command, value=""){
@@ -662,19 +696,24 @@ Cliente B`)
       }
     }
 
-    async function saveClient(){
+    async function saveClient(button){
       if(currentRole !== "admin") return alert("Solo admin puede agregar clientes")
       const name = (document.getElementById("cName")?.value || "").trim()
       if(!name) return alert("Ingresá un cliente")
-      await db.ref("clients").child(emailKey(name)).set({ name, createdAt: new Date().toISOString(), createdBy: currentUser.email })
-      mirrorToSheet("upsertClient", { key: emailKey(name), name, createdAt: new Date().toISOString(), createdBy: currentUser.email })
-      const input = document.getElementById("cName")
-      if(input) input.value = ""
-      const fileInput = document.getElementById(`comment-file-${id}`)
-      if(fileInput) fileInput.value = ""
-      showToast("Cliente agregado", "ok")
-      await loadClientsAdmin()
-      await loadFilterOptions()
+      const oldText = button?.textContent || ""
+      try{
+        if(button){ button.disabled = true; button.textContent = "Agregando..." }
+        showToast("Agregando cliente...", "info", 1200)
+        await db.ref("clients").child(emailKey(name)).set({ name, createdAt: new Date().toISOString(), createdBy: currentUser.email })
+        mirrorToSheet("upsertClient", { key: emailKey(name), name, createdAt: new Date().toISOString(), createdBy: currentUser.email })
+        const input = document.getElementById("cName")
+        if(input) input.value = ""
+        showToast("Cliente agregado", "ok")
+        await loadClientsAdmin()
+        await loadFilterOptions()
+      }finally{
+        if(button){ button.disabled = false; button.textContent = oldText || "Agregar cliente" }
+      }
     }
 
     async function deleteClient(key){
@@ -868,7 +907,7 @@ Cliente B`)
             <div id="usersList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Clientes</h4>
-            <div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient()">Agregar cliente</button></div></div>
+            <div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient(this)">Agregar cliente</button></div></div>
             <div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div>
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
@@ -1028,41 +1067,43 @@ Cliente B`)
       const canManageStatus = currentRole === "admin" || currentRole === "analista"
       const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
       cachedUsersByEmail = usersByEmail
+      const ticketWithRead = await markCommentsReadOnOpen(ticket, usersByEmail)
       let analysts = []
       if(canManageStatus){
         analysts = Object.values(usersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
       }
       const consultors = Object.values(usersByEmail).filter(u => u && u.role === "consultor" && u.active !== false).map(u => (u.email||"").toLowerCase()).sort()
-      const analystOptions = analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||"").toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join("")
-      const currentInformer = String(ticket.informer || ticket.createdBy || "").toLowerCase()
+      const analystOptions = analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||"").toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join("")
+      const currentInformer = String(ticketWithRead.informer || ticketWithRead.createdBy || "").toLowerCase()
       const informerOptions = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}" ${currentInformer===c?"selected":""}>${htmlEscape(c)}</option>`).join("")}`
-      const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticket.status===key?"selected":""}>${label}</option>`).join("")
+      const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticketWithRead.status===key?"selected":""}>${label}</option>`).join("")
+      const clientOptions = `<option value="">Seleccionar cliente</option>${(cachedClients||[]).map(c => `<option value="${htmlEscape(c)}" ${String(ticketWithRead.client||'')===String(c)?'selected':''}>${htmlEscape(c)}</option>`).join("")}`
 
       const titleEl = document.getElementById("ticketDetailTitle")
-      if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticket.id||"-"}`
+      if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
       const headerControls = document.getElementById("ticketDetailHeaderControls")
       if(headerControls){
         headerControls.innerHTML = canManageStatus
-          ? `<div class="inline" style="gap:8px;align-items:center"><select id="detail-status-${ticket.id}" onchange="autoSaveTicketDetail('${ticket.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
-          : `<span class="small">Estado: <strong>${htmlEscape(STATUS[ticket.status] || "-")}</strong></span>`
+          ? `<div class="inline" style="gap:8px;align-items:center"><select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
+          : `<span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span>`
       }
 
       document.getElementById("ticketDetailContent").innerHTML = `
-        ${(currentRole === "admin" || currentRole === "analista") && ticket.urgentRequested ? `<div class="inline" style="margin-bottom:8px"><span class="urgentTopFlag">🚨 URGENTE</span></div>` : ''}
+        ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<div class="inline" style="margin-bottom:8px"><span class="urgentTopFlag">🚨 URGENTE</span></div>` : ''}
         <div class="detailLayout">
           <div>
             <div class="row">
-              <div><label>Título</label><input id="detail-title-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.title||"")}" ${canEdit?"":"disabled"}></div>
-              <div><label>Prioridad</label><select id="detail-priority-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticket.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticket.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticket.priority==='Baja'?'selected':''}>Baja</option></select></div>
-              <div><label>Deadline</label><input id="detail-deadline-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} type="date" value="${htmlEscape(ticket.deadline||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
+              <div><label>Deadline</label><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}></div>
             </div>
-            <div><label>Detalle</label><textarea id="detail-description-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticket.description||"")}</textarea></div>
-            <div><label>Cliente/Área</label><input id="detail-client-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} value="${htmlEscape(ticket.client||"")}" ${canEdit?"":"disabled"}></div>
-            <div><label>Informador</label><select id="detail-informer-${ticket.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticket.id}')"`:""} ${canEdit?"":"disabled"}>${informerOptions}</select></div>
+            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
+            <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
+            <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${informerOptions}</select></div>
 
-            ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticket.id}')">${ticket.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticket.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticket.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticket.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticket.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
+            ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
 
-            ${renderComments(id, ticket.comments || {}, usersByEmail)}
+            ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
           </div>
         </div>
       `
@@ -1211,7 +1252,7 @@ Cliente B`)
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
 
       return `<div>
-        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="inline" style="margin-bottom:8px;align-items:center;gap:8px"><label style="margin:0" class="small">OWNER DE LA TAREA</label><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;min-width:240px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar</button></div>` : ''}
+        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="inline" style="margin-bottom:8px;align-items:center;gap:8px;flex-wrap:nowrap"><label style="margin:0" class="small">OWNER DE LA TAREA</label><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar</button></div>` : ''}
         <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="assignHelperFromDropdown('${ticketId}')">Asignar</button><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button>${currentRole === 'admin' ? `<button class="ghost" onclick="joinAsAnalyst('${ticketId}')">Sumarme como analista</button>` : ''}</div>
         <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
         ${helpersHtml}
@@ -1235,7 +1276,7 @@ Cliente B`)
           </div>
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} · ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
