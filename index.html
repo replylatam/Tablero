@@ -204,10 +204,13 @@
 
     const db = firebase.database()
     const DEFAULT_USERS = [
-      { email: "admin@tablero.local", password: "1234", role: "admin" },
-      { email: "consultor@tablero.local", password: "1234", role: "consultor" },
-      { email: "analista@tablero.local", password: "1234", role: "analista" }
+      { email: "admin@tablero.local", password: "Admin.Tablero#2026", role: "admin" },
+      { email: "consultor@tablero.local", password: "Consultor.Tablero#2026", role: "consultor" },
+      { email: "analista@tablero.local", password: "Analista.Tablero#2026", role: "analista" }
     ]
+    const COMMON_LEAKED_PASSWORDS = new Set([
+      "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
+    ])
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -269,6 +272,35 @@
       if(p === "alta") return "priorityAlta"
       if(p === "baja") return "priorityBaja"
       return "priorityMedia"
+    }
+
+    function passwordPolicyError(password){
+      const value = String(password || "")
+      if(value.length < 12) return "La contraseña debe tener al menos 12 caracteres."
+      if(!/[A-Z]/.test(value)) return "La contraseña debe incluir al menos una mayúscula."
+      if(!/[a-z]/.test(value)) return "La contraseña debe incluir al menos una minúscula."
+      if(!/[0-9]/.test(value)) return "La contraseña debe incluir al menos un número."
+      if(!/[^A-Za-z0-9]/.test(value)) return "La contraseña debe incluir al menos un carácter especial."
+      if(COMMON_LEAKED_PASSWORDS.has(value.toLowerCase())) return "Esa contraseña es común y aparece en filtraciones conocidas."
+      return ""
+    }
+
+    function buildRandomSalt(){
+      const bytes = new Uint8Array(16)
+      crypto.getRandomValues(bytes)
+      return btoa(String.fromCharCode(...bytes))
+    }
+
+    async function hashPassword(password, salt){
+      const data = new TextEncoder().encode(`${salt}:${password}`)
+      const digest = await crypto.subtle.digest("SHA-256", data)
+      return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("")
+    }
+
+    async function buildPasswordFields(password){
+      const salt = buildRandomSalt()
+      const hash = await hashPassword(password, salt)
+      return { passwordHash: hash, passwordSalt: salt, passwordUpdatedAt: new Date().toISOString() }
     }
 
     function applyTheme(){
@@ -448,8 +480,8 @@
 Encabezados obligatorios: email,password,role
 Ejemplo:
 email,password,role
-ana@empresa.com,1234,analista
-leo@empresa.com,1234,consultor`)
+ana@empresa.com,Contrasenia.Fuerte#2026,analista
+leo@empresa.com,Contrasenia.Fuerte#2026,consultor`)
         return
       }
       alert(`Formato Clientes (Excel/CSV):
@@ -475,7 +507,10 @@ Cliente B`)
         const password = String(row[iPass]||'').trim()
         const role = String(row[iRole]||'consultor').trim().toLowerCase()
         if(!email || !password) continue
-        const payload = { key: emailKey(email), email, password, role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, photoUrl:'', photoFileId:'' }
+        const policy = passwordPolicyError(password)
+        if(policy) continue
+        const secureFields = await buildPasswordFields(password)
+        const payload = { key: emailKey(email), email, password: "", role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
         await adminWrite('upsertUser', payload)
         await db.ref('users_by_email').child(payload.key).set(payload)
         count++
@@ -856,14 +891,16 @@ Cliente B`)
       for(const user of DEFAULT_USERS){
         const exists = users.some(u => (u.email||"").toLowerCase() === user.email.toLowerCase())
         if(!exists){
+          const secureFields = await buildPasswordFields(user.password)
           const payload = {
             key: emailKey(user.email),
             email: user.email,
-            password: user.password,
+            password: "",
             role: user.role,
             active: true,
             createdAt: new Date().toISOString(),
-            createdBy: "system"
+            createdBy: "system",
+            ...secureFields
           }
           await adminWrite("upsertUser", payload)
           await db.ref("users_by_email").child(payload.key).set(payload)
@@ -877,6 +914,48 @@ Cliente B`)
       return users.find(u => (u.email||"").toLowerCase() === (email||"").toLowerCase()) || null
     }
 
+    async function verifyPassword(user, password){
+      if(user?.passwordHash && user?.passwordSalt){
+        const computed = await hashPassword(password, user.passwordSalt)
+        return computed === user.passwordHash
+      }
+      return String(user?.password || "") === String(password || "")
+    }
+
+    function mustRotatePassword(user){
+      if(!user?.passwordHash) return true
+      const updatedAt = new Date(user.passwordUpdatedAt || 0)
+      const ageDays = (Date.now() - updatedAt.getTime()) / 86400000
+      return !updatedAt.getTime() || ageDays > 180
+    }
+
+    async function rotatePasswordFlow(user){
+      const current = prompt("Por seguridad tenés que actualizar tu contraseña.\nIngresá tu contraseña actual:")
+      if(current === null) return false
+      const validCurrent = await verifyPassword(user, current)
+      if(!validCurrent) return alert("La contraseña actual no coincide."), false
+
+      const next = prompt("Ingresá una nueva contraseña segura (mínimo 12, mayúscula, minúscula, número y símbolo):")
+      if(next === null) return false
+      const policy = passwordPolicyError(next)
+      if(policy) return alert(policy), false
+
+      const confirmNext = prompt("Confirmá la nueva contraseña:")
+      if(confirmNext !== next) return alert("La confirmación no coincide."), false
+
+      const secureFields = await buildPasswordFields(next)
+      const payload = {
+        ...user,
+        key: emailKey(user.email),
+        password: "",
+        ...secureFields
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast("Contraseña actualizada correctamente.", "ok")
+      return true
+    }
+
     function renderLogin(){
       document.getElementById("app").innerHTML = `
         <div class="card" style="max-width:480px;margin:40px auto">
@@ -885,7 +964,7 @@ Cliente B`)
           <label>Email</label><input id="loginEmail" type="email">
           <label>Contraseña</label><input id="loginPassword" type="password">
           <button id="loginBtn" onclick="handleLogin()" style="width:100%">Entrar</button>
-          <p class="small" style="margin-top:10px">Usuarios iniciales: admin@tablero.local, consultor@tablero.local, analista@tablero.local (clave: 1234)</p>
+          <p class="small" style="margin-top:10px">Tip de seguridad: usá contraseñas únicas y robustas para evitar alertas de filtraciones.</p>
         </div>`
     }
 
@@ -902,7 +981,15 @@ Cliente B`)
       try{
         const user = await getUserFromDb(email)
         if(!user || !user.active) return alert("Usuario inexistente o inactivo")
-        if(user.password !== password) return alert("Contraseña incorrecta")
+        const validPassword = await verifyPassword(user, password)
+        if(!validPassword) return alert("Contraseña incorrecta")
+
+        if(!user.passwordHash && user.password){
+          const secureFields = await buildPasswordFields(password)
+          const migrated = { ...user, key: emailKey(email), password: "", ...secureFields }
+          await db.ref("users_by_email").child(migrated.key).update(migrated)
+          adminWrite("upsertUser", migrated).catch(()=>{})
+        }
 
         currentUser = { email: user.email }
         currentRole = user.role
@@ -910,6 +997,9 @@ Cliente B`)
         renderApp()
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
+        if(mustRotatePassword(user)){
+          setTimeout(() => { rotatePasswordFlow(user) }, 250)
+        }
       }finally{
         loginInProgress = false
         if(btn){ btn.disabled = false; btn.textContent = "Entrar" }
@@ -917,6 +1007,13 @@ Cliente B`)
     }
 
     function logout(){ stopConsultorAutoRefresh(); stopRealtimeStreams(); currentUser = null; currentRole = null; renderLogin() }
+
+    async function changeOwnPassword(){
+      if(!currentUser?.email) return
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      await rotatePasswordFlow(user)
+    }
 
     function renderApp(){
       const isAdmin = currentRole === "admin"
@@ -934,6 +1031,7 @@ Cliente B`)
             <div class="inline">
               ${isAdmin?`<button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel')">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config')">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity')">Actividad reciente</button>`:""}
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
+              <button class="ghost" onclick="changeOwnPassword()">Cambiar contraseña</button>
               <button id="themeToggleBtn" class="ghost" onclick="toggleTheme()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
@@ -1827,6 +1925,8 @@ Cliente B`)
       const role = document.getElementById("uRole").value
       const photoFile = document.getElementById("uPhoto")?.files?.[0] || null
       if(!email || !password) return alert("Completá email y contraseña")
+      const policy = passwordPolicyError(password)
+      if(policy) return alert(policy)
 
       showToast("Guardando usuario...", "info", 1600)
       let photoUrl = ""
@@ -1838,10 +1938,12 @@ Cliente B`)
         photoFileId = uploaded.fileId || ""
       }
 
+      const secureFields = await buildPasswordFields(password)
       const payload = {
         key: emailKey(email),
-        email, password, role, active: true,
+        email, password: "", role, active: true,
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
+        ...secureFields,
         photoUrl,
         photoFileId
       }
