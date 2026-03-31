@@ -128,6 +128,26 @@
     .toast{position:fixed;right:16px;bottom:16px;z-index:120;min-width:260px;max-width:420px;padding:10px 12px;border-radius:10px;border:1px solid var(--stroke);background:rgba(15,23,42,.95);box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:13px}
     .toast.ok{border-color:rgba(22,163,74,.65)}
     .toast.error{border-color:rgba(220,38,38,.65)}
+    .ticketListWrap{border:1px solid var(--stroke);border-radius:14px;overflow:hidden;background:linear-gradient(180deg,rgba(15,23,42,.72),rgba(2,6,23,.66));box-shadow:0 12px 30px rgba(2,6,23,.32)}
+    .ticketListHeader,.ticketListRow{display:grid;grid-template-columns:120px 1.2fr 1fr 170px 220px 130px 100px;gap:10px;align-items:center;padding:12px 14px}
+    .ticketListHeader{font-size:11px;text-transform:uppercase;letter-spacing:.45px;color:#cbd5e1;background:rgba(59,130,246,.14);border-bottom:1px solid rgba(148,163,184,.25);font-weight:700}
+    .ticketListRow{border-bottom:1px solid rgba(148,163,184,.16);background:rgba(15,23,42,.25);transition:transform .18s ease,background .2s ease,box-shadow .2s ease}
+    .ticketListRow:last-child{border-bottom:none}
+    .ticketListRow:hover{background:rgba(30,41,59,.6);transform:translateY(-1px);box-shadow:inset 0 0 0 1px rgba(125,211,252,.35)}
+    .ticketListRowTitle{font-weight:700}
+    .statusPill{display:inline-flex;align-items:center;justify-content:center;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid rgba(148,163,184,.35);background:rgba(148,163,184,.16)}
+    .statusPill.unassigned{background:rgba(100,116,139,.2)}
+    .statusPill.todo{background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#bfdbfe}
+    .statusPill.doing{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.45);color:#fde68a}
+    .statusPill.recurrent{background:rgba(168,85,247,.2);border-color:rgba(168,85,247,.4);color:#ddd6fe}
+    .statusPill.done{background:rgba(34,197,94,.18);border-color:rgba(34,197,94,.4);color:#bbf7d0}
+    .unreadBubble{display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.45);color:#fecaca}
+    @media (max-width:1280px){.ticketListHeader,.ticketListRow{grid-template-columns:110px 1.1fr 1fr 150px 180px 115px 90px;font-size:12px}}
+    @media (max-width:1120px){.ticketListWrap{overflow-x:auto}.ticketListHeader,.ticketListRow{min-width:980px}}
+    body.light .ticketListWrap{background:linear-gradient(180deg,#f8fbff,#eef4ff);box-shadow:0 16px 28px rgba(15,23,42,.14)}
+    body.light .ticketListHeader{background:rgba(30,64,175,.12);color:#1e293b;border-bottom-color:rgba(51,65,85,.25)}
+    body.light .ticketListRow{background:rgba(255,255,255,.72)}
+    body.light .ticketListRow:hover{background:#ffffff;box-shadow:inset 0 0 0 1px rgba(30,64,175,.26)}
   </style>
 </head>
 <body>
@@ -1040,6 +1060,7 @@ Cliente B`)
       const container = document.getElementById("boardContainer")
       if(!container) return
       const grouped = { unassigned: [], todo: [], doing: [], recurrent: [], done: [] }
+      const visibleTickets = []
 
       Object.entries(data).forEach(([_, t]) => {
         const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && ((t.informer||t.createdBy||"").toLowerCase() === (currentUser.email||"").toLowerCase()))
@@ -1052,7 +1073,13 @@ Cliente B`)
 
         const status = grouped[t.status] ? t.status : "unassigned"
         grouped[status].push(t)
+        visibleTickets.push(t)
       })
+
+      if(currentRole === "consultor"){
+        container.innerHTML = renderConsultorTicketList(visibleTickets)
+        return
+      }
 
       const maxTicketsInColumn = Math.max(...Object.values(grouped).map(arr => arr.length), 0)
       const uniformHeight = Math.max(220, 120 + maxTicketsInColumn * 190)
@@ -1063,6 +1090,51 @@ Cliente B`)
           ${grouped[status].map(t => renderTicketCard(t, status)).join("") || `<p class="small">Sin tickets</p>`}
         </div>
       `).join("")}</div>`
+    }
+
+    function unreadCommentsCount(ticket){
+      if(!ticket?.comments) return 0
+      const myKey = emailKey(currentUser?.email || "")
+      return Object.values(ticket.comments).filter(c => {
+        const comment = c || {}
+        const author = String(comment.author || "").toLowerCase()
+        if(!author || author === String(currentUser?.email || "").toLowerCase()) return false
+        const readBy = comment.readBy || {}
+        return !readBy[myKey]
+      }).length
+    }
+
+    function renderConsultorTicketList(tickets){
+      const sorted = [...tickets].sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+      if(!sorted.length) return `<div class="small">Sin tickets</div>`
+      return `
+        <div class="ticketListWrap">
+          <div class="ticketListHeader">
+            <div>Código</div>
+            <div>Nombre del ticket</div>
+            <div>Cliente</div>
+            <div>Estado</div>
+            <div>Analista asignado</div>
+            <div>Deadline</div>
+            <div>Sin leer</div>
+          </div>
+          ${sorted.map(t => {
+            const normalizedStatus = STATUS[t.status] ? t.status : "unassigned"
+            const unreadCount = unreadCommentsCount(t)
+            return `
+              <div class="ticketListRow">
+                <div><span class="ticketCode">${htmlEscape(t.id||"-")}</span></div>
+                <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
+                <div>${htmlEscape(t.client||"-")}</div>
+                <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
+                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo||"Sin asignar")}</div></div>
+                <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
+                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><button class="ghost" onclick="openTicketDetailModal('${t.id}')">Ver</button></div>
+              </div>
+            `
+          }).join("")}
+        </div>
+      `
     }
 
     function renderTicketCard(ticket, status){
