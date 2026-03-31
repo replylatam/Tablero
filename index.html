@@ -355,6 +355,8 @@
       if(fileId) return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
       const direct = String(user?.photoUrl||"").trim()
       if(direct) return direct
+      const inline = String(user?.photoDataUrl || "").trim()
+      if(inline) return inline
       return buildInitialAvatar(email)
     }
 
@@ -573,11 +575,9 @@ Cliente B`)
       try{
         return await uploadAttachmentFile(file)
       }catch(err){
-        const msg = String(err?.message || "")
-        if(msg.includes("no soporta uploadDriveFile") || msg.includes("Acción no soportada")){
-          throw new Error("El Apps Script actual no soporta uploadDriveFile. Debés redeployar el script para guardar fotos en Drive.")
-        }
-        throw err
+        console.warn("Fallo subida a Drive, se usará almacenamiento inline.", err)
+        const dataUrl = await readFileAsDataUrl(file)
+        return { name: file.name, url: dataUrl, fileId: "", inline: true }
       }
     }
 
@@ -1329,12 +1329,13 @@ Cliente B`)
 
 
     async function assignTicketToMe(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
       const owner = document.getElementById(`detail-owner-${id}`)
       if(owner){ owner.value = (currentUser.email||"").toLowerCase(); autoSaveTicketDetail(id) }
     }
 
     async function autoSaveTicketDetail(id){
-      if(currentRole !== "consultor") return
+      if(!(currentRole === "admin" || currentRole === "analista")) return
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const canEditFields = currentRole === "admin"
@@ -1444,8 +1445,8 @@ Cliente B`)
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
 
       return `<div>
-        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar</button></div></div>` : ''}
-        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="assignHelperFromDropdown('${ticketId}')">Asignar</button><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button>${currentRole === 'admin' ? `<button class="ghost" onclick="joinAsAnalyst('${ticketId}')">Sumarme como analista</button>` : ''}</div>
+        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
+        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button></div>
         <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
         ${helpersHtml}
       </div>`
@@ -1931,11 +1932,13 @@ Cliente B`)
       showToast("Guardando usuario...", "info", 1600)
       let photoUrl = ""
       let photoFileId = ""
+      let photoDataUrl = ""
       let uploaded = null
       if(photoFile){
         uploaded = await uploadUserPhotoFile(photoFile)
         photoUrl = uploaded.url || ""
         photoFileId = uploaded.fileId || ""
+        photoDataUrl = uploaded.inline ? (uploaded.url || "") : ""
       }
 
       const secureFields = await buildPasswordFields(password)
@@ -1945,7 +1948,8 @@ Cliente B`)
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
         ...secureFields,
         photoUrl,
-        photoFileId
+        photoFileId,
+        photoDataUrl
       }
       await adminWrite("upsertUser", payload)
       await db.ref("users_by_email").child(emailKey(email)).set(payload)
@@ -1987,13 +1991,17 @@ Cliente B`)
           key,
           email,
           password: existing.password || "",
+          passwordHash: existing.passwordHash || "",
+          passwordSalt: existing.passwordSalt || "",
+          passwordUpdatedAt: existing.passwordUpdatedAt || "",
           role,
           active: existing.active !== false,
           createdAt: existing.createdAt || new Date().toISOString(),
           createdBy: existing.createdBy || currentUser.email,
           lastAccessAt: existing.lastAccessAt || "",
           photoUrl: uploaded.url || "",
-          photoFileId: uploaded.fileId || ""
+          photoFileId: uploaded.fileId || "",
+          photoDataUrl: uploaded.inline ? (uploaded.url || "") : (existing.photoDataUrl || "")
         }
         await adminWrite("upsertUser", payload)
         await db.ref("users_by_email").child(key).update(payload)
