@@ -151,7 +151,7 @@
     body.light .ticketListHeader{background:rgba(30,64,175,.12);color:#1e293b;border-bottom-color:rgba(51,65,85,.25)}
     body.light .ticketListRow{background:rgba(255,255,255,.72)}
     body.light .ticketListRow:hover{background:#ffffff;box-shadow:inset 0 0 0 1px rgba(30,64,175,.26)}
-    .emojiPicker{position:fixed;right:20px;bottom:20px;z-index:150;width:min(420px,calc(100vw - 24px));max-height:48vh;overflow:auto;border:1px solid var(--stroke);border-radius:14px;padding:10px;background:rgba(15,23,42,.98);box-shadow:0 20px 40px rgba(0,0,0,.45)}
+    .emojiPicker{position:fixed;z-index:150;width:min(420px,calc(100vw - 24px));max-height:48vh;overflow:auto;border:1px solid var(--stroke);border-radius:14px;padding:10px;background:rgba(15,23,42,.98);box-shadow:0 20px 40px rgba(0,0,0,.45)}
     .emojiGrid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}
     .emojiBtn{padding:8px;border-radius:8px;background:rgba(30,41,59,.65);border:1px solid rgba(148,163,184,.22);cursor:pointer;text-align:center}
   </style>
@@ -237,8 +237,8 @@
     var ticketTimerIntervals = {}
     var realtimeStreamsStarted = false
     var latestActivityLogs = []
-    var pendingOpenTicketId = ""
     var activeEmojiPicker = null
+    var dashboardListCache = {}
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -269,10 +269,6 @@
       if(key === "eyes") return "👀"
       if(!String(key||"").startsWith("emoji_")) return ""
       try{ return decodeURIComponent(escape(atob(String(key).slice(6)))) }catch(_){ return "" }
-    }
-    function buildTicketLink(ticketId){
-      const base = `${location.origin}${location.pathname}`
-      return `${base}#ticket=${encodeURIComponent(ticketId||"")}`
     }
     function parseGvizJson(text){
       const raw = text.replace(/^\/\/O_o\s*\n/, "")
@@ -1114,10 +1110,17 @@ Cliente B`)
             <div class="card">
               <h3 style="margin:0 0 10px">Dashboard</h3>
               <div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : ""}">
-                <div class="kpi"><div class="label">Pendientes de asignar</div><div class="value" id="kpiUnassigned">-</div></div>
-                <div class="kpi"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
-                ${currentRole !== "consultor" ? `<div class="kpi"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div><div class="kpi"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>` : `<div class="kpi"><div class="label">Finalizadas</div><div class="value" id="kpiDone">-</div></div><div class="kpi"><div class="label">Analistas</div><div class="value" id="kpiOperators">-</div></div><div class="kpi"><div class="label">Último acceso analista</div><div class="value" style="font-size:14px;margin-top:8px" id="kpiLastAccess">-</div></div>`}
+                ${currentRole !== "consultor"
+                  ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>`
+                  : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>
+              <div id="dashboardTicketList" class="small" style="margin-top:10px"></div>
               
             </div>
             ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div id="recentActivity" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>`}
@@ -1282,8 +1285,8 @@ Cliente B`)
             const normalizedStatus = STATUS[t.status] ? t.status : "unassigned"
             const unreadCount = unreadCommentsCount(t)
             return `
-              <div class="ticketListRow ${t.hasProblem ? "problemFlag" : ""}" style="cursor:pointer" onclick="openTicketFromLink('${t.id}')">
-                <div><span class="ticketCode clickable" onclick="event.stopPropagation();copyAndOpenTicket('${t.id}')">${htmlEscape(t.id||"-")}</span></div>
+              <div class="ticketListRow ${t.hasProblem ? "problemFlag" : ""}" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')">
+                <div><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">${htmlEscape(t.id||"-")}</span></div>
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
@@ -1303,13 +1306,13 @@ Cliente B`)
       const canDrag = currentRole === "admin" || currentRole === "analista"
       return `
         <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
-          <h5><span class="ticketCode clickable" onclick="event.stopPropagation();copyAndOpenTicket('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
+          <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();copyAndOpenTicket('${ticket.id}')">Copiar link</button><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -1348,7 +1351,7 @@ Cliente B`)
             ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
             ${ticketWithRead.hasProblem ? `<span class="urgentTopFlag">🛑 CON PROBLEMAS</span>` : ''}
           </div>
-          <div class="inline" style="gap:8px"><button class="ghost" onclick="copyAndOpenTicket('${ticketWithRead.id}')">Copiar link</button>${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
+          <div class="inline" style="gap:8px">${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
         </div>
         <div class="detailLayout">
           <div>
@@ -1395,27 +1398,6 @@ Cliente B`)
       if(titleEl) titleEl.textContent = "Detalle del ticket"
     }
 
-    function copyTicketLink(ticketId){
-      const link = buildTicketLink(ticketId)
-      return (navigator.clipboard?.writeText(link) || Promise.reject(new Error("no_clipboard"))).then(() => {
-        showToast("Link copiado", "ok", 1800)
-      }).catch(() => {
-        prompt("Copiá este link:", link)
-      })
-    }
-
-    function copyAndOpenTicket(ticketId){
-      copyTicketLink(ticketId)
-      openTicketFromLink(ticketId)
-    }
-
-    function openTicketFromLink(ticketId){
-      if(!ticketId) return
-      location.hash = `ticket=${encodeURIComponent(ticketId)}`
-      openTicketDetailModal(ticketId)
-    }
-
-
     async function assignTicketToMe(id){
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const owner = document.getElementById(`detail-owner-${id}`)
@@ -1427,6 +1409,14 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const canEditFields = currentRole === "admin"
+      const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase()
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(nextAssignedTo){
+        const ownerKey = emailKey(nextAssignedTo)
+        if(!tracking.users[ownerKey]) tracking.users[ownerKey] = { email: nextAssignedTo, totalMinutes: 0, timerStartAt: "" }
+        if(!tracking.users[ownerKey].email) tracking.users[ownerKey].email = nextAssignedTo
+      }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = {
         ...ticket,
         title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
@@ -1434,9 +1424,10 @@ Cliente B`)
         priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditFields ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
-        assignedTo: (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase(),
+        assignedTo: nextAssignedTo,
         deadline: canEditFields ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
         status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
+        timeTracking: tracking,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
       }
@@ -1526,7 +1517,7 @@ Cliente B`)
       const canManageHelpers = currentRole === 'admin' || currentRole === 'analista'
       const helpersHtml = userRows.length ? userRows.map(([uk, u]) => {
         const email = String(u?.email || '')
-        const mine = emailKey(email) === emailKey(currentUser.email)
+        const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
         const running = !!u?.timerStartAt
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
         return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
@@ -1607,7 +1598,7 @@ Cliente B`)
       const items = Object.entries(normalized)
         .sort((a,b) => defaults.indexOf(a[1].emoji) - defaults.indexOf(b[1].emoji))
         .map(([key, info]) => `<button class="ghost" style="padding:4px 8px" onclick="reactToComment('${ticketId}','${commentId}','${htmlEscape(info.emoji)}')">${htmlEscape(info.emoji)} ${Object.keys(info.users||{}).length}</button>`)
-      items.push(`<button class="ghost" style="padding:4px 8px" onclick="pickCustomReaction('${ticketId}','${commentId}')">➕ Emoji</button>`)
+      items.push(`<button class="ghost" style="padding:4px 8px" onclick="pickCustomReaction('${ticketId}','${commentId}',event)">➕ Emoji</button>`)
       return items.join("")
     }
 
@@ -1621,7 +1612,7 @@ Cliente B`)
       return panel
     }
 
-    function openEmojiPicker(ticketId, commentId){
+    function openEmojiPicker(ticketId, commentId, anchorEl){
       activeEmojiPicker = { ticketId, commentId }
       const panel = getEmojiPickerPanel()
       panel.innerHTML = `
@@ -1632,6 +1623,19 @@ Cliente B`)
         <div class="emojiGrid">${EMOJI_PICKER_LIST.map(emoji => `<button class="emojiBtn" onclick="selectReactionEmoji('${htmlEscape(emoji)}')">${htmlEscape(emoji)}</button>`).join("")}</div>
       `
       panel.classList.remove("hidden")
+      const rect = anchorEl?.getBoundingClientRect ? anchorEl.getBoundingClientRect() : { left: 20, top: window.innerHeight - 60 }
+      requestAnimationFrame(() => {
+        const h = panel.offsetHeight || 300
+        const w = panel.offsetWidth || 340
+        const margin = 10
+        let top = rect.top - h - 8
+        if(top < margin) top = Math.min(window.innerHeight - h - margin, rect.bottom + 8)
+        let left = rect.left
+        if(left + w > window.innerWidth - margin) left = window.innerWidth - w - margin
+        if(left < margin) left = margin
+        panel.style.top = `${Math.max(margin, top)}px`
+        panel.style.left = `${left}px`
+      })
     }
 
     function closeEmojiPicker(){
@@ -2088,8 +2092,8 @@ Cliente B`)
       if(detailOpen) openTicketDetailModal(ticketId)
     }
 
-    async function pickCustomReaction(ticketId, commentId){
-      openEmojiPicker(ticketId, commentId)
+    async function pickCustomReaction(ticketId, commentId, ev){
+      openEmojiPicker(ticketId, commentId, ev?.currentTarget || ev?.target || null)
     }
 
     async function deleteTicket(id){
@@ -2336,6 +2340,30 @@ Cliente B`)
       })
     }
 
+    function renderDashboardList(label, tickets){
+      const container = document.getElementById("dashboardTicketList")
+      if(!container) return
+      if(!tickets?.length){
+        container.innerHTML = `<div class="small">${htmlEscape(label)}: sin tickets.</div>`
+        return
+      }
+      container.innerHTML = `
+        <div class="small" style="margin-bottom:6px"><strong>${htmlEscape(label)}</strong> (${tickets.length})</div>
+        ${tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+      `
+    }
+
+    function showDashboardList(type){
+      const map = {
+        urgent: "Tickets urgentes",
+        problems: "Tickets con problemas",
+        near_deadline: "Tickets a 3 días de deadline",
+        unassigned: "Pendientes por asignar",
+        doing: "Tickets en curso",
+        pending_messages: "Tickets con mensajes pendientes"
+      }
+      renderDashboardList(map[type] || "Tickets", dashboardListCache[type] || [])
+    }
 
     async function loadDashboard(){
       try{
@@ -2355,47 +2383,45 @@ Cliente B`)
           try{ activity = Object.values((await db.ref("activity_logs").limitToLast(30).once("value")).val() || {}) }catch(_){ activity = [] }
         }
 
-        let total = 0, unassigned = 0, doing = 0, done = 0, problems = 0, urgent = 0
-        const kpiSource = currentRole === "consultor" ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) : normalizedTickets
-        kpiSource.forEach(t => {
-          total++
-          if(t.status === "unassigned") unassigned++
-          if(t.status === "doing") doing++
-          if(t.status === "done") done++
-          if(t.hasProblem) problems++
-          if(t.urgentRequested) urgent++
+        const kpiSource = currentRole === "consultor"
+          ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          : normalizedTickets
+        const nearDeadlineTickets = kpiSource.filter(t => {
+          if(!t.deadline) return false
+          const businessDays = businessDaysBetweenArg(new Date(), new Date(`${t.deadline}T00:00:00`))
+          return businessDays >= 0 && businessDays <= 3
         })
+        const unassignedTickets = kpiSource.filter(t => t.status === "unassigned")
+        const doingTickets = kpiSource.filter(t => t.status === "doing")
+        const problemTickets = kpiSource.filter(t => t.hasProblem)
+        const urgentTickets = kpiSource.filter(t => t.urgentRequested)
+        const pendingMessageTickets = currentRole === "consultor"
+          ? kpiSource.filter(t => unreadCommentsCount(t) > 0)
+          : []
 
-        const ops = users.filter(u => u && u.role === "analista")
-        const last = ops.map(u => u.lastAccessAt ? new Date(u.lastAccessAt).getTime() : 0).sort((a,b)=>b-a)[0] || 0
-
-        const kpiTotal = document.getElementById("kpiTotal")
         const kpiUnassigned = document.getElementById("kpiUnassigned")
         const kpiDoing = document.getElementById("kpiDoing")
-        const kpiDone = document.getElementById("kpiDone")
-        const kpiOperators = document.getElementById("kpiOperators")
         const kpiProblems = document.getElementById("kpiProblems")
         const kpiUrgent = document.getElementById("kpiUrgent")
-        if(kpiTotal) kpiTotal.innerText = total
-        if(kpiUnassigned) kpiUnassigned.innerText = unassigned
-        if(kpiDoing) kpiDoing.innerText = doing
-        if(kpiDone) kpiDone.innerText = done
-        if(kpiOperators) kpiOperators.innerText = ops.length
-        if(kpiProblems) kpiProblems.innerText = problems
-        if(kpiUrgent) kpiUrgent.innerText = urgent
-        const lastAccessEl = document.getElementById("kpiLastAccess")
-        if(lastAccessEl){
-          lastAccessEl.innerText = last ? new Date(last).toLocaleString() : "Sin accesos"
-        }
+        const kpiNearDeadline = document.getElementById("kpiNearDeadline")
+        const kpiPendingMessages = document.getElementById("kpiPendingMessages")
+        if(kpiUnassigned) kpiUnassigned.innerText = unassignedTickets.length
+        if(kpiDoing) kpiDoing.innerText = doingTickets.length
+        if(kpiProblems) kpiProblems.innerText = problemTickets.length
+        if(kpiUrgent) kpiUrgent.innerText = urgentTickets.length
+        if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
+        if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
 
-
-        const urgentContainer = document.getElementById("urgentAlerts")
-        if(urgentContainer){
-          const urgentTickets = normalizedTickets.filter(t => t.urgentRequested)
-          urgentContainer.innerHTML = urgentTickets.length
-            ? `<div class="feedItem" style="border-color:rgba(239,68,68,.55)"><div class="feedType">🚨 Alertas urgentes (${urgentTickets.length})</div>${urgentTickets.map(t => `<div class="feedMeta">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")} · ${htmlEscape(t.client||"-")}</div>`).join("")}</div>`
-            : `<div class="small">Sin alertas urgentes.</div>`
+        dashboardListCache = {
+          urgent: urgentTickets,
+          problems: problemTickets,
+          near_deadline: nearDeadlineTickets,
+          unassigned: unassignedTickets,
+          doing: doingTickets,
+          pending_messages: pendingMessageTickets
         }
+        showDashboardList(currentRole === "consultor" ? "pending_messages" : "urgent")
+
         if(currentRole === "consultor") {
           const onlyMine = normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
           const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
@@ -2523,15 +2549,6 @@ Cliente B`)
     async function init(){
       try{
         applyTheme()
-        const hashMatch = (location.hash || "").match(/ticket=([^&]+)/)
-        if(hashMatch) pendingOpenTicketId = decodeURIComponent(hashMatch[1] || "")
-        window.addEventListener("hashchange", () => {
-          const m = (location.hash || "").match(/ticket=([^&]+)/)
-          const ticketId = m ? decodeURIComponent(m[1] || "") : ""
-          if(!ticketId) return
-          if((cachedTickets || []).some(t => t.id === ticketId)) openTicketDetailModal(ticketId)
-          else pendingOpenTicketId = ticketId
-        })
         await ensureDefaultUsers()
         await ensureDefaultClients()
         const savedEmail = (localStorage.getItem("sessionUserEmail") || "").trim().toLowerCase()
