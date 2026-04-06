@@ -236,6 +236,7 @@
     var adminPanelTab = "panel"
     var adminConfigSubTab = "users"
     var sideMenuOpen = false
+    var profileEditorOpen = false
     var analystActivityTab = "comments"
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = ""
@@ -354,6 +355,12 @@
     function toggleSideMenu(force){
       if(typeof force === "boolean") sideMenuOpen = force
       else sideMenuOpen = !sideMenuOpen
+      renderApp()
+    }
+
+    function openProfileEditor(){
+      profileEditorOpen = true
+      sideMenuOpen = false
       renderApp()
     }
 
@@ -1128,13 +1135,13 @@ Cliente B`)
           <div class="inline" style="justify-content:space-between;margin-bottom:12px"><strong>Menú</strong><button class="ghost" onclick="toggleSideMenu(false)">Cerrar</button></div>
           ${isAdmin ? `<div class="inline" style="gap:6px;margin-bottom:10px"><button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel');toggleSideMenu(false)">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config');toggleSideMenu(false)">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity');toggleSideMenu(false)">Actividad</button></div>` : ""}
           <div class="card" style="margin-bottom:10px">
-            <h4 style="margin:0 0 8px">Mi perfil</h4>
-            <label>Nombre</label><input id="profileFullName" value="${htmlEscape(me.fullName||"")}">
-            <label>Apodo</label><input id="profileNick" value="${htmlEscape(me.nickname||"")}">
-            <label>Foto</label><input id="profilePhoto" type="file" accept="image/*">
-            <button onclick="saveOwnProfile()">Guardar perfil</button>
+            <h4 style="margin:0 0 8px">Opciones</h4>
+            <div class="inline" style="gap:8px;flex-direction:column;align-items:stretch">
+              <button class="ghost" onclick="openProfileEditor()">Modificar perfil</button>
+              <button class="ghost" onclick="toggleSideMenu(false);changeOwnPassword()">Cambiar contraseña</button>
+              <button class="secondary" onclick="logout()">Cerrar sesión</button>
+            </div>
           </div>
-          <div class="inline" style="gap:8px"><button class="ghost" onclick="changeOwnPassword()">Cambiar contraseña</button><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
         </aside>` : ""}
         <div class="card">
           <div class="inline" style="justify-content:space-between">
@@ -1148,6 +1155,12 @@ Cliente B`)
             </div>
           </div>
         </div>
+
+        ${profileEditorOpen ? `<div class="card">
+          <div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Modificar perfil</h3><button class="ghost" onclick="profileEditorOpen=false;renderApp()">Cerrar</button></div>
+          <div class="row"><div><label>Nombre</label><input id="profileFullName" value="${htmlEscape(me.fullName||"")}"></div><div><label>Apodo</label><input id="profileNick" value="${htmlEscape(me.nickname||"")}"></div></div>
+          <div class="row" style="align-items:end"><div><label>Foto</label><input id="profilePhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveOwnProfile()">Guardar perfil</button></div></div>
+        </div>` : ""}
 
         ${showAdminPanel ? (adminPanelTab==='config' ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
