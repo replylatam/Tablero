@@ -1,0 +1,3028 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tablero de Tickets</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Ctext y=%2750%27 font-size=%2750%27%3E🎫%3C/text%3E%3C/svg%3E" />
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────────── */
+    :root {
+      --bg-1: #080c14;
+      --bg-2: #0d1525;
+      --surface: rgba(13, 20, 38, 0.72);
+      --surface-2: rgba(18, 28, 52, 0.55);
+      --stroke: rgba(99, 132, 199, 0.18);
+      --stroke-2: rgba(99, 132, 199, 0.10);
+      --text: #e8edf5;
+      --text-2: #b8c4d8;
+      --muted: #6b7fa0;
+      --accent: #3d6ef5;
+      --accent-glow: rgba(61, 110, 245, 0.28);
+      --accent-2: #22d4bf;
+      --accent-2-glow: rgba(34, 212, 191, 0.22);
+      --danger: #e04040;
+      --danger-glow: rgba(224, 64, 64, 0.28);
+      --ok: #22c77a;
+      --warn: #f0a030;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --font: 'DM Sans', system-ui, sans-serif;
+      --font-mono: 'DM Mono', monospace;
+      --shadow-card: 0 2px 24px rgba(0,0,0,.45), 0 1px 0 rgba(99,132,199,.08) inset;
+      --shadow-btn: 0 4px 16px var(--accent-glow);
+    }
+
+    body.light {
+      --bg-1: #f0f4fb;
+      --bg-2: #e4eaf5;
+      --surface: rgba(255, 255, 255, 0.88);
+      --surface-2: rgba(235, 241, 255, 0.75);
+      --stroke: rgba(80, 110, 190, 0.20);
+      --stroke-2: rgba(80, 110, 190, 0.12);
+      --text: #111827;
+      --text-2: #374151;
+      --muted: #5a6b8a;
+      --accent: #2455e8;
+      --accent-glow: rgba(36, 85, 232, 0.20);
+      --accent-2: #0d9b8a;
+      --accent-2-glow: rgba(13, 155, 138, 0.18);
+      --danger: #cc2828;
+      --danger-glow: rgba(204, 40, 40, 0.20);
+      --ok: #1aab68;
+      --warn: #d97706;
+      --shadow-card: 0 2px 20px rgba(50,70,120,.10), 0 1px 0 rgba(255,255,255,.8) inset;
+      --shadow-btn: 0 4px 14px var(--accent-glow);
+    }
+
+    /* ── Reset & Base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 800px 600px at 15% -5%, rgba(61,110,245,.18) 0%, transparent 55%),
+        radial-gradient(ellipse 700px 500px at 90% 10%, rgba(34,212,191,.12) 0%, transparent 55%),
+        radial-gradient(ellipse 500px 400px at 50% 80%, rgba(61,110,245,.07) 0%, transparent 60%),
+        linear-gradient(160deg, var(--bg-2) 0%, var(--bg-1) 100%);
+      min-height: 100vh;
+      padding: clamp(12px, 2.2vw, 24px);
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container { max-width: 1440px; margin: 0 auto; position: relative; z-index: 1; }
+
+    /* ── Cards ─────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-lg);
+      padding: clamp(14px, 1.8vw, 20px);
+      margin-bottom: 14px;
+      box-shadow: var(--shadow-card);
+      animation: fadeUp .32s cubic-bezier(.22,.68,0,1.2) both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px) scale(.99); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── Buttons ───────────────────────────────────────────────────── */
+    button, .btn {
+      border: none;
+      color: #fff;
+      padding: 9px 15px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font);
+      letter-spacing: .01em;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      background: linear-gradient(145deg, var(--accent), #2548cc);
+      transition: transform .16s ease, box-shadow .2s ease, opacity .2s ease, background .2s ease;
+      box-shadow: var(--shadow-btn);
+      position: relative;
+      overflow: hidden;
+    }
+
+    button::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,.10) 0%, transparent 100%);
+      pointer-events: none;
+    }
+
+    button:hover, .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px var(--accent-glow);
+    }
+
+    button:active { transform: translateY(0); }
+
+    button.secondary {
+      background: var(--surface-2);
+      border: 1px solid var(--stroke);
+      color: var(--text-2);
+      box-shadow: none;
+    }
+    button.secondary:hover { background: rgba(61,110,245,.12); color: var(--text); box-shadow: none; }
+
+    button.danger {
+      background: linear-gradient(145deg, #e85050, var(--danger));
+      box-shadow: 0 4px 16px var(--danger-glow);
+    }
+    button.danger:hover { box-shadow: 0 8px 24px var(--danger-glow); }
+
+    button.ghost {
+      background: transparent;
+      border: 1px solid var(--stroke);
+      color: var(--muted);
+      box-shadow: none;
+    }
+    button.ghost:hover { border-color: rgba(99,132,199,.45); color: var(--text-2); background: rgba(61,110,245,.06); }
+
+    button:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+
+    /* ── Forms ─────────────────────────────────────────────────────── */
+    label {
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      color: var(--muted);
+      text-transform: uppercase;
+      display: block;
+      margin: 0 0 5px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 13px;
+      font-size: 14px;
+      font-family: var(--font);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--stroke);
+      background: rgba(8, 12, 22, 0.55);
+      color: var(--text);
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+
+    body.light input, body.light select, body.light textarea {
+      background: rgba(255,255,255,.85);
+      color: var(--text);
+      border-color: var(--stroke);
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+      background: rgba(8, 12, 22, 0.75);
+    }
+
+    body.light input:focus, body.light select:focus, body.light textarea:focus {
+      background: #fff;
+    }
+
+    textarea { min-height: 88px; resize: vertical; }
+
+    select option { background: #111827; color: #e8edf5; }
+    body.light select option { background: #f0f4fb; color: #111827; }
+
+    /* ── Layout Helpers ────────────────────────────────────────────── */
+    .small { font-size: 12px; color: var(--muted); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 220px; }
+    .inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: stretch; }
+    @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .9fr; } }
+
+    /* ── Badges ────────────────────────────────────────────────────── */
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      letter-spacing: .02em;
+    }
+    .badge.ok  { color: #6ee8aa; border-color: rgba(34,199,122,.40); background: rgba(34,199,122,.12); }
+    .badge.off { color: #faa5a5; border-color: rgba(224,64,64,.40);  background: rgba(224,64,64,.12); }
+
+    /* ── Search ────────────────────────────────────────────────────── */
+    .searchWrap { position: relative; }
+    .searchWrap input { padding-left: 36px; margin: 0; }
+    .searchWrap::before { content: '🔎'; position: absolute; left: 11px; top: 9px; opacity: .5; font-size: 13px; }
+
+    /* ── KPI Grid ──────────────────────────────────────────────────── */
+    .kpiGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .kpiGrid.singleRow { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+    @media (max-width: 900px) { .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+    .kpi {
+      padding: 14px 16px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      opacity: .6;
+    }
+    .kpi .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+    .kpi .value { font-size: 24px; font-weight: 700; margin-top: 5px; color: var(--text); }
+
+    /* ── Feed Items ────────────────────────────────────────────────── */
+    .feedItem {
+      padding: 11px 13px;
+      border: 1px solid var(--stroke-2);
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      margin-bottom: 8px;
+      transition: border-color .2s ease, background .2s ease;
+    }
+    .feedItem:hover { border-color: var(--stroke); }
+    .feedTop { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .feedType { font-weight: 600; font-size: 13.5px; }
+    .feedMeta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Comments ──────────────────────────────────────────────────── */
+    .commentsSection {
+      margin-top: 14px;
+      border-top: 1px solid var(--stroke-2);
+      padding-top: 14px;
+      background: rgba(8,12,22,.2);
+      padding: 14px;
+      border-radius: var(--radius-md);
+    }
+    .commentItem {
+      padding: 12px 14px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: rgba(8, 12, 22, 0.35);
+      margin-bottom: 10px;
+      transition: border-color .18s ease;
+    }
+    .commentItem:hover { border-color: rgba(99,132,199,.32); }
+    .commentHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .commentActions { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+    .commentBody { margin-top: 5px; line-height: 1.6; }
+    .commentFooter { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 8px; }
+    .commentDeleteText { font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; box-shadow: none; }
+    .commentDeleteText:hover { color: var(--danger); }
+    .commentsHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .commentsTitle { font-size: 20px; font-weight: 700; }
+    .activityTabs { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+    .activityTab { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--stroke); background: transparent; color: var(--text-2); cursor: pointer; font-size: 13px; font-family: var(--font); transition: all .18s; }
+    .activityTab:hover { background: rgba(61,110,245,.08); }
+    .activityTab.active { background: rgba(61,110,245,.18); border-color: rgba(61,110,245,.50); color: #a5bfff; }
+    .commentComposer { margin-top: 10px; border: 1px solid var(--stroke); border-radius: var(--radius-md); padding: 12px; background: rgba(8,12,22,.3); }
+
+    /* ── Toggle Switch ─────────────────────────────────────────────── */
+    .switchWrap { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .switch { position: relative; display: inline-block; width: 42px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: rgba(80,100,140,.5); border-radius: 999px; transition: .22s; border: 1px solid var(--stroke); }
+    .slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 2px; top: 2px; background: white; border-radius: 50%; transition: .22s; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    .switch input:checked + .slider { background: linear-gradient(135deg, var(--accent), #2548cc); border-color: transparent; }
+    .switch input:checked + .slider::before { transform: translateX(18px); }
+
+    /* ── Avatars ───────────────────────────────────────────────────── */
+    .commentAvatar { width: 28px; height: 28px; border-radius: 999px; object-fit: cover; border: 2px solid var(--stroke); margin-right: 8px; }
+    .commentHeadLeft { display: flex; align-items: center; }
+    .assignedAvatarRow { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+    .assignedAvatar { width: 24px; height: 24px; border-radius: 999px; object-fit: cover; border: 2px solid var(--stroke); }
+
+    /* ── Misc UI ───────────────────────────────────────────────────── */
+    .sortBtn { padding: 6px 10px; }
+    .commentItem.internal { border-color: rgba(240,192,60,.55); background: rgba(240,192,60,.10); }
+    .internalBadge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(240,192,60,.22); color: #fde68a; border: 1px solid rgba(240,192,60,.55); margin-left: 8px; }
+    .attachBtn { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 16px; }
+    .attachInput { display: none; }
+    .ticket.dragging { opacity: .4; transform: scale(.97); }
+    .column.dropTarget { outline: 2px dashed rgba(61,110,245,.7); outline-offset: 3px; }
+    .commentItem.maximumAttention { border-color: rgba(224,64,64,.65); background: rgba(224,64,64,.14); }
+    .attentionBadge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(224,64,64,.22); color: #fecaca; border: 1px solid rgba(224,64,64,.55); margin-left: 8px; }
+    .commentToolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .colorBtn { width: 34px; height: 30px; border-radius: var(--radius-sm); border: 1px solid var(--stroke); display: inline-flex; align-items: center; justify-content: center; position: relative; overflow: hidden; background: linear-gradient(135deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6); }
+    .colorBtn span { font-weight: 800; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+    .colorBtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .timeBox { margin-top: 10px; padding: 12px; border: 1px solid var(--stroke); border-radius: var(--radius-md); background: rgba(8,12,22,.25); }
+    .helpIcon { width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; padding: 0; }
+    .timerLive { font-size: 12px; color: var(--muted); margin-top: 6px; font-family: var(--font-mono); }
+    .readTick { font-weight: 700; color: var(--muted); margin-left: 4px; }
+    .readTick.read { color: var(--accent); }
+    .commentEditor { min-height: 90px; border: 1px solid var(--stroke); border-radius: var(--radius-sm); padding: 10px 12px; background: rgba(8,12,22,.4); outline: none; font-family: var(--font); font-size: 14px; color: var(--text); transition: border-color .2s, box-shadow .2s; }
+    .commentEditor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .commentEditor:empty::before { content: attr(data-placeholder); color: var(--muted); }
+    .commentBody.formatted p { margin: .25rem 0; }
+    .commentBody.formatted ul { margin: .25rem 0 .25rem 1.25rem; }
+
+    /* ── Priority / Urgent flags ───────────────────────────────────── */
+    .urgentTopFlag {
+      display: inline-block;
+      background: linear-gradient(135deg, #c41818, #e04040);
+      color: #fff;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12px;
+      box-shadow: 0 6px 20px rgba(224,64,64,.42);
+      letter-spacing: .02em;
+    }
+    .urgentFlag { font-size: 11px; color: #fca5a5; margin-top: 6px; }
+    .urgentBtn { background: linear-gradient(135deg, #f59e0b, #e04040); box-shadow: 0 4px 16px rgba(224,64,64,.35); }
+
+    /* ── Ticket Detail Layout ──────────────────────────────────────── */
+    .detailLayout { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .codeBadge {
+      display: inline-block;
+      background: rgba(61,110,245,.18);
+      color: #93b4ff;
+      padding: 5px 11px;
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      border: 1px solid rgba(61,110,245,.38);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: .03em;
+    }
+    @media (min-width: 980px) {
+      .detailLayout.withSidebar { grid-template-columns: 1.55fr .55fr; }
+      .detailSidebar { border-left: 1px solid var(--stroke); padding-left: 14px; }
+    }
+
+    /* ── Light mode overrides ──────────────────────────────────────── */
+    body.light .ticket, body.light .column, body.light .feedItem, body.light .commentItem {
+      background: rgba(255,255,255,.88);
+      color: var(--text);
+      border-color: rgba(80,110,190,.22);
+      box-shadow: 0 2px 16px rgba(50,70,120,.08);
+    }
+    body.light .ticket .meta, body.light .small, body.light .feedMeta, body.light label { color: var(--muted); }
+    body.light .column h4 { color: var(--text-2); }
+    body.light .detailSidebar { background: rgba(230,238,255,.70); border-radius: var(--radius-md); padding: 14px; }
+    body.light .codeBadge { background: rgba(36,85,232,.15); color: #1c3cb0; border-color: rgba(36,85,232,.30); }
+    body.light .commentItem.internal, body.light .commentItem.maximumAttention { color: var(--text); }
+    body.light .commentItem.internal .commentBody, body.light .commentItem.maximumAttention .commentBody,
+    body.light .commentItem.internal strong, body.light .commentItem.maximumAttention strong { color: var(--text); }
+    body.light .commentEditor { background: rgba(255,255,255,.85); }
+    body.light .commentsSection { background: rgba(230,238,255,.35); }
+
+    /* ── Kanban Board ──────────────────────────────────────────────── */
+    .boardWrap { overflow-x: auto; overflow-y: visible; padding-bottom: 6px; }
+    .board { display: grid; grid-template-columns: repeat(5, minmax(260px, 1fr)); gap: 14px; overflow: visible; align-items: start; }
+
+    .column {
+      background: var(--surface-2);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      min-height: 220px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .column h4 {
+      margin: 0 0 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: .08em;
+    }
+
+    .ticket {
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-sm);
+      padding: 11px 12px 11px 15px;
+      margin-bottom: 8px;
+      border-left: 3px solid rgba(99,132,199,.4);
+      transition: transform .16s ease, box-shadow .2s ease, border-color .2s ease;
+      cursor: pointer;
+    }
+    .ticket:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.3); border-color: rgba(99,132,199,.35); }
+
+    .ticket.problemFlag { border-left-color: var(--danger) !important; background: rgba(224,64,64,.12); }
+    .ticket.priorityAlta  { border-left-color: var(--danger); }
+    .ticket.priorityMedia { border-left-color: var(--warn); }
+    .ticket.priorityBaja  { border-left-color: var(--ok); }
+
+    .ticket h5 { margin: 0 0 7px; font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+    .ticketCode { font-size: 11px; color: var(--muted); font-weight: 600; margin-right: 6px; font-family: var(--font-mono); letter-spacing: .03em; }
+    .ticketCode.clickable { cursor: pointer; text-decoration: underline dotted; }
+    .deadline { color: #f87171; font-weight: 600; }
+    .ticket p { margin: 0 0 7px; font-size: 13px; color: var(--text-2); }
+    .ticket .meta { font-size: 11px; color: var(--muted); }
+
+    /* ── Modal ─────────────────────────────────────────────────────── */
+    .modalBack {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 18, 0.72);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 99;
+    }
+    .modal {
+      width: min(1140px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--stroke) transparent;
+    }
+    .modal::-webkit-scrollbar { width: 5px; }
+    .modal::-webkit-scrollbar-thumb { background: var(--stroke); border-radius: 99px; }
+
+    .hidden { display: none !important; }
+
+    /* ── Toast ─────────────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 120;
+      min-width: 260px;
+      max-width: 420px;
+      padding: 11px 15px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--stroke);
+      background: rgba(10, 16, 32, 0.96);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 32px rgba(0,0,0,.45);
+      font-size: 13.5px;
+      font-weight: 500;
+      animation: toastIn .22s cubic-bezier(.22,.68,0,1.2);
+    }
+    @keyframes toastIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
+    .toast.ok    { border-color: rgba(34,199,122,.55); }
+    .toast.error { border-color: rgba(224,64,64,.55); }
+
+    /* ── Ticket List View ──────────────────────────────────────────── */
+    .ticketListWrap {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow-card);
+    }
+    .ticketListHeader, .ticketListRow {
+      display: grid;
+      grid-template-columns: 120px 1.2fr 1fr 170px 220px 130px 100px;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 16px;
+    }
+    .ticketListHeader {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      background: rgba(61,110,245,.10);
+      border-bottom: 1px solid var(--stroke);
+      font-weight: 700;
+    }
+    .ticketListRow {
+      border-bottom: 1px solid var(--stroke-2);
+      background: transparent;
+      transition: background .18s ease, box-shadow .2s ease;
+      font-size: 13px;
+    }
+    .ticketListRow.problemFlag { background: rgba(224,64,64,.10); box-shadow: inset 3px 0 0 var(--danger); }
+    .ticketListRow:last-child { border-bottom: none; }
+    .ticketListRow:hover { background: rgba(61,110,245,.07); }
+    .ticketListRowTitle { font-weight: 600; }
+
+    @media (max-width: 1280px) { .ticketListHeader, .ticketListRow { grid-template-columns: 110px 1.1fr 1fr 150px 180px 115px 90px; font-size: 12px; } }
+    @media (max-width: 1120px) { .ticketListWrap { overflow-x: auto; } .ticketListHeader, .ticketListRow { min-width: 980px; } }
+
+    body.light .ticketListWrap { background: rgba(255,255,255,.9); }
+    body.light .ticketListHeader { background: rgba(36,85,232,.08); color: var(--muted); }
+    body.light .ticketListRow:hover { background: rgba(36,85,232,.06); }
+
+    /* ── Status Pills ──────────────────────────────────────────────── */
+    .statusPill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--stroke);
+      background: var(--surface-2);
+      letter-spacing: .02em;
+    }
+    .statusPill.unassigned { background: rgba(80,100,140,.2); color: var(--muted); }
+    .statusPill.todo       { background: rgba(61,110,245,.18); border-color: rgba(61,110,245,.40); color: #93b4ff; }
+    .statusPill.doing      { background: rgba(240,160,48,.15); border-color: rgba(240,160,48,.42); color: #fcd274; }
+    .statusPill.recurrent  { background: rgba(160,90,240,.18); border-color: rgba(160,90,240,.40); color: #d0b0ff; }
+    .statusPill.done       { background: rgba(34,199,122,.16); border-color: rgba(34,199,122,.38); color: #80e8a8; }
+
+    /* ── Unread Bubble ─────────────────────────────────────────────── */
+    .unreadBubble {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(224,64,64,.18);
+      border: 1px solid rgba(224,64,64,.40);
+      color: #faa5a5;
+      font-family: var(--font-mono);
+    }
+
+    /* ── Emoji Picker ──────────────────────────────────────────────── */
+    .emojiPicker {
+      position: fixed;
+      z-index: 150;
+      width: min(420px, calc(100vw - 24px));
+      max-height: 48vh;
+      overflow: auto;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-lg);
+      padding: 12px;
+      background: rgba(10, 16, 32, 0.98);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 24px 48px rgba(0,0,0,.55);
+    }
+    .emojiGrid { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 5px; }
+    .emojiBtn { padding: 8px; border-radius: var(--radius-sm); background: rgba(20,32,60,.65); border: 1px solid var(--stroke-2); cursor: pointer; text-align: center; transition: background .15s; }
+    .emojiBtn:hover { background: rgba(61,110,245,.20); }
+
+    /* ── Typography helpers ────────────────────────────────────────── */
+    h2, h3 { letter-spacing: -.01em; }
+    h2 { font-size: 20px; font-weight: 700; }
+    h3 { font-size: 16px; font-weight: 700; }
+    h4 { font-size: 13px; font-weight: 600; }
+    h5 { font-size: 13px; font-weight: 600; }
+
+    /* ── Scrollbar (global) ────────────────────────────────────────── */
+    * { scrollbar-width: thin; scrollbar-color: var(--stroke) transparent; }
+    *::-webkit-scrollbar { width: 5px; height: 5px; }
+    *::-webkit-scrollbar-thumb { background: var(--stroke); border-radius: 99px; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app"></div>
+
+  <div id="ticketModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Nuevo ticket</h3>
+        <button class="secondary" onclick="closeTicketModal()">Cerrar</button>
+      </div>
+
+      <div class="row">
+        <div><label>Título</label><input id="tTitle" /></div>
+        <div><label>Prioridad</label><select id="tPriority"><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option></select></div>
+      </div>
+      <div><label>Detalle</label><textarea id="tDescription"></textarea></div>
+      <div class="row">
+        <div><label>Cliente</label><select id="tClient"></select></div>
+        <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
+        <div><label>Informador</label><select id="tInformer"></select></div>
+      </div>
+
+      <div class="inline" style="justify-content:flex-end">
+        <button onclick="saveTicket()">Crear ticket</button>
+        <button class="secondary" onclick="closeTicketModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ticketDetailModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 id="ticketDetailTitle" style="margin:0">Detalle del ticket</h3>
+        <div class="inline" style="gap:8px;align-items:center">
+          <div id="ticketDetailHeaderControls"></div>
+          <button class="secondary" onclick="closeTicketDetailModal()">Cerrar</button>
+        </div>
+      </div>
+      <div id="ticketDetailContent"></div>
+    </div>
+  </div>
+
+  <script>
+    firebase.initializeApp({
+      apiKey: "AIzaSyA4-yTeI0CemnlROxF9hIgj_HxiDLvYZTY",
+      authDomain: "tablero-a0658.firebaseapp.com",
+      databaseURL: "https://tablero-a0658-default-rtdb.firebaseio.com",
+      projectId: "tablero-a0658",
+      storageBucket: "tablero-a0658.firebasestorage.app",
+      messagingSenderId: "1018762078941",
+      appId: "1:1018762078941:web:785861e9f2ddb843b88934"
+    })
+
+    const db = firebase.database()
+    const DEFAULT_USERS = [
+      { email: "admin@tablero.local", password: "Admin.Tablero#2026", role: "admin" },
+      { email: "consultor@tablero.local", password: "Consultor.Tablero#2026", role: "consultor" },
+      { email: "analista@tablero.local", password: "Analista.Tablero#2026", role: "analista" }
+    ]
+    const COMMON_LEAKED_PASSWORDS = new Set([
+      "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
+    ])
+
+    var currentUser = globalThis.currentUser || null
+    var currentRole = globalThis.currentRole || null
+    var ticketSearchTerm = globalThis.ticketSearchTerm || ""
+    var ticketFilterClient = globalThis.ticketFilterClient || ""
+    var cachedClients = globalThis.cachedClients || []
+    var consultorRefreshTimer = globalThis.consultorRefreshTimer || null
+    var loginInProgress = false
+    var uiTheme = localStorage.getItem("uiTheme") || "dark"
+    var adminPanelTab = "panel"
+    var analystActivityTab = "comments"
+    var consultorActivityTab = "comments"
+    var ticketFilterAnalyst = ""
+    var commentSortOrderByTicket = {}
+    var ticketActivityTabById = {}
+    var cachedUsersByEmail = {}
+    var draggedTicketId = ""
+    var ticketTimerIntervals = {}
+    var realtimeStreamsStarted = false
+    var latestActivityLogs = []
+    var activeEmojiPicker = null
+    var dashboardListCache = {}
+    const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
+
+    const STATUS = {
+      unassigned: "Pendientes de asignar",
+      todo: "Por hacer",
+      doing: "En curso",
+      recurrent: "Recurrente",
+      done: "Finalizadas"
+    }
+
+    const SHEET_ID = "1tNNtG2Asr1ds1_-3P6PmVgsHbdlhhfrV7GhWJDiTO1Q"
+    const SHEET_GID = "0"
+    const SHEET_TICKETS_NAME = "BD"
+    const SHEET_ADMINS_NAME = "BD_ADMINS"
+    // Reemplazar por tu URL de Web App de Apps Script para habilitar escritura en la hoja.
+    // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
+    const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwUyvGndwr5K7uhvgNyC_CBGt8FI6JlW62GExQsl5sxvGIYv_mHBKxotgDgaEN7EmFTwA/exec"
+    const DRIVE_FOLDER_ID = "1IZ0GHXqSQzbHLnBmSAitnah3xDq8vy94"
+    let cachedTickets = []
+
+    function emailKey(email){ return (email||"").toLowerCase().replace(/[.#$/\[\]]/g, "_") }
+    function htmlEscape(v){ return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;") }
+    function generateId(){ return (crypto?.randomUUID?.() || `tk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`) }
+    function reactionKeyFromEmoji(emoji){ return `emoji_${btoa(unescape(encodeURIComponent(String(emoji||"")))).replaceAll("=","")}` }
+    function emojiFromReactionKey(key){
+      if(key === "thumbsUp") return "👍"
+      if(key === "heart") return "❤️"
+      if(key === "eyes") return "👀"
+      if(!String(key||"").startsWith("emoji_")) return ""
+      try{ return decodeURIComponent(escape(atob(String(key).slice(6)))) }catch(_){ return "" }
+    }
+    function parseGvizJson(text){
+      const raw = text.replace(/^\/\/O_o\s*\n/, "")
+      const start = raw.indexOf("{")
+      const end = raw.lastIndexOf("}")
+      return JSON.parse(raw.slice(start, end + 1))
+    }
+
+    function parseCommentsValue(value){
+      if(!value) return {}
+      if(typeof value === "object") return value
+      if(typeof value !== "string") return {}
+      try{ return JSON.parse(value) }catch(_){ return {} }
+    }
+
+    function priorityClass(priority){
+      const p = String(priority||"Media").toLowerCase()
+      if(p === "alta") return "priorityAlta"
+      if(p === "baja") return "priorityBaja"
+      return "priorityMedia"
+    }
+
+    function passwordPolicyError(password){
+      const value = String(password || "")
+      if(value.length < 12) return "La contraseña debe tener al menos 12 caracteres."
+      if(!/[A-Z]/.test(value)) return "La contraseña debe incluir al menos una mayúscula."
+      if(!/[a-z]/.test(value)) return "La contraseña debe incluir al menos una minúscula."
+      if(!/[0-9]/.test(value)) return "La contraseña debe incluir al menos un número."
+      if(!/[^A-Za-z0-9]/.test(value)) return "La contraseña debe incluir al menos un carácter especial."
+      if(COMMON_LEAKED_PASSWORDS.has(value.toLowerCase())) return "Esa contraseña es común y aparece en filtraciones conocidas."
+      return ""
+    }
+
+    function buildRandomSalt(){
+      const bytes = new Uint8Array(16)
+      crypto.getRandomValues(bytes)
+      return btoa(String.fromCharCode(...bytes))
+    }
+
+    async function hashPassword(password, salt){
+      const data = new TextEncoder().encode(`${salt}:${password}`)
+      const digest = await crypto.subtle.digest("SHA-256", data)
+      return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("")
+    }
+
+    async function buildPasswordFields(password){
+      const salt = buildRandomSalt()
+      const hash = await hashPassword(password, salt)
+      return { passwordHash: hash, passwordSalt: salt, passwordUpdatedAt: new Date().toISOString() }
+    }
+
+    function applyTheme(){
+      document.body.classList.toggle("light", uiTheme === "light")
+    }
+
+    function toggleTheme(){
+      uiTheme = uiTheme === "light" ? "dark" : "light"
+      localStorage.setItem("uiTheme", uiTheme)
+      applyTheme()
+      const btn = document.getElementById("themeToggleBtn")
+      if(btn) btn.textContent = uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"
+    }
+
+    function setAdminTab(tab){
+      adminPanelTab = tab
+      renderApp()
+    }
+
+
+    function formatAgo(iso){
+      if(!iso) return ""
+      const ms = Date.now() - new Date(iso).getTime()
+      const mins = Math.max(1, Math.floor(ms/60000))
+      if(mins < 60) return `hace ${mins} min`
+      const hs = Math.floor(mins/60)
+      if(hs < 24) return `hace ${hs} h`
+      return `hace ${Math.floor(hs/24)} d`
+    }
+
+    function commentDisplayName(email){
+      const name = String(email||"-").split("@")[0]
+      return name.charAt(0).toUpperCase() + name.slice(1)
+    }
+
+    function getDriveFileIdFromUrl(url){
+      const raw = String(url||"")
+      const byId = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+      if(byId && byId[1]) return byId[1]
+      const byPath = raw.match(/\/d\/([a-zA-Z0-9_-]+)/)
+      return byPath && byPath[1] ? byPath[1] : ""
+    }
+
+    function buildInitialAvatar(email){
+      const label = (String(email||"U").split("@")[0] || "U").slice(0,2).toUpperCase()
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='100%' height='100%' rx='40' fill='#334155'/><text x='50%' y='53%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='28' fill='#ffffff'>${label}</text></svg>`
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+    }
+
+    function buildAvatarUrl(user,email){
+      const fileId = String(user?.photoFileId || getDriveFileIdFromUrl(user?.photoUrl || "")).trim()
+      if(fileId) return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
+      const direct = String(user?.photoUrl||"").trim()
+      if(direct) return direct
+      const inline = String(user?.photoDataUrl || "").trim()
+      if(inline) return inline
+      return buildInitialAvatar(email)
+    }
+
+    function userAvatarByEmail(email){
+      const key = emailKey(email||"")
+      const user = cachedUsersByEmail[key] || {}
+      return buildAvatarUrl(user, email || "")
+    }
+
+    function handleAvatarError(img){
+      if(!img) return
+      img.onerror = null
+      img.src = img.dataset.fallback || buildInitialAvatar("U")
+    }
+
+    function safeCommentHtml(html){
+      return String(html || "")
+        .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+        .replace(/\son\w+=(["']).*?\1/gi, "")
+    }
+
+    function commentPlainTextFromHtml(html){
+      const div = document.createElement("div")
+      div.innerHTML = String(html || "")
+      return (div.textContent || "").trim()
+    }
+
+    function commentReadIcon(comment, usersByEmail){
+      const authorEmail = String(comment?.author || '').toLowerCase()
+      const authorRole = String(usersByEmail?.[emailKey(authorEmail)]?.role || '').toLowerCase()
+      const readBy = comment?.readBy || {}
+
+      const isTrackedAuthor = authorRole === 'consultor' || authorRole === 'analista' || authorRole === 'admin'
+      if(!isTrackedAuthor) return ''
+
+      let read = false
+      if(authorRole === 'consultor'){
+        read = Object.values(readBy).some(v => {
+          const r = String(v?.role || usersByEmail?.[emailKey(v?.email||'')]?.role || '').toLowerCase()
+          return r === 'admin' || r === 'analista'
+        })
+      }else{
+        read = Object.values(readBy).some(v => {
+          const r = String(v?.role || usersByEmail?.[emailKey(v?.email||'')]?.role || '').toLowerCase()
+          return r === 'consultor'
+        })
+      }
+      return `<span class="readTick ${read ? 'read' : ''}">${read ? '✓✓' : '✓'}</span>`
+    }
+
+    async function markCommentsReadOnOpen(ticket, usersByEmail){
+      if(!(currentRole === 'analista' || currentRole === 'consultor' || currentRole === 'admin')) return ticket
+      const comments = { ...(ticket.comments || {}) }
+      const myKey = emailKey(currentUser.email)
+      let changed = false
+      Object.entries(comments).forEach(([cid,c]) => {
+        const item = { ...(c || {}) }
+        const authorEmail = String(item.author || '').toLowerCase()
+        const authorRole = String(usersByEmail?.[emailKey(authorEmail)]?.role || '').toLowerCase()
+
+        const shouldMark = (currentRole === 'consultor' && (authorRole === 'admin' || authorRole === 'analista'))
+          || ((currentRole === 'admin' || currentRole === 'analista') && authorRole === 'consultor')
+        if(!shouldMark) return
+
+        const readBy = { ...(item.readBy || {}) }
+        if(!readBy[myKey]){
+          readBy[myKey] = { email: currentUser.email, role: currentRole, at: new Date().toISOString() }
+          item.readBy = readBy
+          comments[cid] = item
+          changed = true
+        }
+      })
+      if(!changed) return ticket
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update({ comments })
+      mirrorToSheet("updateTicket", { id: ticket.id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticket.id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      return updated
+    }
+
+    function formatCommentEditor(ticketId, command, value=""){
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor) return
+      editor.focus()
+      document.execCommand(command, false, value)
+    }
+
+    function fmtMinutes(minutes){
+      const m = Math.max(0, Number(minutes||0))
+      const h = Math.floor(m/60)
+      const rem = Math.round(m%60)
+      return `${h}h ${rem}m`
+    }
+
+    function recomputeConsolidatedMinutes(timeTracking){
+      const users = timeTracking?.users || {}
+      return Object.values(users).reduce((acc,u)=> acc + Number(u?.totalMinutes||0), 0)
+    }
+
+    function parseCsvRows(text){
+      const normalized = String(text || "").split(String.fromCharCode(13)).join("")
+      return normalized.split("\n").map(r=>r.trim()).filter(Boolean).map(r=>r.split(',').map(c=>c.trim()))
+    }
+
+    async function parseSpreadsheetRows(file){
+      const ext = String(file?.name||"").toLowerCase()
+      if(ext.endsWith('.csv')){
+        const txt = await file.text()
+        return parseCsvRows(txt)
+      }
+      if(typeof XLSX === 'undefined') throw new Error('No se pudo cargar el parser de Excel (XLSX)')
+      const buffer = await file.arrayBuffer()
+      const wb = XLSX.read(buffer, { type: 'array' })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+      return rows.map(r => (r||[]).map(c => String(c??'').trim())).filter(r => r.some(Boolean))
+    }
+
+    function showImportFormatHelp(kind){
+      if(kind === 'users'){
+        alert(`Formato Usuarios (Excel/CSV):
+Encabezados obligatorios: email,password,role
+Ejemplo:
+email,password,role
+ana@empresa.com,Contrasenia.Fuerte#2026,analista
+leo@empresa.com,Contrasenia.Fuerte#2026,consultor`)
+        return
+      }
+      alert(`Formato Clientes (Excel/CSV):
+Encabezado obligatorio: name (o cliente)
+Ejemplo:
+name
+Cliente A
+Cliente B`)
+    }
+
+    async function importUsersFromFile(){
+      if(currentRole !== 'admin') return alert('Solo admin puede importar usuarios')
+      const file = document.getElementById('uImportFile')?.files?.[0]
+      if(!file) return alert('Seleccioná un archivo')
+      const rows = await parseSpreadsheetRows(file)
+      if(rows.length < 2) return alert('Archivo sin datos')
+      const header = rows[0].map(h=>h.toLowerCase())
+      const iEmail = header.indexOf('email'); const iPass = header.indexOf('password'); const iRole = header.indexOf('role')
+      if(iEmail < 0 || iPass < 0 || iRole < 0) return alert('Columnas requeridas: email,password,role')
+      let count = 0
+      for(const row of rows.slice(1)){
+        const email = String(row[iEmail]||'').trim().toLowerCase()
+        const password = String(row[iPass]||'').trim()
+        const role = String(row[iRole]||'consultor').trim().toLowerCase()
+        if(!email || !password) continue
+        const policy = passwordPolicyError(password)
+        if(policy) continue
+        const secureFields = await buildPasswordFields(password)
+        const payload = { key: emailKey(email), email, password: "", role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
+        await adminWrite('upsertUser', payload)
+        await db.ref('users_by_email').child(payload.key).set(payload)
+        count++
+      }
+      showToast(`Usuarios importados: ${count}`, 'ok')
+      await loadUsersAdmin(); await loadFilterOptions()
+    }
+
+    async function importClientsFromFile(){
+      if(currentRole !== 'admin') return alert('Solo admin puede importar clientes')
+      const file = document.getElementById('cImportFile')?.files?.[0]
+      if(!file) return alert('Seleccioná un archivo')
+      const rows = await parseSpreadsheetRows(file)
+      if(rows.length < 2) return alert('Archivo sin datos')
+      const header = rows[0].map(h=>h.toLowerCase())
+      const iName = header.indexOf('name') >= 0 ? header.indexOf('name') : header.indexOf('cliente')
+      if(iName < 0) return alert('Columna requerida: name (o cliente)')
+      let count = 0
+      for(const row of rows.slice(1)){
+        const name = String(row[iName]||'').trim()
+        if(!name) continue
+        const key = emailKey(name)
+        const payload = { key, name, createdAt: new Date().toISOString(), createdBy: currentUser.email }
+        await db.ref('clients').child(key).set({ name, createdAt: payload.createdAt, createdBy: payload.createdBy })
+        mirrorToSheet('upsertClient', payload)
+        count++
+      }
+      showToast(`Clientes importados: ${count}`, 'ok')
+      await loadClientsAdmin(); await loadFilterOptions()
+    }
+
+    async function uploadAttachmentFile(file){
+      const b64 = await new Promise((resolve,reject)=>{
+        const r = new FileReader()
+        r.onload = () => resolve(String(r.result||"").split(",")[1] || "")
+        r.onerror = reject
+        r.readAsDataURL(file)
+      })
+      const res = await sheetWrite("uploadDriveFile", {
+        folderId: DRIVE_FOLDER_ID,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        contentBase64: b64
+      })
+      if(!res || !res.ok || !res.url) throw new Error("No se pudo subir archivo")
+      return { name: file.name, url: res.url, fileId: res.fileId||"" }
+    }
+
+
+    async function readFileAsDataUrl(file){
+      return await new Promise((resolve,reject)=>{
+        const r = new FileReader()
+        r.onload = () => resolve(String(r.result||""))
+        r.onerror = reject
+        r.readAsDataURL(file)
+      })
+    }
+
+    async function uploadUserPhotoFile(file){
+      try{
+        return await uploadAttachmentFile(file)
+      }catch(err){
+        console.warn("Fallo subida a Drive, se usará almacenamiento inline.", err)
+        const dataUrl = await readFileAsDataUrl(file)
+        return { name: file.name, url: dataUrl, fileId: "", inline: true }
+      }
+    }
+
+
+    function showToast(message, type="info", keepMs=2200){
+      const old = document.getElementById("globalToast")
+      if(old) old.remove()
+      const el = document.createElement("div")
+      el.id = "globalToast"
+      el.className = `toast ${type}`
+      el.textContent = message
+      document.body.appendChild(el)
+      setTimeout(()=>{ if(el.parentNode) el.remove() }, keepMs)
+    }
+
+    function buildTicketCode(list){
+      const max = (list||[]).reduce((acc, t) => {
+        const m = String(t.id||"").match(/^TAO-(\d+)$/)
+        if(!m) return acc
+        return Math.max(acc, Number(m[1]))
+      }, 0)
+      const next = max + 1
+      return `TAO-${String(next).padStart(2,"0")}`
+    }
+
+
+    async function fetchAdminsRowsFromSheet(){
+      const query = encodeURIComponent("select A,B,C,D,E,F,G,H,I,J,K")
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(SHEET_ADMINS_NAME)}&tq=${query}`
+      const res = await fetch(url)
+      if(!res.ok) throw new Error("No se pudo leer BD_ADMINS")
+      const gviz = parseGvizJson(await res.text())
+      const rows = gviz?.table?.rows || []
+      return rows.map(r => (r.c || []).map(c => c?.v ?? ""))
+    }
+
+    async function fetchUsersFromSheet(){
+      const rows = await fetchAdminsRowsFromSheet()
+      return rows
+        .filter(cols => String(cols[0]||"").toLowerCase() === "user")
+        .map(cols => ({
+          key: String(cols[1]||""),
+          email: String(cols[2]||""),
+          password: String(cols[3]||""),
+          role: String(cols[4]||"consultor"),
+          active: String(cols[5]||"true") !== "false",
+          createdAt: String(cols[6]||""),
+          createdBy: String(cols[7]||""),
+          lastAccessAt: String(cols[8]||""),
+          photoUrl: String(cols[9]||""),
+          photoFileId: String(cols[10]||"")
+        }))
+    }
+
+    async function fetchClientsFromSheet(){
+      const rows = await fetchAdminsRowsFromSheet()
+      return rows
+        .filter(cols => String(cols[0]||"").toLowerCase() === "client")
+        .map(cols => ({ key: String(cols[1]||""), name: String(cols[2]||"") }))
+        .filter(c => c.name)
+    }
+
+    async function adminWrite(action, payload){
+      return sheetWrite(action, payload)
+    }
+
+    function mirrorToSheet(action, payload){
+      sheetWrite(action, payload).catch(err => {
+        console.warn("No se pudo espejar en Sheets:", action, err)
+      })
+    }
+
+    async function fetchTicketsFromDb(){
+      const snap = await db.ref("tickets").once("value")
+      const data = snap.val() || {}
+      return Object.entries(data).map(([dbKey,t]) => ({ ...t, id: t?.id || dbKey, dbKey, comments: parseCommentsValue(t?.comments) }))
+    }
+
+
+    function startConsultorAutoRefresh(){
+      if(consultorRefreshTimer) clearInterval(consultorRefreshTimer)
+      consultorRefreshTimer = setInterval(() => {
+        loadTickets()
+        loadDashboard()
+      }, 8000)
+      globalThis.consultorRefreshTimer = consultorRefreshTimer
+    }
+
+    function stopConsultorAutoRefresh(){
+      if(consultorRefreshTimer) clearInterval(consultorRefreshTimer)
+      consultorRefreshTimer = null
+      globalThis.consultorRefreshTimer = null
+    }
+
+    function stopRealtimeStreams(){
+      db.ref("tickets").off()
+      db.ref("users_by_email").off()
+      db.ref("activity_logs").off()
+      db.ref("clients").off()
+      realtimeStreamsStarted = false
+      latestActivityLogs = []
+    }
+
+    function setupRealtimeStreams(){
+      if(!currentUser || realtimeStreamsStarted) return
+      realtimeStreamsStarted = true
+
+      db.ref("tickets").off()
+      db.ref("tickets").on("value", snap => {
+        const data = Object.entries(snap.val() || {}).map(([dbKey,t]) => ({ ...t, id: t?.id || dbKey, dbKey, comments: parseCommentsValue(t?.comments) }))
+        cachedTickets = data
+        const boardContainer = document.getElementById("boardContainer")
+        if(boardContainer) renderTicketsFromData(cachedTickets)
+        loadDashboard()
+      })
+
+      db.ref("users_by_email").off()
+      db.ref("users_by_email").on("value", snap => {
+        cachedUsersByEmail = snap.val() || {}
+        const analystFilterSelect = document.getElementById("filterAnalyst")
+        if(analystFilterSelect){
+          const analysts = Object.values(cachedUsersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
+          analystFilterSelect.innerHTML = `<option value="">Todos los analistas</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join("")}`
+          analystFilterSelect.value = ticketFilterAnalyst
+        }
+        if(cachedTickets && cachedTickets.length){
+          const boardContainer = document.getElementById("boardContainer")
+          if(boardContainer) renderTicketsFromData(cachedTickets)
+        }
+        loadDashboard()
+      })
+
+      db.ref("activity_logs").off()
+      db.ref("activity_logs").limitToLast(50).on("value", snap => {
+        latestActivityLogs = Object.values(snap.val() || {})
+        loadDashboard()
+      })
+
+      db.ref("clients").off()
+      db.ref("clients").on("value", snap => {
+        const clients = Object.values(snap.val() || {})
+        cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
+        globalThis.cachedClients = cachedClients
+        const clientFilterSelect = document.getElementById("filterClient")
+        if(clientFilterSelect){
+          clientFilterSelect.innerHTML = `<option value="">Todos los clientes</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
+          clientFilterSelect.value = ticketFilterClient
+        }
+        const ticketClientSelect = document.getElementById("tClient")
+        if(ticketClientSelect){
+          ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
+        }
+      })
+    }
+
+    async function loadFilterOptions(){
+      const clients = Object.values((await db.ref("clients").once("value")).val() || {})
+      cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
+      globalThis.cachedClients = cachedClients
+
+      const clientFilterSelect = document.getElementById("filterClient")
+      if(clientFilterSelect){
+        clientFilterSelect.innerHTML = `<option value="">Todos los clientes</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
+        clientFilterSelect.value = ticketFilterClient
+      }
+
+      const usersByEmailData = (await db.ref("users_by_email").once("value")).val() || {}
+      cachedUsersByEmail = usersByEmailData
+
+      const analystFilterSelect = document.getElementById("filterAnalyst")
+      if(analystFilterSelect){
+        const analysts = Object.values(usersByEmailData).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
+        analystFilterSelect.innerHTML = `<option value="">Todos los analistas</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join("")}`
+        analystFilterSelect.value = ticketFilterAnalyst
+      }
+
+      const informerSelect = document.getElementById("tInformer")
+      if(informerSelect){
+        const consultors = Object.values(usersByEmailData).filter(u => u && u.role === "consultor" && u.active !== false).map(u => (u.email||"").toLowerCase()).sort()
+        const defaultInformer = currentRole === "consultor" ? (currentUser?.email||"").toLowerCase() : ""
+        informerSelect.innerHTML = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
+        informerSelect.value = defaultInformer
+        if(currentRole === "consultor") informerSelect.disabled = true
+      }
+
+      const ticketClientSelect = document.getElementById("tClient")
+      if(ticketClientSelect){
+        ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
+      }
+
+      if(cachedTickets && cachedTickets.length){
+        renderTicketsFromData(cachedTickets)
+      }
+    }
+
+    async function saveClient(button){
+      if(currentRole !== "admin") return alert("Solo admin puede agregar clientes")
+      const name = (document.getElementById("cName")?.value || "").trim()
+      if(!name) return alert("Ingresá un cliente")
+      const oldText = button?.textContent || ""
+      try{
+        if(button){ button.disabled = true; button.textContent = "Agregando..." }
+        showToast("Agregando cliente...", "info", 1200)
+        await db.ref("clients").child(emailKey(name)).set({ name, createdAt: new Date().toISOString(), createdBy: currentUser.email })
+        mirrorToSheet("upsertClient", { key: emailKey(name), name, createdAt: new Date().toISOString(), createdBy: currentUser.email })
+        const input = document.getElementById("cName")
+        if(input) input.value = ""
+        showToast("Cliente agregado", "ok")
+        await loadClientsAdmin()
+        await loadFilterOptions()
+      }finally{
+        if(button){ button.disabled = false; button.textContent = oldText || "Agregar cliente" }
+      }
+    }
+
+    async function deleteClient(key){
+      if(currentRole !== "admin") return alert("Solo admin puede eliminar clientes")
+      if(!confirm("¿Eliminar cliente?")) return
+      await db.ref("clients").child(key).remove()
+      mirrorToSheet("deleteClient", { key })
+      showToast("Cliente eliminado", "ok")
+      await loadClientsAdmin()
+      await loadFilterOptions()
+    }
+
+    async function loadClientsAdmin(){
+      const container = document.getElementById("clientsList")
+      if(!container) return
+      const clients = Object.entries((await db.ref("clients").once("value")).val() || {})
+      if(!clients.length){ container.innerHTML = "Sin clientes"; return }
+      container.innerHTML = clients.map(([k,c]) => `<div class="inline" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(148,163,184,.15)"><span>${htmlEscape(c.name||"")}</span><button class="danger" onclick="deleteClient('${k}')">Eliminar</button></div>`).join("")
+    }
+
+    async function fetchTicketsFromSheet(){
+      const query = encodeURIComponent("select A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T")
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(SHEET_TICKETS_NAME)}&tq=${query}`
+      const res = await fetch(url)
+      if(!res.ok) throw new Error("No se pudo leer la planilla")
+      const gviz = parseGvizJson(await res.text())
+      const rows = gviz?.table?.rows || []
+
+      return rows
+        .map(r => (r.c || []).map(c => c?.v ?? ""))
+        .filter(cols => (cols[0]||"").toString().trim())
+        .map(cols => ({
+          id: String(cols[0]||""),
+          title: String(cols[1]||""),
+          description: String(cols[2]||""),
+          priority: String(cols[3]||"Media"),
+          client: String(cols[4]||""),
+          status: String(cols[5]||"unassigned"),
+          assignedTo: String(cols[6]||""),
+          comments: parseCommentsValue(cols[7]),
+          createdAt: String(cols[8]||""),
+          createdBy: String(cols[9]||""),
+          updatedAt: String(cols[10]||""),
+          updatedBy: String(cols[11]||""),
+          deadline: String(cols[12]||""),
+          urgentRequested: String(cols[13]||"false") === "true",
+          requestedDeadline: String(cols[14]||""),
+          deadlineChangeStatus: String(cols[15]||"none"),
+          deadlineChangeRequestedBy: String(cols[16]||""),
+          deadlineChangeRequestedAt: String(cols[17]||""),
+          deadlineChangeReviewedBy: String(cols[18]||""),
+          informer: String(cols[19]||cols[9]||"")
+        }))
+    }
+
+    async function sheetWrite(action, payload){
+      if(!SHEET_WEBHOOK_URL){
+        alert("Falta configurar SHEET_WEBHOOK_URL para guardar cambios en Google Sheets")
+        throw new Error("SHEET_WEBHOOK_URL no configurada")
+      }
+
+      // Enviamos text/plain para evitar preflight CORS en hosting estático (GitHub Pages).
+      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME })
+      const res = await fetch(SHEET_WEBHOOK_URL, {
+        method: "POST",
+        mode: "cors",
+        redirect: "follow",
+        body: requestBody
+      })
+
+      if(!res.ok) throw new Error(`No se pudo escribir en Google Sheets (${res.status})`)
+      const data = await res.json().catch(() => ({ ok: true }))
+      if(data && data.ok === false){
+        const rawError = String(data.error || "Error al guardar en Google Sheets")
+        if(rawError.includes("setHeaders")) throw new Error("Tu Apps Script está desactualizado (usa response.setHeaders). Reemplazá el script por APPS_SCRIPT.gs y volvé a desplegar la Web App.")
+        if(rawError.includes("Acción no soportada") && (action === "upsertUser" || action === "deleteUser")) return { ok: true, ignored: true }
+        if(rawError.includes("Acción no soportada") && action === "uploadDriveFile") throw new Error("Tu Apps Script desplegado no soporta uploadDriveFile. Reemplazá APPS_SCRIPT.gs y volvé a desplegar la Web App.")
+        throw new Error(rawError)
+      }
+      return data
+    }
+
+    async function logActivity(eventType, details={}){
+      try{
+        await db.ref("activity_logs").push({
+          eventType,
+          email: currentUser?.email || "sin-usuario",
+          role: currentRole || "sin-rol",
+          timestampIso: new Date().toISOString(),
+          ...details
+        })
+      }catch(err){ console.error("Error registrando actividad:", err) }
+    }
+
+    async function ensureDefaultUsers(){
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).length ? Object.values(usersMap) : await fetchUsersFromSheet()
+      for(const user of DEFAULT_USERS){
+        const exists = users.some(u => (u.email||"").toLowerCase() === user.email.toLowerCase())
+        if(!exists){
+          const secureFields = await buildPasswordFields(user.password)
+          const payload = {
+            key: emailKey(user.email),
+            email: user.email,
+            password: "",
+            role: user.role,
+            active: true,
+            createdAt: new Date().toISOString(),
+            createdBy: "system",
+            ...secureFields
+          }
+          await adminWrite("upsertUser", payload)
+          await db.ref("users_by_email").child(payload.key).set(payload)
+        }
+      }
+    }
+
+    async function getUserFromDb(email){
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).length ? Object.values(usersMap) : await fetchUsersFromSheet()
+      return users.find(u => (u.email||"").toLowerCase() === (email||"").toLowerCase()) || null
+    }
+
+    async function verifyPassword(user, password){
+      if(user?.passwordHash && user?.passwordSalt){
+        const computed = await hashPassword(password, user.passwordSalt)
+        return computed === user.passwordHash
+      }
+      return String(user?.password || "") === String(password || "")
+    }
+
+    function mustRotatePassword(user){
+      if(!user?.passwordHash) return true
+      const updatedAt = new Date(user.passwordUpdatedAt || 0)
+      const ageDays = (Date.now() - updatedAt.getTime()) / 86400000
+      return !updatedAt.getTime() || ageDays > 180
+    }
+
+    async function rotatePasswordFlow(user){
+      const current = prompt("Por seguridad tenés que actualizar tu contraseña.\nIngresá tu contraseña actual:")
+      if(current === null) return false
+      const validCurrent = await verifyPassword(user, current)
+      if(!validCurrent) return alert("La contraseña actual no coincide."), false
+
+      const next = prompt("Ingresá una nueva contraseña segura (mínimo 12, mayúscula, minúscula, número y símbolo):")
+      if(next === null) return false
+      const policy = passwordPolicyError(next)
+      if(policy) return alert(policy), false
+
+      const confirmNext = prompt("Confirmá la nueva contraseña:")
+      if(confirmNext !== next) return alert("La confirmación no coincide."), false
+
+      const secureFields = await buildPasswordFields(next)
+      const payload = {
+        ...user,
+        key: emailKey(user.email),
+        password: "",
+        ...secureFields
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast("Contraseña actualizada correctamente.", "ok")
+      return true
+    }
+
+    function renderLogin(){
+      closeEmojiPicker()
+      document.getElementById("app").innerHTML = `
+        <div class="card" style="max-width:480px;margin:40px auto">
+          <h2 style="margin-top:0">Tablero de tickets</h2>
+          <p class="small">Acceso por Email + Contraseña.</p>
+          <label>Email</label><input id="loginEmail" type="email">
+          <label>Contraseña</label><input id="loginPassword" type="password">
+          <button id="loginBtn" onclick="handleLogin()" style="width:100%">Entrar</button>
+          <button class="ghost" onclick="requestPasswordReset()" style="width:100%;margin-top:8px">Olvide la contraseña</button>
+          <p class="small" style="margin-top:10px">Tip de seguridad: usá contraseñas únicas y robustas para evitar alertas de filtraciones.</p>
+        </div>`
+    }
+
+    async function requestPasswordReset(){
+      const emailInput = (document.getElementById("loginEmail")?.value || "").trim().toLowerCase()
+      const email = (prompt("Ingresá tu email para avisar al administrador.", emailInput) || "").trim().toLowerCase()
+      if(!email) return
+      const payload = { email, createdAt: new Date().toISOString(), status: "pending", source: "login_screen" }
+      await db.ref("password_reset_requests").child(generateId()).set(payload)
+      await db.ref("activity_logs").push({
+        eventType: "password_reset_requested",
+        email,
+        role: "guest",
+        timestampIso: payload.createdAt
+      })
+      showToast("Solicitud enviada al administrador para cambio de contraseña.", "ok", 3200)
+    }
+
+    async function handleLogin(){
+      if(loginInProgress) return
+      const email = document.getElementById("loginEmail").value.trim().toLowerCase()
+      const password = document.getElementById("loginPassword").value
+      if(!email || !password) return alert("Completá email y contraseña")
+
+      loginInProgress = true
+      const btn = document.getElementById("loginBtn")
+      if(btn){ btn.disabled = true; btn.textContent = "Ingresando..." }
+
+      try{
+        const user = await getUserFromDb(email)
+        if(!user || !user.active) return alert("Usuario inexistente o inactivo")
+        const validPassword = await verifyPassword(user, password)
+        if(!validPassword) return alert("Contraseña incorrecta")
+
+        if(!user.passwordHash && user.password){
+          const secureFields = await buildPasswordFields(password)
+          const migrated = { ...user, key: emailKey(email), password: "", ...secureFields }
+          await db.ref("users_by_email").child(migrated.key).update(migrated)
+          adminWrite("upsertUser", migrated).catch(()=>{})
+        }
+
+        currentUser = { email: user.email }
+        currentRole = user.role
+        persistSession()
+
+        renderApp()
+        logActivity("login", { userAgent: navigator.userAgent })
+        adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
+        if(mustRotatePassword(user)){
+          setTimeout(() => { rotatePasswordFlow(user) }, 250)
+        }
+      }finally{
+        loginInProgress = false
+        if(btn){ btn.disabled = false; btn.textContent = "Entrar" }
+      }
+    }
+
+    function persistSession(){
+      if(!currentUser?.email || !currentRole) return
+      localStorage.setItem("sessionUserEmail", String(currentUser.email||"").toLowerCase())
+      localStorage.setItem("sessionUserRole", String(currentRole||""))
+    }
+
+    function clearSession(){
+      localStorage.removeItem("sessionUserEmail")
+      localStorage.removeItem("sessionUserRole")
+    }
+
+    function logout(){
+      stopConsultorAutoRefresh()
+      stopRealtimeStreams()
+      currentUser = null
+      currentRole = null
+      clearSession()
+      renderLogin()
+    }
+
+    async function changeOwnPassword(){
+      if(!currentUser?.email) return
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      await rotatePasswordFlow(user)
+    }
+
+    function renderApp(){
+      const isAdmin = currentRole === "admin"
+      const isAnalyst = currentRole === "analista"
+      const canCreateTicket = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
+      const showAdminPanel = isAdmin && adminPanelTab !== "panel"
+
+      document.getElementById("app").innerHTML = `
+        <div class="card">
+          <div class="inline" style="justify-content:space-between">
+            <div>
+              <h2 style="margin:0">Tablero de tickets</h2>
+              <p class="small" style="margin:6px 0 0">Panel ${htmlEscape(currentRole)} · ${htmlEscape(currentUser.email)}</p>
+            </div>
+            <div class="inline">
+              ${isAdmin?`<button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel')">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config')">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity')">Actividad reciente</button>`:""}
+              ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
+              <button class="ghost" onclick="changeOwnPassword()">Cambiar contraseña</button>
+              <button id="themeToggleBtn" class="ghost" onclick="toggleTheme()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
+              <button class="secondary" onclick="logout()">Cerrar sesión</button>
+            </div>
+          </div>
+        </div>
+
+        ${showAdminPanel ? (adminPanelTab==='config' ? `
+          <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
+            <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
+            <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
+            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
+            <div class="row" style="align-items:end"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button><button class="ghost helpIcon" onclick="showImportFormatHelp('users')">?</button></div></div>
+            <div id="usersList" class="small"></div>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <h4 style="margin:0 0 8px">Clientes</h4>
+            <div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient(this)">Agregar cliente</button></div></div>
+            <div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div>
+            <div id="clientsList" class="small"></div>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
+          </div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : `
+          <div class="grid">
+            <div class="card">
+              <h3 style="margin:0 0 10px">Dashboard</h3>
+              <div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : ""}">
+                ${currentRole !== "consultor"
+                  ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>`
+                  : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
+              </div>
+              <div id="dashboardTicketList" class="small" style="margin-top:10px"></div>
+              
+            </div>
+            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div id="recentActivity" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>`}
+          </div>
+
+          <div class="card">
+            <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3><span class="small">Vista Kanban de operación</span></div>
+            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
+          </div>
+          <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
+        `}
+      `
+
+      applyTheme()
+      if(isAdmin && adminPanelTab === 'config'){ loadUsersAdmin(); loadClientsAdmin() }
+      if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
+      loadFilterOptions()
+      setupRealtimeStreams()
+      if(!showAdminPanel || adminPanelTab === 'activity') loadDashboard()
+      if(!showAdminPanel) loadTickets()
+      if(isAdmin && adminPanelTab === 'config'){ }
+    }
+
+    function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets() }
+    function updateClientFilter(value){ ticketFilterClient = (value||"").trim().toLowerCase(); globalThis.ticketFilterClient = ticketFilterClient; loadTickets() }
+    function updateAnalystFilter(value){ ticketFilterAnalyst = (value||"").trim().toLowerCase(); loadTickets() }
+
+    function openTicketModal(){ document.getElementById("ticketModal").classList.remove("hidden") }
+    function closeTicketModal(){
+      document.getElementById("tTitle").value = ""
+      document.getElementById("tDescription").value = ""
+      document.getElementById("tPriority").value = "Media"
+      document.getElementById("tClient").value = ""
+      document.getElementById("tDeadline").value = ""
+      document.getElementById("ticketModal").classList.add("hidden")
+    }
+
+    async function saveTicket(){
+      const title = document.getElementById("tTitle").value.trim()
+      const description = document.getElementById("tDescription").value.trim()
+      const priority = document.getElementById("tPriority").value
+      const client = document.getElementById("tClient").value.trim()
+      const deadline = document.getElementById("tDeadline").value
+      const informer = (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase()
+
+      if(!title || !description || !client) return alert("Completá título, detalle y cliente/área")
+      if(!informer) return alert("Seleccioná informador")
+
+      showToast("Creando ticket...", "info", 1600)
+      const now = new Date().toISOString()
+      const code = buildTicketCode(cachedTickets)
+      const ticket = {
+        id: code,
+        title, description, priority, client, deadline,
+        status: "unassigned",
+        assignedTo: "",
+        comments: {},
+        createdAt: now,
+        createdBy: currentUser.email,
+        updatedAt: now,
+        updatedBy: currentUser.email,
+        informer,
+        requestedDeadline: "",
+        deadlineChangeStatus: "none",
+        deadlineChangeRequestedBy: "",
+        deadlineChangeRequestedAt: "",
+        deadlineChangeReviewedBy: "",
+        hasProblem: false,
+        problemReportedBy: "",
+        problemReportedAt: "",
+        helpers: [],
+        timeTracking: { users: {}, consolidatedMinutes: 0 }
+      }
+
+      const dbKey = emailKey(code)
+      await db.ref("tickets").child(dbKey).set(ticket)
+      const savedTicket = { ...ticket, dbKey }
+      mirrorToSheet("createTicket", savedTicket)
+      logActivity("ticket_creado", { title, client, code })
+      closeTicketModal()
+      loadDashboard()
+      showToast(`Ticket ${code} creado correctamente`, "ok")
+    }
+
+    async function loadTickets(){
+      setupRealtimeStreams()
+      const container = document.getElementById("boardContainer")
+      if(!container) return
+      renderTicketsFromData(cachedTickets || [])
+      if(pendingOpenTicketId && (cachedTickets||[]).some(t => t.id === pendingOpenTicketId)){
+        const toOpen = pendingOpenTicketId
+        pendingOpenTicketId = ""
+        openTicketDetailModal(toOpen)
+      }
+    }
+
+
+
+    function renderTicketsFromData(data){
+      const container = document.getElementById("boardContainer")
+      if(!container) return
+      const grouped = { unassigned: [], todo: [], doing: [], recurrent: [], done: [] }
+      const visibleTickets = []
+
+      Object.entries(data).forEach(([_, t]) => {
+        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && ((t.informer||t.createdBy||"").toLowerCase() === (currentUser.email||"").toLowerCase()))
+        if(!canSeeTicket) return
+
+        const haystack = `${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
+        if(ticketSearchTerm && !haystack.includes(ticketSearchTerm)) return
+        if(ticketFilterClient && !(String(t.client||"").toLowerCase().includes(ticketFilterClient))) return
+        if(ticketFilterAnalyst && !(String(t.assignedTo||"").toLowerCase().includes(ticketFilterAnalyst))) return
+
+        const status = grouped[t.status] ? t.status : "unassigned"
+        grouped[status].push(t)
+        visibleTickets.push(t)
+      })
+
+      if(currentRole === "consultor"){
+        container.innerHTML = renderConsultorTicketList(visibleTickets)
+        return
+      }
+
+      const maxTicketsInColumn = Math.max(...Object.values(grouped).map(arr => arr.length), 0)
+      const uniformHeight = Math.max(220, 120 + maxTicketsInColumn * 190)
+
+      container.innerHTML = `<div class="board">${Object.entries(STATUS).map(([status, label]) => `
+        <div class="column" style="min-height:${uniformHeight}px" ondragover="onColumnDragOver(event)" ondragleave="onColumnDragLeave(event)" ondrop="onColumnDrop(event,'${status}')">
+          <h4>${label} <span class="small">(${grouped[status].length})</span></h4>
+          ${grouped[status].map(t => renderTicketCard(t, status)).join("") || `<p class="small">Sin tickets</p>`}
+        </div>
+      `).join("")}</div>`
+    }
+
+    function unreadCommentsCount(ticket){
+      if(!ticket?.comments) return 0
+      const myKey = emailKey(currentUser?.email || "")
+      return Object.values(ticket.comments).filter(c => {
+        const comment = c || {}
+        const author = String(comment.author || "").toLowerCase()
+        if(!author || author === String(currentUser?.email || "").toLowerCase()) return false
+        const readBy = comment.readBy || {}
+        return !readBy[myKey]
+      }).length
+    }
+
+    function renderConsultorTicketList(tickets){
+      const sorted = [...tickets].sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+      if(!sorted.length) return `<div class="small">Sin tickets</div>`
+      return `
+        <div class="ticketListWrap">
+          <div class="ticketListHeader">
+            <div>Código</div>
+            <div>Nombre del ticket</div>
+            <div>Cliente</div>
+            <div>Estado</div>
+            <div>Analista asignado</div>
+            <div>Deadline</div>
+            <div>Sin leer</div>
+          </div>
+          ${sorted.map(t => {
+            const normalizedStatus = STATUS[t.status] ? t.status : "unassigned"
+            const unreadCount = unreadCommentsCount(t)
+            return `
+              <div class="ticketListRow ${t.hasProblem ? "problemFlag" : ""}" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')">
+                <div><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">${htmlEscape(t.id||"-")}</span></div>
+                <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
+                <div>${htmlEscape(t.client||"-")}</div>
+                <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
+                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo||"Sin asignar")}</div></div>
+                <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
+                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div>
+              </div>
+            `
+          }).join("")}
+        </div>
+      `
+    }
+
+    function renderTicketCard(ticket, status){
+      const assignedTo = String(ticket.assignedTo||"").toLowerCase()
+      const assignedAvatar = assignedTo ? userAvatarByEmail(assignedTo) : ""
+      const canDrag = currentRole === "admin" || currentRole === "analista"
+      return `
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
+          <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
+          <div class="meta">${htmlEscape(ticket.client||"-")}</div>
+          <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
+          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
+          <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
+          ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
+          <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+        </div>
+      `
+    }
+
+    async function openTicketDetailModal(id){
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return alert("No se encontró el ticket")
+      const canEdit = currentRole === "admin"
+      const canManageStatus = currentRole === "admin" || currentRole === "analista"
+      const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
+      cachedUsersByEmail = usersByEmail
+      const ticketWithRead = await markCommentsReadOnOpen(ticket, usersByEmail)
+      let analysts = []
+      if(canManageStatus){
+        analysts = Object.values(usersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
+      }
+      const consultors = Object.values(usersByEmail).filter(u => u && u.role === "consultor" && u.active !== false).map(u => (u.email||"").toLowerCase()).sort()
+      const analystOptions = analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||"").toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join("")
+      const currentInformer = String(ticketWithRead.informer || ticketWithRead.createdBy || "").toLowerCase()
+      const informerOptions = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}" ${currentInformer===c?"selected":""}>${htmlEscape(c)}</option>`).join("")}`
+      const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticketWithRead.status===key?"selected":""}>${label}</option>`).join("")
+      const clientOptions = `<option value="">Seleccionar cliente</option>${(cachedClients||[]).map(c => `<option value="${htmlEscape(c)}" ${String(ticketWithRead.client||'')===String(c)?'selected':''}>${htmlEscape(c)}</option>`).join("")}`
+
+      const titleEl = document.getElementById("ticketDetailTitle")
+      if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
+      const headerControls = document.getElementById("ticketDetailHeaderControls")
+      if(headerControls){
+        headerControls.innerHTML = canManageStatus
+          ? `<div class="inline" style="gap:8px;align-items:center"><select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
+          : `<span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span>`
+      }
+
+      document.getElementById("ticketDetailContent").innerHTML = `
+        <div class="inline" style="margin-bottom:8px;justify-content:space-between;gap:8px">
+          <div class="inline" style="gap:8px">
+            ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
+            ${ticketWithRead.hasProblem ? `<span class="urgentTopFlag">🛑 CON PROBLEMAS</span>` : ''}
+          </div>
+          <div class="inline" style="gap:8px">${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
+        </div>
+        <div class="detailLayout">
+          <div>
+            <div class="row">
+              <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
+              <div><label>Deadline</label><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}></div>
+            </div>
+            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
+            <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
+            <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${informerOptions}</select></div>
+
+            ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
+
+            ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
+          </div>
+        </div>
+      `
+      document.getElementById("ticketDetailModal").classList.remove("hidden")
+      setupLiveTimer(id)
+      setTicketActivityTab(id, ticketActivityTabById[id] || "comments")
+    }
+
+
+
+    async function loadTicketHistory(ticketId){
+      const el = document.getElementById(`ticket-history-tab-${ticketId}`)
+      if(!el) return
+      const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
+        .filter(l => l.ticketId === ticketId)
+        .sort((a,b)=>new Date(a.timestampIso||0)-new Date(b.timestampIso||0))
+      if(!logs.length){ el.innerHTML = "Sin historial."; return }
+      el.innerHTML = logs.map(l => `<div class="feedItem"><div class="feedType">${htmlEscape(l.eventType||"evento")}</div><div class="feedMeta">${htmlEscape(l.email||"-")} · ${l.timestampIso?new Date(l.timestampIso).toLocaleString():""}</div></div>`).join("")
+    }
+
+    function closeTicketDetailModal(){
+      const openId = (document.getElementById("ticketDetailTitle")?.textContent || "").split("·")[1]?.trim() || ""
+      if(openId) clearLiveTimer(openId)
+      document.getElementById("ticketDetailModal").classList.add("hidden")
+      document.getElementById("ticketDetailContent").innerHTML = ""
+      const headerControls = document.getElementById("ticketDetailHeaderControls")
+      if(headerControls) headerControls.innerHTML = ""
+      const titleEl = document.getElementById("ticketDetailTitle")
+      if(titleEl) titleEl.textContent = "Detalle del ticket"
+    }
+
+    async function assignTicketToMe(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const owner = document.getElementById(`detail-owner-${id}`)
+      if(owner){ owner.value = (currentUser.email||"").toLowerCase(); autoSaveTicketDetail(id) }
+    }
+
+    async function autoSaveTicketDetail(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const canEditFields = currentRole === "admin"
+      const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase()
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(nextAssignedTo){
+        const ownerKey = emailKey(nextAssignedTo)
+        if(!tracking.users[ownerKey]) tracking.users[ownerKey] = { email: nextAssignedTo, totalMinutes: 0, timerStartAt: "" }
+        if(!tracking.users[ownerKey].email) tracking.users[ownerKey].email = nextAssignedTo
+      }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = {
+        ...ticket,
+        title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
+        description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
+        priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
+        client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
+        informer: canEditFields ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
+        assignedTo: nextAssignedTo,
+        deadline: canEditFields ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
+        status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
+        timeTracking: tracking,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      renderTicketsFromData(cachedTickets)
+      await loadDashboard()
+      showToast("Ticket actualizado", "ok")
+    }
+
+    function renderTicketActions(id, currentStatus){
+      const options = Object.entries(STATUS)
+        .filter(([key]) => key !== currentStatus)
+        .map(([key, label]) => `<option value="${key}">${label}</option>`)
+        .join("")
+
+      const canDelete = currentRole === "admin"
+      const canMove = currentRole === "admin" || currentRole === "analista"
+      const canAssign = currentRole === "admin" || currentRole === "analista"
+
+      const assignSelect = canAssign ? `
+        <div class="inline" style="margin-top:8px;width:100%">
+          <input id="assign-${id}" placeholder="Email analista" style="margin:0;min-width:170px" />
+          <button class="ghost" onclick="assignTicket('${id}')">Asignar</button>
+        </div>
+      ` : ""
+
+      const moveBlock = canMove ? `
+        <select id="next-${id}" style="margin:0;min-width:160px">
+          ${options}
+        </select>
+        <button class="ghost" onclick="moveTicket('${id}')">Mover</button>
+      ` : `<span class="small">No tenés permisos para mover estados</span>`
+
+      return `
+        <div class="inline" style="margin-top:8px">
+          ${moveBlock}
+          ${canDelete?`<button class="danger" onclick="deleteTicket('${id}')">Borrar</button>`:""}
+        </div>
+        ${assignSelect}
+      `
+    }
+
+    function toggleCommentsSort(ticketId){
+      const current = commentSortOrderByTicket[ticketId] || "asc"
+      commentSortOrderByTicket[ticketId] = current === "asc" ? "desc" : "asc"
+      openTicketDetailModal(ticketId)
+    }
+
+    function setTicketActivityTab(ticketId, tab){
+      ticketActivityTabById[ticketId] = tab
+      const commentsEl = document.getElementById(`ticket-comments-tab-${ticketId}`)
+      const historyEl = document.getElementById(`ticket-history-tab-${ticketId}`)
+      const timesEl = document.getElementById(`ticket-times-tab-${ticketId}`)
+      const commentsBtn = document.getElementById(`activity-btn-comments-${ticketId}`)
+      const historyBtn = document.getElementById(`activity-btn-history-${ticketId}`)
+      const timesBtn = document.getElementById(`activity-btn-times-${ticketId}`)
+      if(commentsEl) commentsEl.classList.toggle("hidden", tab !== "comments")
+      if(historyEl) historyEl.classList.toggle("hidden", tab !== "history")
+      if(timesEl) timesEl.classList.toggle("hidden", tab !== "times")
+      if(commentsBtn) commentsBtn.classList.toggle("active", tab === "comments")
+      if(historyBtn) historyBtn.classList.toggle("active", tab === "history")
+      if(timesBtn) timesBtn.classList.toggle("active", tab === "times")
+      if(tab === "history") loadTicketHistory(ticketId)
+      if(tab === "times") setupLiveTimer(ticketId)
+      else clearLiveTimer(ticketId)
+    }
+
+    function renderTimesTab(ticketId, usersByEmail){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return '<div class="small">Sin datos de tiempo</div>'
+      const tracking = ticket.timeTracking || { users:{}, consolidatedMinutes:0 }
+      const helpers = Array.from(new Set([...(ticket.helpers||[]), ...(ticket.assignedTo ? [ticket.assignedTo] : [])])).filter(Boolean)
+      const analysts = Object.values(usersByEmail||{}).filter(u => u && u.role === 'analista' && u.active !== false).map(u => (u.email||'').toLowerCase()).sort()
+      const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join('')}`
+
+      const rows = {}
+      Object.entries(tracking.users || {}).forEach(([k,v]) => rows[k] = { ...(v||{}) })
+      helpers.forEach(email => {
+        const k = emailKey(email)
+        if(!rows[k]) rows[k] = { email, totalMinutes:0, timerStartAt:'' }
+      })
+
+      const userRows = Object.entries(rows)
+      const canManageHelpers = currentRole === 'admin' || currentRole === 'analista'
+      const helpersHtml = userRows.length ? userRows.map(([uk, u]) => {
+        const email = String(u?.email || '')
+        const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
+        const running = !!u?.timerStartAt
+        const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+      }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
+
+      return `<div>
+        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
+        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button></div>
+        <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
+        ${helpersHtml}
+      </div>`
+    }
+
+
+    function renderComments(id, comments, usersByEmail){
+      const sortOrder = commentSortOrderByTicket[id] || "asc"
+      const list = Object.entries(comments || {}).map(([cid,c]) => ({ id: cid, ...(c||{}) })).filter(c => currentRole !== "consultor" || !c.internal).sort((a,b)=> sortOrder === "asc" ? new Date(a.createdAt||0)-new Date(b.createdAt||0) : new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      return `
+        <div class="commentsSection">
+          <div class="commentsHeader">
+            <div><div class="commentsTitle">Información interna del ticket</div><div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div></div>
+            <button class="ghost sortBtn" onclick="toggleCommentsSort('${id}')">${sortOrder === "asc" ? "Más antiguos primero" : "Más recientes primero"}</button>
+          </div>
+          <div class="activityTabs">
+            <button id="activity-btn-comments-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "comments" ? "active" : ""}" onclick="setTicketActivityTab('${id}','comments')">Comentarios</button>
+            <button id="activity-btn-history-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "history" ? "active" : ""}" onclick="setTicketActivityTab('${id}','history')">Historial</button>
+            <button id="activity-btn-times-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "times" ? "active" : ""}" onclick="setTicketActivityTab('${id}','times')">Tiempos</button>
+          </div>
+
+          <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+
+            <div class="commentComposer">
+              <div class="commentToolbar">
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','bold')"><b>B</b></button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','italic')"><i>I</i></button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertUnorderedList')">• Lista</button>
+                <label class="colorBtn" title="Color de letra"><span>A</span><input type="color" onchange="formatCommentEditor('${id}','foreColor', this.value)"></label>
+              </div>
+              <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario" onkeydown="handleCommentKeydown(event,'${id}')"></div>
+              <div class="inline" style="align-items:center;margin-top:8px">
+                ${currentRole !== "consultor" ? `<div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-internal-${id}"><span class="slider"></span></label><span>Interno</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-max-attention-${id}"><span class="slider"></span></label><span>Atención máxima</span></div>` : ""}
+                <label class="ghost attachBtn" for="comment-file-${id}" title="Adjuntar archivo">📎</label>
+                <input id="comment-file-${id}" class="attachInput" type="file" />
+                <button class="ghost" onclick="addComment('${id}')">Comentar</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">Cargando...</div>
+          <div id="ticket-times-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "times" ? "" : "hidden"}">${renderTimesTab(id, usersByEmail)}</div>
+        </div>
+      `
+    }
+
+    function normalizeReactionData(reactions){
+      const src = reactions || {}
+      const normalized = {}
+      Object.entries(src).forEach(([key, value]) => {
+        if(value && value.users && typeof value.users === "object"){
+          normalized[key] = { emoji: value.emoji || emojiFromReactionKey(key) || "🙂", users: { ...(value.users || {}) } }
+          return
+        }
+        if(value && typeof value === "object"){
+          normalized[key] = { emoji: emojiFromReactionKey(key) || "🙂", users: { ...value } }
+        }
+      })
+      return normalized
+    }
+
+    function renderReactionButtons(ticketId, commentId, reactions){
+      const normalized = normalizeReactionData(reactions)
+      const defaults = ["👍", "❤️", "👀"]
+      defaults.forEach(emoji => {
+        const key = reactionKeyFromEmoji(emoji)
+        if(!normalized[key]) normalized[key] = { emoji, users: {} }
+      })
+      const items = Object.entries(normalized)
+        .sort((a,b) => defaults.indexOf(a[1].emoji) - defaults.indexOf(b[1].emoji))
+        .map(([key, info]) => `<button class="ghost" style="padding:4px 8px" onclick="reactToComment('${ticketId}','${commentId}','${htmlEscape(info.emoji)}')">${htmlEscape(info.emoji)} ${Object.keys(info.users||{}).length}</button>`)
+      items.push(`<button class="ghost" style="padding:4px 8px" onclick="pickCustomReaction('${ticketId}','${commentId}',event)">➕ Emoji</button>`)
+      return items.join("")
+    }
+
+    function getEmojiPickerPanel(){
+      let panel = document.getElementById("emojiPickerPanel")
+      if(panel) return panel
+      panel = document.createElement("div")
+      panel.id = "emojiPickerPanel"
+      panel.className = "emojiPicker hidden"
+      document.body.appendChild(panel)
+      return panel
+    }
+
+    function openEmojiPicker(ticketId, commentId, anchorEl){
+      activeEmojiPicker = { ticketId, commentId }
+      const panel = getEmojiPickerPanel()
+      panel.innerHTML = `
+        <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+          <strong>Seleccioná un emoji</strong>
+          <button class="ghost" style="padding:4px 8px" onclick="closeEmojiPicker()">Cerrar</button>
+        </div>
+        <div class="emojiGrid">${EMOJI_PICKER_LIST.map(emoji => `<button class="emojiBtn" onclick="selectReactionEmoji('${htmlEscape(emoji)}')">${htmlEscape(emoji)}</button>`).join("")}</div>
+      `
+      panel.classList.remove("hidden")
+      const rect = anchorEl?.getBoundingClientRect ? anchorEl.getBoundingClientRect() : { left: 20, top: window.innerHeight - 60 }
+      requestAnimationFrame(() => {
+        const h = panel.offsetHeight || 300
+        const w = panel.offsetWidth || 340
+        const margin = 10
+        let top = rect.top - h - 8
+        if(top < margin) top = Math.min(window.innerHeight - h - margin, rect.bottom + 8)
+        let left = rect.left
+        if(left + w > window.innerWidth - margin) left = window.innerWidth - w - margin
+        if(left < margin) left = margin
+        panel.style.top = `${Math.max(margin, top)}px`
+        panel.style.left = `${left}px`
+      })
+    }
+
+    function closeEmojiPicker(){
+      activeEmojiPicker = null
+      const panel = document.getElementById("emojiPickerPanel")
+      if(panel) panel.classList.add("hidden")
+    }
+
+    async function selectReactionEmoji(emoji){
+      if(!activeEmojiPicker) return
+      const { ticketId, commentId } = activeEmojiPicker
+      closeEmojiPicker()
+      await reactToComment(ticketId, commentId, emoji)
+    }
+
+
+    function handleCommentKeydown(ev, id){
+      if(ev.key !== "Enter" || ev.shiftKey) return
+      const node = ev.target || document.activeElement
+      const inList = !!(node && node.closest && node.closest('li'))
+      if(inList) return
+      ev.preventDefault()
+      addComment(id)
+    }
+
+    function onTicketDragStart(event, ticketId){
+      draggedTicketId = ticketId
+      if(event?.dataTransfer) event.dataTransfer.setData("text/plain", ticketId)
+      if(event?.currentTarget) event.currentTarget.classList.add("dragging")
+    }
+
+    function onTicketDragEnd(event){
+      if(event?.currentTarget) event.currentTarget.classList.remove("dragging")
+      document.querySelectorAll('.column.dropTarget').forEach(el => el.classList.remove('dropTarget'))
+      draggedTicketId = ""
+    }
+
+    function onColumnDragOver(event){
+      event.preventDefault()
+      event.currentTarget.classList.add('dropTarget')
+    }
+
+    function onColumnDragLeave(event){
+      event.currentTarget.classList.remove('dropTarget')
+    }
+
+    async function onColumnDrop(event, status){
+      event.preventDefault()
+      event.currentTarget.classList.remove('dropTarget')
+      const ticketId = draggedTicketId || event?.dataTransfer?.getData("text/plain") || ""
+      if(!ticketId) return
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || ticket.status === status) return
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      showToast("Moviendo ticket...", "info", 1400)
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      await logActivity("ticket_movido", { ticketId, nextStatus: status, fromStatus: ticket.status, source: "drag_drop" })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      renderTicketsFromData(cachedTickets)
+      await loadDashboard()
+      showToast("Ticket movido correctamente", "ok")
+    }
+
+    function refreshLiveTimerText(ticketId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const users = ticket.timeTracking?.users || {}
+      Object.entries(users).forEach(([uk, userTrack]) => {
+        const liveEl = document.getElementById(`timer-live-${ticketId}-${uk}`)
+        const btn = document.getElementById(`timer-toggle-${ticketId}-${uk}`)
+        if(!liveEl) return
+        const running = !!userTrack?.timerStartAt
+        if(btn) btn.textContent = running ? '🕒 Parar timer' : '🕒 Iniciar timer'
+        if(running){
+          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(userTrack.timerStartAt).getTime())/1000))
+          const hh = String(Math.floor(elapsed/3600)).padStart(2,'0')
+          const mm = String(Math.floor((elapsed%3600)/60)).padStart(2,'0')
+          const ss = String(elapsed%60).padStart(2,'0')
+          liveEl.textContent = `🕒 ${hh}:${mm}:${ss}`
+        }else liveEl.textContent = '🕒 00:00:00'
+      })
+    }
+
+    function setupLiveTimer(ticketId){
+      clearInterval(ticketTimerIntervals[ticketId])
+      refreshLiveTimerText(ticketId)
+      ticketTimerIntervals[ticketId] = setInterval(()=> refreshLiveTimerText(ticketId), 1000)
+    }
+
+    function clearLiveTimer(ticketId){
+      clearInterval(ticketTimerIntervals[ticketId])
+      delete ticketTimerIntervals[ticketId]
+    }
+
+    async function assignHelperFromDropdown(ticketId){
+      const email = (document.getElementById(`helper-analyst-${ticketId}`)?.value || '').trim().toLowerCase()
+      if(!email) return alert('Seleccioná un analista')
+      await addHelperToTicket(ticketId, email)
+    }
+
+    async function joinAsAnalyst(ticketId){
+      if(currentRole !== 'analista' && currentRole !== 'admin') return alert('Solo analista o admin')
+      await addHelperToTicket(ticketId, (currentUser?.email||'').toLowerCase())
+    }
+
+    async function removeHelperFromTicket(id, userKey){
+      if(!(currentRole === 'admin' || currentRole === 'analista')) return
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const users = { ...((ticket.timeTracking||{}).users || {}) }
+      const email = String((users[userKey]||{}).email || '')
+      if(!confirm(`¿Quitar ayudante ${email || userKey}?`)) return
+      delete users[userKey]
+      const helpers = (ticket.helpers || []).filter(h => emailKey(h) !== userKey)
+      const tracking = { ...(ticket.timeTracking || {}), users }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, helpers, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet('updateTicket', { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      openTicketDetailModal(id)
+    }
+
+    async function addHelperToTicket(id, helperEmail){
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const helpers = Array.from(new Set([...(ticket.helpers||[]), helperEmail]))
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const k = emailKey(helperEmail)
+      if(!tracking.users[k]) tracking.users[k] = { email: helperEmail, totalMinutes: 0, timerStartAt: '' }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, helpers, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet('updateTicket', { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      openTicketDetailModal(id)
+    }
+
+    async function toggleTicketTimerForUser(ticketId, userKey){
+      const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
+      const users = ticket.timeTracking?.users || {}
+      const u = users[userKey] || {}
+      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey)
+      return startTicketTimerForUser(ticketId, userKey)
+    }
+
+    async function startTicketTimerForUser(ticketId, userKey){
+      await applyTimeUpdate(ticketId, (tracking)=>{
+        const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
+        if(!u.timerStartAt) u.timerStartAt = new Date().toISOString()
+        tracking.users[userKey] = u
+      })
+      showToast('Timer iniciado','ok')
+    }
+
+    async function stopTicketTimerForUser(ticketId, userKey){
+      const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
+      const u = (ticket.timeTracking?.users||{})[userKey] || {}
+      if(!u.timerStartAt) return alert('El timer no está iniciado')
+      const elapsed = Math.max(1, Math.round((Date.now() - new Date(u.timerStartAt).getTime())/60000))
+      const acceptClock = confirm(`Tiempo medido: ${elapsed} min. ¿Cargar este tiempo del reloj?`)
+      let minutes = elapsed
+      if(!acceptClock){
+        const manual = Number(prompt('Ingresá minutos manuales:', String(elapsed)) || 0)
+        if(manual <= 0) return
+        minutes = manual
+      }
+      await applyTimeUpdate(ticketId, (tracking)=>{
+        const curr = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
+        curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
+        curr.timerStartAt = ''
+        tracking.users[userKey] = curr
+      })
+      showToast('Tiempo cargado','ok')
+    }
+
+    async function logManualTimeForUser(ticketId, userKey){
+      const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
+      const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
+      const minutes = hs * 60 + mins
+      if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
+      await applyTimeUpdate(ticketId, (tracking)=>{
+        const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
+        u.totalMinutes = Number(u.totalMinutes||0) + minutes
+        tracking.users[userKey] = u
+      })
+      showToast('Tiempo manual cargado','ok')
+    }
+
+    async function deleteTicketByIdAdmin(){
+      if(currentRole !== 'admin') return
+      const id = (document.getElementById('deleteTicketId')?.value || '').trim().toUpperCase()
+      if(!id) return alert('Ingresá el ID del ticket')
+      await deleteTicket(id)
+      const input = document.getElementById('deleteTicketId')
+      if(input) input.value = ''
+    }
+
+    async function joinAsHelper(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const me = String(currentUser.email||"").toLowerCase()
+      const helpers = Array.from(new Set([...(ticket.helpers||[]), me]))
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const meKey = emailKey(me)
+      if(!tracking.users[meKey]) tracking.users[meKey] = { email: me, totalMinutes: 0, timerStartAt: "" }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, helpers, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      openTicketDetailModal(id)
+    }
+
+    async function applyTimeUpdate(id, mutate){
+      const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      mutate(tracking)
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      openTicketDetailModal(id)
+    }
+
+    async function toggleUrgent(id){
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const nextState = !ticket.urgentRequested
+      const updated = { ...ticket, urgentRequested: nextState, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      showToast(nextState ? "Marcando urgente..." : "Quitando urgente...", "info", 1400)
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      renderTicketsFromData(cachedTickets)
+      await logActivity("ticket_urgente", { ticketId: id, title: ticket.title, urgentRequested: nextState })
+      loadDashboard()
+      const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+      if(detailOpen) openTicketDetailModal(id)
+      showToast(nextState ? "Ticket marcado como urgente" : "Urgente quitado", "ok")
+    }
+
+    async function toggleProblemFlag(id){
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const canCreateProblem = currentRole === "admin" || currentRole === "analista"
+      const canResolveProblem = canCreateProblem || (currentRole === "consultor" && ticket.hasProblem)
+      if(!canResolveProblem) return
+      const nextState = !ticket.hasProblem
+      if(nextState && !canCreateProblem) return
+      const updated = {
+        ...ticket,
+        hasProblem: nextState,
+        problemReportedBy: nextState ? currentUser.email : "",
+        problemReportedAt: nextState ? new Date().toISOString() : "",
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      await logActivity("ticket_problema", { ticketId: id, hasProblem: nextState })
+      renderTicketsFromData(cachedTickets)
+      loadDashboard()
+      openTicketDetailModal(id)
+      showToast(nextState ? "Ticket marcado con problema" : "Problema resuelto", "ok")
+    }
+
+
+
+    async function requestDeadlineChange(id){
+      if(currentRole !== "consultor") return
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const requestedDeadline = (document.getElementById(`requestedDeadline-${id}`)?.value || "").trim()
+      if(!requestedDeadline) return alert("Seleccioná una nueva deadline")
+      const updated = {
+        ...ticket,
+        requestedDeadline,
+        deadlineChangeStatus: "pending",
+        deadlineChangeRequestedBy: currentUser.email,
+        deadlineChangeRequestedAt: new Date().toISOString(),
+        deadlineChangeReviewedBy: "",
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      await logActivity("deadline_change_requested", { ticketId: id, requestedDeadline })
+      openTicketDetailModal(id)
+      loadDashboard()
+      showToast("Solicitud de deadline enviada", "ok")
+    }
+
+    async function applyDeadlineDecision(id, approve){
+      if(currentRole !== "consultor") return
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket || ticket.deadlineChangeStatus !== "pending") return
+      const comments = { ...(ticket.comments || {}) }
+      const autoMessage = approve
+        ? `Cambio de deadline aprobado por ${currentUser.email}. Nueva fecha: ${ticket.requestedDeadline || ticket.deadline}.`
+        : `Cambio de deadline rechazado por ${currentUser.email}. Se mantiene fecha: ${ticket.deadline || '-'}.`
+      comments[generateId()] = { message: autoMessage, author: currentUser.email, createdAt: new Date().toISOString(), internal: false, maximumAttention: false }
+      const updated = {
+        ...ticket,
+        comments,
+        deadline: approve ? (ticket.requestedDeadline || ticket.deadline) : ticket.deadline,
+        deadlineChangeStatus: approve ? "approved" : "rejected",
+        deadlineChangeReviewedBy: currentUser.email,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      await logActivity("deadline_change_reviewed", { ticketId: id, decision: approve ? "approved" : "rejected" })
+      openTicketDetailModal(id)
+      loadDashboard()
+      showToast(approve ? "Deadline actualizada" : "Solicitud rechazada", "ok")
+    }
+
+    async function moveTicket(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return alert("No tenés permisos para mover tickets")
+      const next = document.getElementById(`next-${id}`)?.value
+      if(!next) return
+
+      showToast("Moviendo ticket...", "info", 1600)
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const updated = { ...ticket, status: next, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status })
+      loadTickets()
+      await loadDashboard()
+      showToast("Ticket movido correctamente", "ok")
+    }
+
+    async function assignTicket(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return alert("No tenés permisos para asignar tickets")
+      const assignedTo = (document.getElementById(`assign-${id}`)?.value || "").trim().toLowerCase()
+      if(!assignedTo) return alert("Ingresá el email del analista")
+
+      const user = (await db.ref("users_by_email").child(emailKey(assignedTo)).once("value")).val()
+      if(!user || user.role !== "analista") return alert("El usuario no existe o no es analista")
+
+      showToast("Asignando ticket...", "info", 1600)
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const updated = { ...ticket, assignedTo, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      logActivity("ticket_asignado", { ticketId: id, assignedTo, assignedAt: new Date().toISOString() })
+      loadTickets()
+      showToast("Ticket asignado correctamente", "ok")
+    }
+
+    async function addComment(id){
+      const editor = document.getElementById(`comment-editor-${id}`)
+      const messageHtml = (editor?.innerHTML || "").trim()
+      const message = commentPlainTextFromHtml(messageHtml)
+      const file = document.getElementById(`comment-file-${id}`)?.files?.[0] || null
+      const internal = currentRole !== "consultor" ? !!document.getElementById(`comment-internal-${id}`)?.checked : false
+      const maximumAttention = currentRole !== "consultor" ? !!document.getElementById(`comment-max-attention-${id}`)?.checked : false
+      if(!message && !file) return
+
+      try{
+        showToast("Enviando comentario...", "info", 1600)
+        const ticket = cachedTickets.find(t => t.id === id)
+        if(!ticket) return
+        const comments = { ...(ticket.comments || {}) }
+        let attachment = null
+        if(file){
+          showToast("Subiendo archivo...", "info", 2000)
+          try{ attachment = await uploadAttachmentFile(file) }catch(err){ console.error("Fallo upload adjunto:", err); showToast(err?.message || "No se pudo subir adjunto, se enviará comentario sin archivo", "error", 3500) }
+        }
+        comments[generateId()] = { message, messageHtml, author: currentUser.email, createdAt: new Date().toISOString(), attachment, internal, maximumAttention }
+        const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+
+        await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+        mirrorToSheet("updateTicket", { id, ...updated })
+        const ix = cachedTickets.findIndex(t => t.id === id)
+        if(ix >= 0) cachedTickets[ix] = updated
+        renderTicketsFromData(cachedTickets)
+        if(editor) editor.innerHTML = ""
+        const fileInput = document.getElementById(`comment-file-${id}`)
+        if(fileInput) fileInput.value = ""
+        const internalInput = document.getElementById(`comment-internal-${id}`)
+        if(internalInput) internalInput.checked = false
+        const maxInput = document.getElementById(`comment-max-attention-${id}`)
+        if(maxInput) maxInput.checked = false
+        logActivity("ticket_comentario", { ticketId: id })
+        const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+        if(detailOpen) openTicketDetailModal(id)
+        loadDashboard()
+        showToast("Comentario enviado correctamente", "ok")
+      }catch(err){
+        console.error("Error comentando:", err)
+        showToast(err?.message || "No se pudo subir el archivo/comentario", "error", 3500)
+      }
+    }
+
+
+
+
+
+    async function deleteComment(ticketId, commentId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || !commentId) return
+      const comments = { ...(ticket.comments || {}) }
+      const c = comments[commentId]
+      if(!c) return
+      const mine = String(c.author||"").toLowerCase() === String(currentUser.email||"").toLowerCase()
+      if(!(mine || currentRole === "admin")) return alert("No tenés permiso para borrar este comentario")
+      delete comments[commentId]
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+      if(detailOpen) openTicketDetailModal(ticketId)
+      loadDashboard()
+    }
+
+    async function reactToComment(ticketId, commentId, emoji){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || !commentId) return
+      const comments = { ...(ticket.comments || {}) }
+      const comment = { ...(comments[commentId] || {}) }
+      const reactions = normalizeReactionData(comment.reactions || {})
+      const key = reactionKeyFromEmoji(emoji)
+      if(!reactions[key]) reactions[key] = { emoji, users: {} }
+      const users = { ...(reactions[key].users || {}) }
+      const me = emailKey(currentUser.email)
+      if(users[me]) delete users[me]; else users[me] = true
+      reactions[key] = { emoji, users }
+      comment.reactions = reactions
+      comments[commentId] = comment
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      renderTicketsFromData(cachedTickets)
+      const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+      if(detailOpen) openTicketDetailModal(ticketId)
+    }
+
+    async function pickCustomReaction(ticketId, commentId, ev){
+      openEmojiPicker(ticketId, commentId, ev?.currentTarget || ev?.target || null)
+    }
+
+    async function deleteTicket(id){
+      if(!confirm("¿Seguro que querés borrar este ticket?")) return
+      showToast("Eliminando ticket...", "info", 1600)
+      const ticket = cachedTickets.find(t => t.id === id)
+      await db.ref("tickets").child(ticket?.dbKey || emailKey(id)).remove()
+      mirrorToSheet("deleteTicket", { id })
+      logActivity("ticket_borrado", { ticketId: id })
+      loadTickets()
+      await loadDashboard()
+      showToast("Ticket eliminado correctamente", "ok")
+    }
+
+    async function saveUserAccess(){
+      if(currentRole !== "admin") return alert("Solo admin puede crear usuarios")
+      const email = document.getElementById("uEmail").value.trim().toLowerCase()
+      const password = document.getElementById("uPassword").value.trim()
+      const role = document.getElementById("uRole").value
+      const photoFile = document.getElementById("uPhoto")?.files?.[0] || null
+      if(!email || !password) return alert("Completá email y contraseña")
+      const policy = passwordPolicyError(password)
+      if(policy) return alert(policy)
+
+      showToast("Guardando usuario...", "info", 1600)
+      let photoUrl = ""
+      let photoFileId = ""
+      let photoDataUrl = ""
+      let uploaded = null
+      if(photoFile){
+        uploaded = await uploadUserPhotoFile(photoFile)
+        photoUrl = uploaded.url || ""
+        photoFileId = uploaded.fileId || ""
+        photoDataUrl = uploaded.inline ? (uploaded.url || "") : ""
+      }
+
+      const secureFields = await buildPasswordFields(password)
+      const payload = {
+        key: emailKey(email),
+        email, password: "", role, active: true,
+        createdAt: new Date().toISOString(), createdBy: currentUser.email,
+        ...secureFields,
+        photoUrl,
+        photoFileId,
+        photoDataUrl
+      }
+      await adminWrite("upsertUser", payload)
+      await db.ref("users_by_email").child(emailKey(email)).set(payload)
+      alert("Usuario creado correctamente")
+      document.getElementById("uEmail").value = ""
+      document.getElementById("uPassword").value = ""
+      document.getElementById("uPhoto").value = ""
+      await loadUsersAdmin()
+      await loadFilterOptions()
+    }
+
+    async function loadUsersAdmin(){
+      const container = document.getElementById("usersList")
+      if(!container) return
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).length ? Object.values(usersMap) : await fetchUsersFromSheet()
+      if(!users.length){ container.innerHTML = "Sin usuarios cargados"; return }
+      container.innerHTML = users.map(u => {
+        const key = emailKey(u.email)
+        const isSelf = (u.email||"").toLowerCase() === (currentUser.email||"").toLowerCase()
+        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} · Clave: Oculta</span></div></div><div class="inline"><input id="user-photo-${key}" type="file" accept="image/*" style="max-width:200px;margin:0"><button class="ghost" onclick="updateUserPhoto('${key}','${u.email||''}','${u.role||'consultor'}', this)">Actualizar foto</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
+      }).join("")
+    }
+
+    async function updateUserPhoto(key,email,role,btn){
+      if(currentRole !== "admin") return
+      const file = document.getElementById(`user-photo-${key}`)?.files?.[0]
+      if(!file) return alert("Seleccioná una foto")
+      const button = btn || null
+      const oldText = button ? button.textContent : ""
+      try{
+        if(button){ button.disabled = true; button.textContent = "Cambiando..." }
+        showToast("Guardando foto...", "info", 1800)
+        const uploaded = await uploadUserPhotoFile(file)
+        const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).length ? Object.values(usersMap) : await fetchUsersFromSheet()
+        const existing = users.find(u => emailKey(u.email) === key) || {}
+        const payload = {
+          key,
+          email,
+          password: existing.password || "",
+          passwordHash: existing.passwordHash || "",
+          passwordSalt: existing.passwordSalt || "",
+          passwordUpdatedAt: existing.passwordUpdatedAt || "",
+          role,
+          active: existing.active !== false,
+          createdAt: existing.createdAt || new Date().toISOString(),
+          createdBy: existing.createdBy || currentUser.email,
+          lastAccessAt: existing.lastAccessAt || "",
+          photoUrl: uploaded.url || "",
+          photoFileId: uploaded.fileId || "",
+          photoDataUrl: uploaded.inline ? (uploaded.url || "") : (existing.photoDataUrl || "")
+        }
+        await adminWrite("upsertUser", payload)
+        await db.ref("users_by_email").child(key).update(payload)
+        showToast("Foto actualizada", "ok")
+        await loadUsersAdmin()
+        await loadFilterOptions()
+      }catch(err){
+        console.error("Error actualizando foto:", err)
+        showToast(err?.message || "No se pudo actualizar la foto", "error", 3000)
+      }finally{
+        if(button){ button.disabled = false; button.textContent = oldText || "Actualizar foto" }
+      }
+    }
+
+    async function deleteUserAccess(key,email){
+      if(currentRole !== "admin") return alert("Solo admin puede eliminar usuarios")
+      if(!confirm(`¿Eliminar acceso para ${email}?`)) return
+      await db.ref("users_by_email").child(key).remove()
+      await adminWrite("deleteUser", { key })
+      await loadUsersAdmin()
+      await loadFilterOptions()
+    }
+
+    function setAnalystActivityTab(tab){
+      analystActivityTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
+      const comments = document.getElementById("recentActivity")
+      const alerts = document.getElementById("recentActivityAlerts")
+      const deadlines = document.getElementById("recentActivityDeadlines")
+      const btnComments = document.getElementById("analyst-tab-comments")
+      const btnAlerts = document.getElementById("analyst-tab-alerts")
+      const btnDeadlines = document.getElementById("analyst-tab-deadlines")
+      if(comments) comments.classList.toggle("hidden", analystActivityTab !== "comments")
+      if(alerts) alerts.classList.toggle("hidden", analystActivityTab !== "alerts")
+      if(deadlines) deadlines.classList.toggle("hidden", analystActivityTab !== "deadlines")
+      if(btnComments) btnComments.classList.toggle("ghost", analystActivityTab !== "comments")
+      if(btnAlerts) btnAlerts.classList.toggle("ghost", analystActivityTab !== "alerts")
+      if(btnDeadlines) btnDeadlines.classList.toggle("ghost", analystActivityTab !== "deadlines")
+    }
+
+    function setConsultorActivityTab(tab){
+      consultorActivityTab = tab === "requests" ? "requests" : "comments"
+      const comments = document.getElementById("consultorCommentsActivity")
+      const requests = document.getElementById("consultorDeadlineRequests")
+      const btnComments = document.getElementById("consultor-tab-comments")
+      const btnRequests = document.getElementById("consultor-tab-requests")
+      if(comments) comments.classList.toggle("hidden", consultorActivityTab !== "comments")
+      if(requests) requests.classList.toggle("hidden", consultorActivityTab !== "requests")
+      if(btnComments) btnComments.classList.toggle("ghost", consultorActivityTab !== "comments")
+      if(btnRequests) btnRequests.classList.toggle("ghost", consultorActivityTab !== "requests")
+    }
+
+
+    function toLocalDateOnly(date){
+      const y = date.getFullYear()
+      const m = String(date.getMonth()+1).padStart(2,'0')
+      const d = String(date.getDate()).padStart(2,'0')
+      return `${y}-${m}-${d}`
+    }
+
+    function businessDaysBetweenArg(today, target){
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const end = new Date(target.getFullYear(), target.getMonth(), target.getDate())
+      if(Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+      if(end < start) return 0
+      let count = 0
+      const day = new Date(start)
+      while(day <= end){
+        const dow = day.getDay()
+        if(dow !== 0 && dow !== 6) count++
+        day.setDate(day.getDate()+1)
+      }
+      return Math.max(0, count-1)
+    }
+
+    async function requestDeadlineChangeFromDashboard(ticketId, triggerEl){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return alert("No se encontró el ticket")
+      if(currentRole !== "analista") return alert("Solo analista puede solicitar cambio de deadline desde actividad")
+      const currentValue = ticket.deadline || toLocalDateOnly(new Date())
+      const requestedDeadline = await pickDateFromCalendar(currentValue, triggerEl)
+      if(!requestedDeadline) return
+      const comments = { ...(ticket.comments || {}) }
+      const autoMessage = `Solicitud automática: ${currentUser.email} solicita cambio de deadline a ${requestedDeadline} para revisión del consultor.`
+      const duplicated = Object.values(comments).some(c => String(c?.message||'').trim() === autoMessage && String(c?.author||'').toLowerCase() === String(currentUser.email||'').toLowerCase())
+      if(!duplicated) comments[generateId()] = { message: autoMessage, author: currentUser.email, createdAt: new Date().toISOString(), internal: false, maximumAttention: true }
+      const updated = {
+        ...ticket,
+        requestedDeadline,
+        deadlineChangeStatus: "pending",
+        deadlineChangeRequestedBy: currentUser.email,
+        deadlineChangeRequestedAt: new Date().toISOString(),
+        deadlineChangeReviewedBy: "",
+        comments,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      await logActivity("deadline_change_requested", { ticketId, requestedDeadline, source: "analyst_dashboard" })
+      await logActivity("ticket_comentario", { ticketId, source: "deadline_request_auto_comment" })
+      await loadDashboard()
+      showToast("Solicitud enviada al consultor", "ok")
+    }
+
+    function formatDateDMY(value){
+      if(!value) return "-"
+      const d = new Date(`${value}T00:00:00`)
+      if(Number.isNaN(d.getTime())) return htmlEscape(String(value))
+      const dd = String(d.getDate()).padStart(2,'0')
+      const mm = String(d.getMonth()+1).padStart(2,'0')
+      const yy = d.getFullYear()
+      return `${dd}/${mm}/${yy}`
+    }
+
+    async function pickDateFromCalendar(defaultValue, anchorEl){
+      return await new Promise((resolve)=>{
+        const input = document.createElement('input')
+        input.type = 'date'
+        input.value = defaultValue || ''
+        input.style.position = 'fixed'
+        input.style.opacity = '1'
+        input.style.zIndex = '9999'
+        input.style.pointerEvents = 'auto'
+        const r = anchorEl?.getBoundingClientRect ? anchorEl.getBoundingClientRect() : null
+        if(r){
+          input.style.left = `${Math.max(8, Math.round(r.left))}px`
+          input.style.top = `${Math.max(8, Math.round(r.bottom + 4))}px`
+        }else{
+          input.style.left = '16px'
+          input.style.top = '16px'
+        }
+        document.body.appendChild(input)
+        let resolved = false
+        const done = () => {
+          if(resolved) return
+          resolved = true
+          const val = (input.value || '').trim()
+          input.remove()
+          resolve(val || null)
+        }
+        input.addEventListener('change', done, { once:true })
+        input.addEventListener('blur', ()=>setTimeout(done,150), { once:true })
+        if(input.showPicker) input.showPicker(); else input.click()
+        input.focus()
+      })
+    }
+
+    function renderDashboardList(label, tickets){
+      const container = document.getElementById("dashboardTicketList")
+      if(!container) return
+      if(!tickets?.length){
+        container.innerHTML = `<div class="small">${htmlEscape(label)}: sin tickets.</div>`
+        return
+      }
+      container.innerHTML = `
+        <div class="small" style="margin-bottom:6px"><strong>${htmlEscape(label)}</strong> (${tickets.length})</div>
+        ${tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+      `
+    }
+
+    function showDashboardList(type){
+      const map = {
+        urgent: "Tickets urgentes",
+        problems: "Tickets con problemas",
+        near_deadline: "Tickets a 3 días de deadline",
+        unassigned: "Pendientes por asignar",
+        doing: "Tickets en curso",
+        pending_messages: "Tickets con mensajes pendientes"
+      }
+      renderDashboardList(map[type] || "Tickets", dashboardListCache[type] || [])
+    }
+
+    async function loadDashboard(){
+      try{
+        let ticketsArr = cachedTickets || []
+        if(!ticketsArr.length){
+          try{ ticketsArr = await fetchTicketsFromDb() }catch(_){ ticketsArr = [] }
+        }
+        const normalizedTickets = ticketsArr.map(t => ({ ...t, comments: parseCommentsValue(t.comments) }))
+
+        let users = Object.values(cachedUsersByEmail || {})
+        if(!users.length){
+          try{ users = Object.values((await db.ref("users_by_email").once("value")).val() || {}) }catch(_){ users = [] }
+        }
+
+        let activity = latestActivityLogs || []
+        if(!activity.length){
+          try{ activity = Object.values((await db.ref("activity_logs").limitToLast(30).once("value")).val() || {}) }catch(_){ activity = [] }
+        }
+
+        const kpiSource = currentRole === "consultor"
+          ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          : normalizedTickets
+        const nearDeadlineTickets = kpiSource.filter(t => {
+          if(!t.deadline) return false
+          const businessDays = businessDaysBetweenArg(new Date(), new Date(`${t.deadline}T00:00:00`))
+          return businessDays >= 0 && businessDays <= 3
+        })
+        const unassignedTickets = kpiSource.filter(t => t.status === "unassigned")
+        const doingTickets = kpiSource.filter(t => t.status === "doing")
+        const problemTickets = kpiSource.filter(t => t.hasProblem)
+        const urgentTickets = kpiSource.filter(t => t.urgentRequested)
+        const pendingMessageTickets = currentRole === "consultor"
+          ? kpiSource.filter(t => unreadCommentsCount(t) > 0)
+          : []
+
+        const kpiUnassigned = document.getElementById("kpiUnassigned")
+        const kpiDoing = document.getElementById("kpiDoing")
+        const kpiProblems = document.getElementById("kpiProblems")
+        const kpiUrgent = document.getElementById("kpiUrgent")
+        const kpiNearDeadline = document.getElementById("kpiNearDeadline")
+        const kpiPendingMessages = document.getElementById("kpiPendingMessages")
+        if(kpiUnassigned) kpiUnassigned.innerText = unassignedTickets.length
+        if(kpiDoing) kpiDoing.innerText = doingTickets.length
+        if(kpiProblems) kpiProblems.innerText = problemTickets.length
+        if(kpiUrgent) kpiUrgent.innerText = urgentTickets.length
+        if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
+        if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
+
+        dashboardListCache = {
+          urgent: urgentTickets,
+          problems: problemTickets,
+          near_deadline: nearDeadlineTickets,
+          unassigned: unassignedTickets,
+          doing: doingTickets,
+          pending_messages: pendingMessageTickets
+        }
+        showDashboardList(currentRole === "consultor" ? "pending_messages" : "urgent")
+
+        if(currentRole === "consultor") {
+          const onlyMine = normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
+          const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
+
+          const commentsContainer = document.getElementById("consultorCommentsActivity")
+          if(commentsContainer){
+            const comments = onlyMine.flatMap(t => Object.values(t.comments||{}).filter(c => !c?.internal).map(c => ({ ticketId: t.id, ticketTitle: t.title, ...c })))
+              .filter(c => { const r = roleByEmail[String(c.author||"").toLowerCase()]; return r === "admin" || r === "analista" })
+              .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+            commentsContainer.innerHTML = comments.length
+              ? comments.map(c => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${c.ticketId||"-"}')"><div class="feedType">${htmlEscape(c.author||"-")}</div><div class="feedMeta">${htmlEscape(c.message||"")}<br>(${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}) ${c.createdAt ? "· " + new Date(c.createdAt).toLocaleString() : ""}</div></div>`).join("")
+              : `<p class="small">Sin comentarios aún.</p>`
+          }
+
+          const reqContainer = document.getElementById("consultorDeadlineRequests")
+          if(reqContainer){
+            const pending = onlyMine.filter(t => t.deadlineChangeStatus === 'pending')
+            reqContainer.innerHTML = pending.length
+              ? pending.map(t => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Nueva fecha solicitada: ${htmlEscape(t.requestedDeadline||"-")}</div></div><div class="inline" style="gap:6px"><button class="ghost" onclick="applyDeadlineDecision('${t.id}', true)">Aprobar</button><button class="danger" onclick="applyDeadlineDecision('${t.id}', false)">Rechazar</button></div></div></div>`).join("")
+              : `<p class="small">Sin solicitudes pendientes.</p>`
+          }
+          setConsultorActivityTab(consultorActivityTab)
+          return
+        }
+
+        const container = document.getElementById(currentRole === "admin" ? "adminRecentActivity" : "recentActivity")
+        if(!container) return
+        let sorted = activity.sort((a,b)=>new Date(b.timestampIso||0)-new Date(a.timestampIso||0))
+        if(currentRole === "analista"){
+          const myTickets = normalizedTickets.filter(t => String(t.assignedTo||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
+          const myTicketIds = new Set(myTickets.map(t => t.id))
+          const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
+          sorted = sorted.filter(it => it.eventType === "ticket_comentario" && myTicketIds.has(it.ticketId) && roleByEmail[String(it.email||"").toLowerCase()] === "consultor")
+
+          if(!sorted.length) container.innerHTML = `<p class="small">Sin comentarios recientes.</p>`
+          else{
+            container.innerHTML = sorted.map(it => `
+              <div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${it.ticketId||"-"}')">
+                <div class="feedTop">
+                  <div>
+                    <div class="feedType">Comentario reciente</div>
+                    <div class="feedMeta">${htmlEscape(it.email || "sin-usuario")} · ${it.timestampIso ? new Date(it.timestampIso).toLocaleString() : ""}</div>
+                  </div>
+                  <span class="badge">${htmlEscape(it.ticketId || "-")}</span>
+                </div>
+              </div>
+            `).join("")
+          }
+
+          const today = new Date()
+          const calculated = myTickets
+            .map(t => {
+              const businessDays = t.deadline ? businessDaysBetweenArg(today, new Date(`${t.deadline}T00:00:00`)) : null
+              return { ticket: t, businessDays }
+            })
+            .sort((a,b)=> (a.businessDays ?? 9999) - (b.businessDays ?? 9999))
+
+          const alertsContainer = document.getElementById("recentActivityAlerts")
+          if(alertsContainer){
+            const alerts = calculated.filter(x => x.ticket.urgentRequested)
+            alertsContainer.innerHTML = alerts.length
+              ? alerts.map(({ticket}) => `
+                  <div class="feedItem">
+                    <div class="feedTop">
+                      <div>
+                        <div class="feedType">${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</div>
+                        <div class="feedMeta">🚨 Alerta urgente marcada por consultor.</div>
+                      </div>
+                    </div>
+                  </div>
+                `).join("")
+              : `<p class="small">Sin alertas urgentes.</p>`
+          }
+
+          const deadlinesContainer = document.getElementById("recentActivityDeadlines")
+          if(deadlinesContainer){
+            const deadlines = calculated.filter(x => x.businessDays !== null && x.businessDays <= 5)
+            deadlinesContainer.innerHTML = deadlines.length
+              ? deadlines.map(({ticket, businessDays}) => `
+                  <div class="feedItem">
+                    <div class="feedTop">
+                      <div>
+                        <div class="feedType">${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</div>
+                        <div class="feedMeta">Deadline: ${htmlEscape(ticket.deadline||"-")} · Faltan ${businessDays} día(s) hábil(es) ARG</div>
+                      </div>
+                      <button class="ghost" onclick="requestDeadlineChangeFromDashboard('${ticket.id}', this)">Solicitar cambio de deadline</button>
+                    </div>
+                  </div>
+                `).join("")
+              : `<p class="small">Sin tickets cerca de deadline.</p>`
+          }
+          setAnalystActivityTab(analystActivityTab)
+          return
+        }
+        if(!sorted.length){
+          container.innerHTML = `<p class="small">Sin actividad reciente.</p>`
+        }else{
+          container.innerHTML = sorted.map(it => `
+            <div class="feedItem">
+              <div class="feedTop">
+                <div>
+                  <div class="feedType">${htmlEscape(it.eventType || "evento")}</div>
+                  <div class="feedMeta">${htmlEscape(it.email || "sin-usuario")} · ${it.timestampIso ? new Date(it.timestampIso).toLocaleString() : ""}</div>
+                </div>
+                <span class="badge ${it.role === "admin" ? "ok" : "off"}">${htmlEscape(it.role || "-")}</span>
+              </div>
+            </div>
+          `).join("")
+        }
+      }catch(err){ console.error("Error loadDashboard", err) }
+    }
+
+    async function ensureDefaultClients(){
+      const samples = ["Cliente de prueba 1.", "Cliente de prueba 2."]
+      const clients = Object.values((await db.ref("clients").once("value")).val() || {})
+      for(const name of samples){
+        const exists = clients.some(c => (c.name||"") === name)
+        if(!exists){
+          await db.ref("clients").child(emailKey(name)).set({ name, createdAt: new Date().toISOString(), createdBy: "system" })
+          mirrorToSheet("upsertClient", { key: emailKey(name), name, createdAt: new Date().toISOString(), createdBy: "system" })
+        }
+      }
+    }
+
+    async function init(){
+      try{
+        applyTheme()
+        await ensureDefaultUsers()
+        await ensureDefaultClients()
+        const savedEmail = (localStorage.getItem("sessionUserEmail") || "").trim().toLowerCase()
+        const savedRole = (localStorage.getItem("sessionUserRole") || "").trim().toLowerCase()
+        if(savedEmail){
+          const user = await getUserFromDb(savedEmail)
+          if(user && user.active !== false){
+            currentUser = { email: user.email }
+            currentRole = user.role || savedRole || "consultor"
+            persistSession()
+            renderApp()
+          }else{
+            clearSession()
+            renderLogin()
+          }
+        }else{
+          renderLogin()
+        }
+      }catch(err){
+        console.error("Error en inicialización:", err)
+        renderLogin()
+        showToast("La app inició con advertencias. Revisá la consola.", "error", 3000)
+      }
+    }
+
+    init()
+  </script>
+</body>
+</html>
