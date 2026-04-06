@@ -1210,6 +1210,11 @@ Cliente B`)
       const container = document.getElementById("boardContainer")
       if(!container) return
       renderTicketsFromData(cachedTickets || [])
+      if(pendingOpenTicketId && (cachedTickets||[]).some(t => t.id === pendingOpenTicketId)){
+        const toOpen = pendingOpenTicketId
+        pendingOpenTicketId = ""
+        openTicketDetailModal(toOpen)
+      }
     }
 
 
