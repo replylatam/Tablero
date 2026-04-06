@@ -112,6 +112,7 @@
     .column{background:rgba(2,6,23,.35);border:1px solid var(--stroke);border-radius:12px;padding:10px;min-height:220px;height:100%;display:flex;flex-direction:column}
     .column h4{margin:4px 0 10px;font-size:14px;text-transform:uppercase;color:#cbd5e1;letter-spacing:.3px}
     .ticket{background:rgba(15,23,42,.8);border:1px solid rgba(148,163,184,.2);border-radius:10px;padding:10px;margin-bottom:8px;border-left:5px solid rgba(148,163,184,.45)}
+    .ticket.problemFlag{border-left-color:#ef4444!important;background:rgba(127,29,29,.28)}
     .ticket.priorityAlta{border-left-color:#ef4444}
     .ticket.priorityMedia{border-left-color:#f59e0b}
     .ticket.priorityBaja{border-left-color:#22c55e}
@@ -132,6 +133,7 @@
     .ticketListHeader,.ticketListRow{display:grid;grid-template-columns:120px 1.2fr 1fr 170px 220px 130px 100px;gap:10px;align-items:center;padding:12px 14px}
     .ticketListHeader{font-size:11px;text-transform:uppercase;letter-spacing:.45px;color:#cbd5e1;background:rgba(59,130,246,.14);border-bottom:1px solid rgba(148,163,184,.25);font-weight:700}
     .ticketListRow{border-bottom:1px solid rgba(148,163,184,.16);background:rgba(15,23,42,.25);transition:transform .18s ease,background .2s ease,box-shadow .2s ease}
+    .ticketListRow.problemFlag{background:rgba(127,29,29,.3);box-shadow:inset 0 0 0 1px rgba(239,68,68,.45)}
     .ticketListRow:last-child{border-bottom:none}
     .ticketListRow:hover{background:rgba(30,41,59,.6);transform:translateY(-1px);box-shadow:inset 0 0 0 1px rgba(125,211,252,.35)}
     .ticketListRowTitle{font-weight:700}
@@ -231,6 +233,7 @@
     var ticketTimerIntervals = {}
     var realtimeStreamsStarted = false
     var latestActivityLogs = []
+    var pendingOpenTicketId = ""
 
     const STATUS = {
       unassigned: "Pendientes de asignar",
@@ -253,6 +256,18 @@
     function emailKey(email){ return (email||"").toLowerCase().replace(/[.#$/\[\]]/g, "_") }
     function htmlEscape(v){ return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;") }
     function generateId(){ return (crypto?.randomUUID?.() || `tk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`) }
+    function reactionKeyFromEmoji(emoji){ return `emoji_${btoa(unescape(encodeURIComponent(String(emoji||"")))).replaceAll("=","")}` }
+    function emojiFromReactionKey(key){
+      if(key === "thumbsUp") return "👍"
+      if(key === "heart") return "❤️"
+      if(key === "eyes") return "👀"
+      if(!String(key||"").startsWith("emoji_")) return ""
+      try{ return decodeURIComponent(escape(atob(String(key).slice(6)))) }catch(_){ return "" }
+    }
+    function buildTicketLink(ticketId){
+      const base = `${location.origin}${location.pathname}`
+      return `${base}#ticket=${encodeURIComponent(ticketId||"")}`
+    }
     function parseGvizJson(text){
       const raw = text.replace(/^\/\/O_o\s*\n/, "")
       const start = raw.indexOf("{")
@@ -964,8 +979,24 @@ Cliente B`)
           <label>Email</label><input id="loginEmail" type="email">
           <label>Contraseña</label><input id="loginPassword" type="password">
           <button id="loginBtn" onclick="handleLogin()" style="width:100%">Entrar</button>
+          <button class="ghost" onclick="requestPasswordReset()" style="width:100%;margin-top:8px">Olvide la contraseña</button>
           <p class="small" style="margin-top:10px">Tip de seguridad: usá contraseñas únicas y robustas para evitar alertas de filtraciones.</p>
         </div>`
+    }
+
+    async function requestPasswordReset(){
+      const emailInput = (document.getElementById("loginEmail")?.value || "").trim().toLowerCase()
+      const email = (prompt("Ingresá tu email para avisar al administrador.", emailInput) || "").trim().toLowerCase()
+      if(!email) return
+      const payload = { email, createdAt: new Date().toISOString(), status: "pending", source: "login_screen" }
+      await db.ref("password_reset_requests").child(generateId()).set(payload)
+      await db.ref("activity_logs").push({
+        eventType: "password_reset_requested",
+        email,
+        role: "guest",
+        timestampIso: payload.createdAt
+      })
+      showToast("Solicitud enviada al administrador para cambio de contraseña.", "ok", 3200)
     }
 
     async function handleLogin(){
@@ -1057,12 +1088,9 @@ Cliente B`)
             <div class="card">
               <h3 style="margin:0 0 10px">Dashboard</h3>
               <div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : ""}">
-                <div class="kpi"><div class="label">Tickets totales</div><div class="value" id="kpiTotal">-</div></div>
                 <div class="kpi"><div class="label">Pendientes de asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                 <div class="kpi"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
-                <div class="kpi"><div class="label">Finalizadas</div><div class="value" id="kpiDone">-</div></div>
-                <div class="kpi"><div class="label">Analistas</div><div class="value" id="kpiOperators">-</div></div>
-                ${currentRole !== "consultor" ? `<div class="kpi"><div class="label">Último acceso analista</div><div class="value" style="font-size:14px;margin-top:8px" id="kpiLastAccess">-</div></div>` : ""}
+                ${currentRole !== "consultor" ? `<div class="kpi"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div><div class="kpi"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>` : `<div class="kpi"><div class="label">Finalizadas</div><div class="value" id="kpiDone">-</div></div><div class="kpi"><div class="label">Analistas</div><div class="value" id="kpiOperators">-</div></div><div class="kpi"><div class="label">Último acceso analista</div><div class="value" style="font-size:14px;margin-top:8px" id="kpiLastAccess">-</div></div>`}
               </div>
               
             </div>
@@ -1131,6 +1159,9 @@ Cliente B`)
         deadlineChangeRequestedBy: "",
         deadlineChangeRequestedAt: "",
         deadlineChangeReviewedBy: "",
+        hasProblem: false,
+        problemReportedBy: "",
+        problemReportedAt: "",
         helpers: [],
         timeTracking: { users: {}, consolidatedMinutes: 0 }
       }
@@ -1150,6 +1181,11 @@ Cliente B`)
       const container = document.getElementById("boardContainer")
       if(!container) return
       renderTicketsFromData(cachedTickets || [])
+      if(pendingOpenTicketId && (cachedTickets||[]).some(t => t.id === pendingOpenTicketId)){
+        const toOpen = pendingOpenTicketId
+        pendingOpenTicketId = ""
+        openTicketDetailModal(toOpen)
+      }
     }
 
 
@@ -1220,8 +1256,8 @@ Cliente B`)
             const normalizedStatus = STATUS[t.status] ? t.status : "unassigned"
             const unreadCount = unreadCommentsCount(t)
             return `
-              <div class="ticketListRow">
-                <div><span class="ticketCode">${htmlEscape(t.id||"-")}</span></div>
+              <div class="ticketListRow ${t.hasProblem ? "problemFlag" : ""}">
+                <div><span class="ticketCode">${htmlEscape(t.id||"-")}</span><div class="small"><a href="${htmlEscape(buildTicketLink(t.id))}" onclick="event.preventDefault();openTicketFromLink('${t.id}')">Abrir link</a> · <button class="commentDeleteText" onclick="copyTicketLink('${t.id}')">Copiar</button></div></div>
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
@@ -1240,14 +1276,15 @@ Cliente B`)
       const assignedAvatar = assignedTo ? userAvatarByEmail(assignedTo) : ""
       const canDrag = currentRole === "admin" || currentRole === "analista"
       return `
-        <div class="ticket ${priorityClass(ticket.priority)}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""}>
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""}>
           <h5><span class="ticketCode">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px"><button class="ghost" onclick="openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="small"><a href="${htmlEscape(buildTicketLink(ticket.id))}" onclick="event.preventDefault();openTicketFromLink('${ticket.id}')">🔗 ${htmlEscape(buildTicketLink(ticket.id))}</a></div>
+          <div class="inline" style="margin-top:8px"><button class="ghost" onclick="copyTicketLink('${ticket.id}')">Copiar link</button><button class="ghost" onclick="openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -1282,6 +1319,11 @@ Cliente B`)
 
       document.getElementById("ticketDetailContent").innerHTML = `
         ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<div class="inline" style="margin-bottom:8px"><span class="urgentTopFlag">🚨 URGENTE</span></div>` : ''}
+        ${ticketWithRead.hasProblem ? `<div class="inline" style="margin-bottom:8px"><span class="urgentTopFlag">🛑 CON PROBLEMAS</span></div>` : ''}
+        <div class="inline" style="margin-bottom:8px;justify-content:space-between;gap:8px">
+          <div class="small"><a href="${htmlEscape(buildTicketLink(ticketWithRead.id))}" onclick="event.preventDefault();openTicketFromLink('${ticketWithRead.id}')">🔗 ${htmlEscape(buildTicketLink(ticketWithRead.id))}</a></div>
+          <div class="inline" style="gap:8px"><button class="ghost" onclick="copyTicketLink('${ticketWithRead.id}')">Copiar link</button>${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : ""}</div>
+        </div>
         <div class="detailLayout">
           <div>
             <div class="row">
@@ -1325,6 +1367,21 @@ Cliente B`)
       if(headerControls) headerControls.innerHTML = ""
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = "Detalle del ticket"
+    }
+
+    function copyTicketLink(ticketId){
+      const link = buildTicketLink(ticketId)
+      navigator.clipboard?.writeText(link).then(() => {
+        showToast("Link copiado", "ok", 1800)
+      }).catch(() => {
+        prompt("Copiá este link:", link)
+      })
+    }
+
+    function openTicketFromLink(ticketId){
+      if(!ticketId) return
+      location.hash = `ticket=${encodeURIComponent(ticketId)}`
+      openTicketDetailModal(ticketId)
     }
 
 
@@ -1469,7 +1526,7 @@ Cliente B`)
           </div>
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions"><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👍')">👍 ${Object.keys((c.reactions||{}).thumbsUp||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','❤️')">❤️ ${Object.keys((c.reactions||{}).heart||{}).length}</button><button class="ghost" style="padding:4px 8px" onclick="reactToComment('${id}','${c.id||""}','👀')">👀 ${Object.keys((c.reactions||{}).eyes||{}).length}</button></div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -1492,6 +1549,35 @@ Cliente B`)
           <div id="ticket-times-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "times" ? "" : "hidden"}">${renderTimesTab(id, usersByEmail)}</div>
         </div>
       `
+    }
+
+    function normalizeReactionData(reactions){
+      const src = reactions || {}
+      const normalized = {}
+      Object.entries(src).forEach(([key, value]) => {
+        if(value && value.users && typeof value.users === "object"){
+          normalized[key] = { emoji: value.emoji || emojiFromReactionKey(key) || "🙂", users: { ...(value.users || {}) } }
+          return
+        }
+        if(value && typeof value === "object"){
+          normalized[key] = { emoji: emojiFromReactionKey(key) || "🙂", users: { ...value } }
+        }
+      })
+      return normalized
+    }
+
+    function renderReactionButtons(ticketId, commentId, reactions){
+      const normalized = normalizeReactionData(reactions)
+      const defaults = ["👍", "❤️", "👀"]
+      defaults.forEach(emoji => {
+        const key = reactionKeyFromEmoji(emoji)
+        if(!normalized[key]) normalized[key] = { emoji, users: {} }
+      })
+      const items = Object.entries(normalized)
+        .sort((a,b) => defaults.indexOf(a[1].emoji) - defaults.indexOf(b[1].emoji))
+        .map(([key, info]) => `<button class="ghost" style="padding:4px 8px" onclick="reactToComment('${ticketId}','${commentId}','${htmlEscape(info.emoji)}')">${htmlEscape(info.emoji)} ${Object.keys(info.users||{}).length}</button>`)
+      items.push(`<button class="ghost" style="padding:4px 8px" onclick="pickCustomReaction('${ticketId}','${commentId}')">➕ Emoji</button>`)
+      return items.join("")
     }
 
 
@@ -1724,6 +1810,30 @@ Cliente B`)
       showToast(nextState ? "Ticket marcado como urgente" : "Urgente quitado", "ok")
     }
 
+    async function toggleProblemFlag(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const nextState = !ticket.hasProblem
+      const updated = {
+        ...ticket,
+        hasProblem: nextState,
+        problemReportedBy: nextState ? currentUser.email : "",
+        problemReportedAt: nextState ? new Date().toISOString() : "",
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      await logActivity("ticket_problema", { ticketId: id, hasProblem: nextState })
+      renderTicketsFromData(cachedTickets)
+      loadDashboard()
+      openTicketDetailModal(id)
+      showToast(nextState ? "Ticket marcado con problema" : "Problema resuelto", "ok")
+    }
+
 
 
     async function requestDeadlineChange(id){
@@ -1889,12 +1999,13 @@ Cliente B`)
       if(!ticket || !commentId) return
       const comments = { ...(ticket.comments || {}) }
       const comment = { ...(comments[commentId] || {}) }
-      const reactions = { ...(comment.reactions || {}) }
-      const key = emoji === "👍" ? "thumbsUp" : emoji === "❤️" ? "heart" : "eyes"
-      const users = { ...(reactions[key] || {}) }
+      const reactions = normalizeReactionData(comment.reactions || {})
+      const key = reactionKeyFromEmoji(emoji)
+      if(!reactions[key]) reactions[key] = { emoji, users: {} }
+      const users = { ...(reactions[key].users || {}) }
       const me = emailKey(currentUser.email)
       if(users[me]) delete users[me]; else users[me] = true
-      reactions[key] = users
+      reactions[key] = { emoji, users }
       comment.reactions = reactions
       comments[commentId] = comment
       const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -1905,6 +2016,12 @@ Cliente B`)
       renderTicketsFromData(cachedTickets)
       const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
       if(detailOpen) openTicketDetailModal(ticketId)
+    }
+
+    async function pickCustomReaction(ticketId, commentId){
+      const emoji = (prompt("Ingresá el emoji que querés usar:", "🔥") || "").trim()
+      if(!emoji) return
+      await reactToComment(ticketId, commentId, emoji)
     }
 
     async function deleteTicket(id){
@@ -2170,23 +2287,34 @@ Cliente B`)
           try{ activity = Object.values((await db.ref("activity_logs").limitToLast(30).once("value")).val() || {}) }catch(_){ activity = [] }
         }
 
-        let total = 0, unassigned = 0, doing = 0, done = 0
+        let total = 0, unassigned = 0, doing = 0, done = 0, problems = 0, urgent = 0
         const kpiSource = currentRole === "consultor" ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) : normalizedTickets
         kpiSource.forEach(t => {
           total++
           if(t.status === "unassigned") unassigned++
           if(t.status === "doing") doing++
           if(t.status === "done") done++
+          if(t.hasProblem) problems++
+          if(t.urgentRequested) urgent++
         })
 
         const ops = users.filter(u => u && u.role === "analista")
         const last = ops.map(u => u.lastAccessAt ? new Date(u.lastAccessAt).getTime() : 0).sort((a,b)=>b-a)[0] || 0
 
-        document.getElementById("kpiTotal").innerText = total
-        document.getElementById("kpiUnassigned").innerText = unassigned
-        document.getElementById("kpiDoing").innerText = doing
-        document.getElementById("kpiDone").innerText = done
-        document.getElementById("kpiOperators").innerText = ops.length
+        const kpiTotal = document.getElementById("kpiTotal")
+        const kpiUnassigned = document.getElementById("kpiUnassigned")
+        const kpiDoing = document.getElementById("kpiDoing")
+        const kpiDone = document.getElementById("kpiDone")
+        const kpiOperators = document.getElementById("kpiOperators")
+        const kpiProblems = document.getElementById("kpiProblems")
+        const kpiUrgent = document.getElementById("kpiUrgent")
+        if(kpiTotal) kpiTotal.innerText = total
+        if(kpiUnassigned) kpiUnassigned.innerText = unassigned
+        if(kpiDoing) kpiDoing.innerText = doing
+        if(kpiDone) kpiDone.innerText = done
+        if(kpiOperators) kpiOperators.innerText = ops.length
+        if(kpiProblems) kpiProblems.innerText = problems
+        if(kpiUrgent) kpiUrgent.innerText = urgent
         const lastAccessEl = document.getElementById("kpiLastAccess")
         if(lastAccessEl){
           lastAccessEl.innerText = last ? new Date(last).toLocaleString() : "Sin accesos"
@@ -2327,6 +2455,15 @@ Cliente B`)
     async function init(){
       try{
         applyTheme()
+        const hashMatch = (location.hash || "").match(/ticket=([^&]+)/)
+        if(hashMatch) pendingOpenTicketId = decodeURIComponent(hashMatch[1] || "")
+        window.addEventListener("hashchange", () => {
+          const m = (location.hash || "").match(/ticket=([^&]+)/)
+          const ticketId = m ? decodeURIComponent(m[1] || "") : ""
+          if(!ticketId) return
+          if((cachedTickets || []).some(t => t.id === ticketId)) openTicketDetailModal(ticketId)
+          else pendingOpenTicketId = ticketId
+        })
         renderLogin()
         await ensureDefaultUsers()
         await ensureDefaultClients()
