@@ -755,7 +755,7 @@
   <div id="closeSurveyModal" class="modalBack hidden">
     <div class="card modal">
       <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
-      <p class="small">Cerrar el ticket conlleva enviarle una encuesta de satisfacción al consultor. ¿Estás seguro que querés cerrarlo?</p>
+      <p class="small">Al cerrar el ticket, el analista califica al consultor en base a cómo llegó la solicitud y cómo fue la comunicación.</p>
       <div class="row">
         <div><label>¿Cómo recibiste el ticket?</label><select id="closeSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
         <div><label>Comunicación</label><select id="closeSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
@@ -764,6 +764,23 @@
       <div class="inline" style="justify-content:flex-end">
         <button class="secondary" onclick="closeCloseSurveyModal()">Cancelar</button>
         <button onclick="submitCloseSurveyAndCloseTicket()">Cerrar ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="consultorSurveyModal" class="modalBack hidden">
+    <div class="card modal">
+      <h3 style="margin-top:0">Encuesta pendiente del consultor</h3>
+      <p class="small">Completá la evaluación del analista para este ticket cerrado. Esta calificación alimenta el puntaje que verá el analista al iniciar sesión.</p>
+      <div class="small" id="consultorSurveyTicketInfo" style="margin-bottom:10px"></div>
+      <div class="row">
+        <div><label>¿Cómo recibiste la solución?</label><select id="consultorSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
+        <div><label>Comunicación del analista</label><select id="consultorSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
+        <div><label>Satisfacción general (1-10)</label><select id="consultorSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
+      </div>
+      <div class="inline" style="justify-content:flex-end">
+        <button class="secondary" onclick="closeConsultorSurveyModal()">Cancelar</button>
+        <button onclick="submitConsultorPendingSurvey()">Guardar encuesta</button>
       </div>
     </div>
   </div>
@@ -817,6 +834,7 @@
     var dashboardListCache = {}
     var headerMenuOpen = false
     var pendingCloseSurvey = null
+    var pendingConsultorSurveyTicket = null
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -1789,17 +1807,40 @@ Cliente B`)
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
       if(!surveys.length){ container.innerHTML = `<p class="small">Sin encuestas todavía.</p>`; return }
       const byAnalyst = {}
+      const byConsultor = {}
       surveys.forEach(s => {
         const k = String(s.analystEmail||"sin-analista").toLowerCase()
         if(!byAnalyst[k]) byAnalyst[k] = []
         byAnalyst[k].push(s)
+        const c = String(s.consultorEmail||"sin-consultor").toLowerCase()
+        if(!byConsultor[c]) byConsultor[c] = []
+        byConsultor[c].push(s)
       })
       const averages = Object.entries(byAnalyst).map(([analyst, list]) => {
-        const avg = list.reduce((acc,it)=>acc + normalizeQualityToTen(it.overall||0), 0) / Math.max(1, list.length)
-        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analyst))}</div><div class="feedMeta">Promedio satisfacción: ${avg.toFixed(2)} / 10 · Encuestas: ${list.length}</div></div>`
+        const rated = list.filter(it => String(it.ratedRole||"consultor") === "analista")
+        const avg = rated.length ? rated.reduce((acc,it)=>acc + normalizeQualityToTen(it.overall||0), 0) / rated.length : 0
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analyst))}</div><div class="feedMeta">Puntaje recibido por analista (encuestas del consultor): ${rated.length ? `${avg.toFixed(2)} / 10` : "sin datos"} · Encuestas: ${rated.length}</div></div>`
       }).join("")
-      const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(normalizeQualityToTen(s.overall||0)))} / 10).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
-      container.innerHTML = `<h4 style="margin:0 0 8px">Promedio por analista</h4>${averages}<h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}`
+      const consultorAverages = Object.entries(byConsultor).map(([consultor, list]) => {
+        const rated = list.filter(it => String(it.ratedRole||"consultor") === "consultor")
+        const avg = rated.length ? rated.reduce((acc,it)=>acc + normalizeQualityToTen(it.overall||0), 0) / rated.length : 0
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(consultor))}</div><div class="feedMeta">Puntaje recibido por consultor (encuestas del analista): ${rated.length ? `${avg.toFixed(2)} / 10` : "sin datos"} · Encuestas: ${rated.length}</div></div>`
+      }).join("")
+      const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Evalúa: <strong>${htmlEscape(userDisplayNameByEmail(s.raterEmail || "-"))}</strong> (${htmlEscape(s.raterRole || "-")}) → <strong>${htmlEscape(userDisplayNameByEmail(s.ratedEmail || "-"))}</strong> (${htmlEscape(s.ratedRole || "-")}).<br>Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(normalizeQualityToTen(s.overall||0)))} / 10).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
+      container.innerHTML = `
+        <div class="feedItem">
+          <div class="feedType">Cómo funciona la encuesta de calidad</div>
+          <div class="feedMeta">
+            1) Cuando el analista cierra un ticket, completa una encuesta para calificar al consultor.<br>
+            2) Luego, el consultor recibe una encuesta pendiente para calificar al analista desde “Comentarios recientes → Encuestas pendientes”.<br>
+            3) El puntaje que ve cada usuario al iniciar sesión es el que le puso la contraparte (no su propia calificación).<br>
+            4) Criterios: Recepción, Comunicación y Satisfacción general (1 a 10).
+          </div>
+        </div>
+        <h4 style="margin:14px 0 8px">Promedio recibido por analista</h4>${averages}
+        <h4 style="margin:14px 0 8px">Promedio recibido por consultor</h4>${consultorAverages}
+        <h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}
+      `
     }
 
     function openCloseSurveyModal(ticketId, nextTicketData){
@@ -1826,6 +1867,10 @@ Cliente B`)
         ticketId,
         consultorEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
         analystEmail: String(nextTicketData.assignedTo || currentUser?.email || "").toLowerCase(),
+        raterEmail: String(currentUser?.email || "").toLowerCase(),
+        raterRole: "analista",
+        ratedEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
+        ratedRole: "consultor",
         reception,
         communication,
         overall,
@@ -1841,6 +1886,52 @@ Cliente B`)
       showToast("Ticket cerrado y encuesta enviada.", "ok")
       openTicketDetailModal(ticketId)
       loadDashboard()
+    }
+
+    function openConsultorSurveyModal(ticketId){
+      const ticket = (cachedTickets || []).find(t => t.id === ticketId)
+      if(!ticket) return
+      pendingConsultorSurveyTicket = ticket
+      const info = document.getElementById("consultorSurveyTicketInfo")
+      if(info){
+        info.innerHTML = `<strong>${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</strong><br>Analista: ${htmlEscape(userDisplayNameByEmail(ticket.assignedTo||"-"))}`
+      }
+      document.getElementById("consultorSurveyReception").value = ""
+      document.getElementById("consultorSurveyCommunication").value = ""
+      document.getElementById("consultorSurveyOverall").value = ""
+      document.getElementById("consultorSurveyModal")?.classList.remove("hidden")
+    }
+
+    function closeConsultorSurveyModal(){
+      pendingConsultorSurveyTicket = null
+      document.getElementById("consultorSurveyModal")?.classList.add("hidden")
+    }
+
+    async function submitConsultorPendingSurvey(){
+      if(currentRole !== "consultor" || !pendingConsultorSurveyTicket) return
+      const reception = document.getElementById("consultorSurveyReception")?.value || ""
+      const communication = document.getElementById("consultorSurveyCommunication")?.value || ""
+      const overall = Number(document.getElementById("consultorSurveyOverall")?.value || 0)
+      if(!reception || !communication || !overall) return alert("Completá todos los campos de la encuesta.")
+      const ticket = pendingConsultorSurveyTicket
+      const survey = {
+        ticketId: ticket.id,
+        consultorEmail: String(ticket.informer || ticket.createdBy || currentUser?.email || "").toLowerCase(),
+        analystEmail: String(ticket.assignedTo || "").toLowerCase(),
+        raterEmail: String(currentUser?.email || "").toLowerCase(),
+        raterRole: "consultor",
+        ratedEmail: String(ticket.assignedTo || "").toLowerCase(),
+        ratedRole: "analista",
+        reception,
+        communication,
+        overall,
+        createdAt: new Date().toISOString()
+      }
+      if(!survey.analystEmail) return alert("Este ticket no tiene analista asignado para evaluar.")
+      await db.ref("quality_surveys").child(generateId()).set(survey)
+      closeConsultorSurveyModal()
+      showToast("Encuesta del consultor guardada.", "ok")
+      await loadDashboard()
     }
 
     async function handleLogin(){
@@ -2133,7 +2224,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Cuando un analista cierra un ticket, completa una encuesta de calidad. Esa información se asocia al consultor del ticket y se usa para calcular el puntaje promedio.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2200,7 +2291,7 @@ Cliente B`)
               <div id="dashboardTicketList" class="small" style="margin-top:10px"></div>
               
             </div>
-            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div id="recentActivity" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>`}
+            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div id="recentActivity" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>`}
           </div>
 
           <div class="card">
@@ -2231,9 +2322,9 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'people'){ }
     }
 
-    function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets() }
-    function updateClientFilter(value){ ticketFilterClient = (value||"").trim().toLowerCase(); globalThis.ticketFilterClient = ticketFilterClient; loadTickets() }
-    function updateAnalystFilter(value){ ticketFilterAnalyst = (value||"").trim().toLowerCase(); loadTickets() }
+    function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets(); loadDashboard() }
+    function updateClientFilter(value){ ticketFilterClient = (value||"").trim().toLowerCase(); globalThis.ticketFilterClient = ticketFilterClient; loadTickets(); loadDashboard() }
+    function updateAnalystFilter(value){ ticketFilterAnalyst = (value||"").trim().toLowerCase(); loadTickets(); loadDashboard() }
 
     function openTicketModal(){
       document.getElementById("ticketModal").classList.remove("hidden")
@@ -2328,24 +2419,29 @@ Cliente B`)
 
 
 
+    function getVisibleTicketsForCurrentView(data, includeSearch = true){
+      return Object.values(data || {}).filter(t => {
+        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && ((t.informer||t.createdBy||"").toLowerCase() === (currentUser.email||"").toLowerCase()))
+        if(!canSeeTicket) return false
+        if(includeSearch){
+          const haystack = `${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
+          if(ticketSearchTerm && !haystack.includes(ticketSearchTerm)) return false
+        }
+        if(ticketFilterClient && !(String(t.client||"").toLowerCase().includes(ticketFilterClient))) return false
+        if(ticketFilterAnalyst && !(String(t.assignedTo||"").toLowerCase().includes(ticketFilterAnalyst))) return false
+        return true
+      })
+    }
+
     function renderTicketsFromData(data){
       const container = document.getElementById("boardContainer")
       if(!container) return
       const grouped = { unassigned: [], todo: [], doing: [], recurrent: [], done: [] }
-      const visibleTickets = []
+      const visibleTickets = getVisibleTicketsForCurrentView(data, true)
 
-      Object.entries(data).forEach(([_, t]) => {
-        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && ((t.informer||t.createdBy||"").toLowerCase() === (currentUser.email||"").toLowerCase()))
-        if(!canSeeTicket) return
-
-        const haystack = `${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
-        if(ticketSearchTerm && !haystack.includes(ticketSearchTerm)) return
-        if(ticketFilterClient && !(String(t.client||"").toLowerCase().includes(ticketFilterClient))) return
-        if(ticketFilterAnalyst && !(String(t.assignedTo||"").toLowerCase().includes(ticketFilterAnalyst))) return
-
+      visibleTickets.forEach(t => {
         const status = grouped[t.status] ? t.status : "unassigned"
         grouped[status].push(t)
-        visibleTickets.push(t)
       })
 
       if(currentRole === "consultor"){
@@ -3485,15 +3581,19 @@ Cliente B`)
     }
 
     function setConsultorActivityTab(tab){
-      consultorActivityTab = tab === "requests" ? "requests" : "comments"
+      consultorActivityTab = ["comments","requests","surveys"].includes(tab) ? tab : "comments"
       const comments = document.getElementById("consultorCommentsActivity")
       const requests = document.getElementById("consultorDeadlineRequests")
+      const surveys = document.getElementById("consultorPendingSurveys")
       const btnComments = document.getElementById("consultor-tab-comments")
       const btnRequests = document.getElementById("consultor-tab-requests")
+      const btnSurveys = document.getElementById("consultor-tab-surveys")
       if(comments) comments.classList.toggle("hidden", consultorActivityTab !== "comments")
       if(requests) requests.classList.toggle("hidden", consultorActivityTab !== "requests")
+      if(surveys) surveys.classList.toggle("hidden", consultorActivityTab !== "surveys")
       if(btnComments) btnComments.classList.toggle("ghost", consultorActivityTab !== "comments")
       if(btnRequests) btnRequests.classList.toggle("ghost", consultorActivityTab !== "requests")
+      if(btnSurveys) btnSurveys.classList.toggle("ghost", consultorActivityTab !== "surveys")
     }
 
 
@@ -3648,6 +3748,7 @@ Cliente B`)
           try{ ticketsArr = await fetchTicketsFromDb() }catch(_){ ticketsArr = [] }
         }
         const normalizedTickets = ticketsArr.map(t => ({ ...t, comments: parseCommentsValue(t.comments) }))
+        const visibleTickets = getVisibleTicketsForCurrentView(normalizedTickets, true)
 
         let users = Object.values(cachedUsersByEmail || {})
         if(!users.length){
@@ -3659,9 +3760,7 @@ Cliente B`)
           try{ activity = Object.values((await db.ref("activity_logs").limitToLast(30).once("value")).val() || {}) }catch(_){ activity = [] }
         }
 
-        const kpiSource = currentRole === "consultor"
-          ? normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
-          : normalizedTickets
+        const kpiSource = visibleTickets
         const nearDeadlineTickets = kpiSource.filter(t => {
           if(!t.deadline) return false
           const businessDays = businessDaysBetweenArg(new Date(), new Date(`${t.deadline}T00:00:00`))
@@ -3691,8 +3790,16 @@ Cliente B`)
         try{
           const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
           let surveys = Object.values(surveyMap)
-          if(currentRole === "analista") surveys = surveys.filter(s => String(s.analystEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
-          else if(currentRole === "consultor") surveys = surveys.filter(s => String(s.consultorEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          if(currentRole === "analista") surveys = surveys.filter(s => {
+            const ratedRole = String(s.ratedRole || "")
+            const ratedEmail = String(s.ratedEmail || (ratedRole === "analista" ? s.analystEmail : "") || "").toLowerCase()
+            return ratedRole === "analista" && ratedEmail === String(currentUser?.email||"").toLowerCase()
+          })
+          else if(currentRole === "consultor") surveys = surveys.filter(s => {
+            const ratedRole = String(s.ratedRole || "consultor")
+            const ratedEmail = String(s.ratedEmail || s.consultorEmail || "").toLowerCase()
+            return ratedRole === "consultor" && ratedEmail === String(currentUser?.email||"").toLowerCase()
+          })
           else surveys = []
           const avgRaw = surveys.length ? (surveys.reduce((acc,s)=>acc + normalizeQualityToTen(s.overall||0), 0) / surveys.length) : 0
           const orb = document.getElementById("qualityOrb")
@@ -3723,16 +3830,19 @@ Cliente B`)
         showDashboardList(currentRole === "consultor" ? "pending_messages" : "urgent")
 
         if(currentRole === "consultor") {
-          const onlyMine = normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
-          const closedWithSurvey = onlyMine.filter(t => t.status === "done" && t.closeSurvey && t.closeSurvey.createdAt)
-          const latestSurvey = closedWithSurvey.sort((a,b)=>new Date(b.closeSurvey.createdAt||0)-new Date(a.closeSurvey.createdAt||0))[0]
+          const onlyMine = visibleTickets
+          const myEmail = String(currentUser.email||"").toLowerCase()
+          const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+          const allSurveys = Object.values(surveyMap)
+          const closedWithSurvey = allSurveys.filter(s => String(s.ratedRole||"") === "consultor" && String(s.ratedEmail||"").toLowerCase() === myEmail)
+          const latestSurvey = closedWithSurvey.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0]
           if(latestSurvey){
             const key = `consultor_last_survey_${String(currentUser.email||"").toLowerCase()}`
             const seen = localStorage.getItem(key) || ""
-            if(String(latestSurvey.closeSurvey.createdAt||"") > seen){
-              localStorage.setItem(key, String(latestSurvey.closeSurvey.createdAt||""))
-              const s = latestSurvey.closeSurvey
-              showToast(`Ticket ${latestSurvey.id} cerrado. Encuesta: recepción ${s.reception}, comunicación ${s.communication}, satisfacción ${normalizeQualityToTen(s.overall)}/10`, "info", 5200)
+            if(String(latestSurvey.createdAt||"") > seen){
+              localStorage.setItem(key, String(latestSurvey.createdAt||""))
+              const s = latestSurvey
+              showToast(`Ticket ${latestSurvey.ticketId||"-"} cerrado. Encuesta: recepción ${s.reception}, comunicación ${s.communication}, satisfacción ${normalizeQualityToTen(s.overall)}/10`, "info", 5200)
             }
           }
           const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
@@ -3753,6 +3863,22 @@ Cliente B`)
             reqContainer.innerHTML = pending.length
               ? pending.map(t => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Nueva fecha solicitada: ${htmlEscape(t.requestedDeadline||"-")}</div></div><div class="inline" style="gap:6px"><button class="ghost" onclick="applyDeadlineDecision('${t.id}', true)">Aprobar</button><button class="danger" onclick="applyDeadlineDecision('${t.id}', false)">Rechazar</button></div></div></div>`).join("")
               : `<p class="small">Sin solicitudes pendientes.</p>`
+          }
+
+          const pendingSurveyContainer = document.getElementById("consultorPendingSurveys")
+          if(pendingSurveyContainer){
+            const surveyKeys = new Set(
+              allSurveys
+                .filter(s => String(s.raterRole||"") === "consultor" && String(s.raterEmail||"").toLowerCase() === myEmail)
+                .map(s => `${String(s.ticketId||"")}::${myEmail}`)
+            )
+            const pendingSurveys = onlyMine
+              .filter(t => t.status === "done" && !!String(t.assignedTo||"").trim())
+              .filter(t => !surveyKeys.has(`${String(t.id||"")}::${myEmail}`))
+              .sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
+            pendingSurveyContainer.innerHTML = pendingSurveys.length
+              ? pendingSurveys.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openConsultorSurveyModal('${t.id}')"><div class="feedTop"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Analista: ${htmlEscape(userDisplayNameByEmail(t.assignedTo||"-"))} · Click para completar encuesta</div></div><button class="ghost">Responder</button></div></div>`).join("")
+              : `<p class="small">Sin encuestas pendientes.</p>`
           }
           setConsultorActivityTab(consultorActivityTab)
           return
