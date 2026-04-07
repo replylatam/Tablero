@@ -32,7 +32,7 @@ function doPost(e) {
 
     if (!action) return jsonOutput({ ok: false, error: 'Falta action' });
 
-    const adminActions = new Set(['upsertClient','deleteClient','upsertUser','deleteUser']);
+    const adminActions = new Set(['upsertClient','deleteClient','upsertUser','deleteUser','appendTicketFieldColumn']);
     const ticketActions = new Set(['createTicket','updateTicket','deleteTicket']);
     const timeActions = new Set(['upsertTimeEntry']);
 
@@ -72,6 +72,13 @@ function doPost(e) {
     }
 
     if (adminActions.has(action)) {
+      if (action === 'appendTicketFieldColumn') {
+        const ticketSheet = getSheetByName_(body.ticketSheet || TICKETS_SHEET_NAME) || getSheetByGid_(String(body.gid || DEFAULT_GID));
+        if (!ticketSheet) return jsonOutput({ ok: false, error: 'No existe hoja de tickets' });
+        ensureTicketHeader_(ticketSheet);
+        appendTicketFieldColumn_(ticketSheet, payload);
+        return jsonOutput({ ok: true, action });
+      }
       const sheet = getSheetByName_(body.adminSheet || ADMIN_SHEET_NAME);
       if (!sheet) return jsonOutput({ ok: false, error: `No existe hoja ${ADMIN_SHEET_NAME}` });
       ensureAdminHeader_(sheet);
@@ -241,26 +248,42 @@ function normalizeTicket_(p) {
     deadlineChangeRequestedBy: String(p.deadlineChangeRequestedBy || ''),
     deadlineChangeRequestedAt: String(p.deadlineChangeRequestedAt || ''),
     deadlineChangeReviewedBy: String(p.deadlineChangeReviewedBy || ''),
-    informer: String(p.informer || p.createdBy || '')
+    informer: String(p.informer || p.createdBy || ''),
+    customFields: (p.customFields && typeof p.customFields === 'object') ? p.customFields : {}
   };
 }
 
 function upsertTicket_(sheet, payload, createOnly) {
   const t = normalizeTicket_(payload);
   if (!t.id) throw new Error('Falta payload.id');
-
-  const rowData = [[
+  let header = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 20)).getValues()[0];
+  if (!header || !header.length) {
+    ensureTicketHeader_(sheet);
+    header = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 20)).getValues()[0];
+  }
+  const baseRow = [
     t.id, t.title, t.description, t.priority, t.client, t.status,
     t.assignedTo, t.comments, t.createdAt, t.createdBy, t.updatedAt, t.updatedBy, t.deadline, t.urgentRequested,
     t.requestedDeadline, t.deadlineChangeStatus, t.deadlineChangeRequestedBy, t.deadlineChangeRequestedAt, t.deadlineChangeReviewedBy, t.informer
-  ]];
+  ];
+  const row = [];
+  for (let c = 0; c < header.length; c++) {
+    if (c < 20) {
+      row.push(String(baseRow[c] || ''));
+      continue;
+    }
+    const colName = String(header[c] || '').trim();
+    const key = colName.startsWith('cf:') ? colName.slice(3) : colName;
+    row.push(String(t.customFields[key] || ''));
+  }
+  const rowData = [row];
 
   const existingRow = findTicketRow_(sheet, t.id);
   if (existingRow > 1) {
     if (createOnly) return;
-    sheet.getRange(existingRow, 1, 1, 20).setValues(rowData);
+    sheet.getRange(existingRow, 1, 1, row.length).setValues(rowData);
   } else {
-    sheet.appendRow(rowData[0]);
+    sheet.appendRow(row);
   }
 }
 
@@ -332,6 +355,19 @@ function upsertTimeEntry_(sheet, payload) {
   } else {
     sheet.appendRow(row);
   }
+}
+
+function appendTicketFieldColumn_(sheet, payload) {
+  const key = String(payload.fieldKey || '').trim();
+  if (!key) throw new Error('Falta payload.fieldKey');
+  const label = String(payload.fieldLabel || key).trim();
+  const headerName = `cf:${key}`;
+  const lastCol = Math.max(sheet.getLastColumn(), 20);
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v || '').trim());
+  if (header.includes(headerName)) return;
+  sheet.getRange(1, lastCol + 1).setValue(headerName);
+  const note = `Campo personalizado: ${label}`;
+  sheet.getRange(1, lastCol + 1).setNote(note);
 }
 
 function jsonOutput(obj) {
