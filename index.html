@@ -303,6 +303,15 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
     }
+    .qualityOrb {
+      position: fixed; left: 20px; top: 84px; z-index: 135;
+      width: 86px; height: 86px; border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #fff; font-weight: 700; border: 2px solid rgba(255,255,255,.25);
+      box-shadow: 0 8px 22px rgba(0,0,0,.32);
+      text-align: center;
+    }
+    .qualityOrb .smallLabel { font-size: 9px; opacity: .92; letter-spacing: .03em; text-transform: uppercase; }
 
     /* ── Comments ──────────────────────────────────────────────────── */
     .commentsSection {
@@ -715,7 +724,7 @@
       <div class="row">
         <div><label>¿Cómo recibiste el ticket?</label><select id="closeSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
         <div><label>Comunicación</label><select id="closeSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
-        <div><label>Satisfacción general</label><select id="closeSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+        <div><label>Satisfacción general (1-10)</label><select id="closeSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
       </div>
       <div class="inline" style="justify-content:flex-end">
         <button class="secondary" onclick="closeCloseSurveyModal()">Cancelar</button>
@@ -1035,6 +1044,18 @@
       const h = Math.floor(m/60)
       const rem = Math.round(m%60)
       return `${h}h ${rem}m`
+    }
+
+    function normalizeQualityToTen(score){
+      const n = Number(score || 0)
+      if(n <= 0) return 0
+      return n <= 5 ? n * 2 : Math.min(10, n)
+    }
+
+    function qualityColor(score10){
+      const clamped = Math.max(0, Math.min(10, Number(score10 || 0)))
+      const hue = (clamped / 10) * 120
+      return `hsl(${hue}, 75%, 45%)`
     }
 
     function recomputeConsolidatedMinutes(timeTracking){
@@ -1739,10 +1760,10 @@ Cliente B`)
         byAnalyst[k].push(s)
       })
       const averages = Object.entries(byAnalyst).map(([analyst, list]) => {
-        const avg = list.reduce((acc,it)=>acc + Number(it.overall||0), 0) / Math.max(1, list.length)
-        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analyst))}</div><div class="feedMeta">Promedio satisfacción: ${avg.toFixed(2)} / 5 · Encuestas: ${list.length}</div></div>`
+        const avg = list.reduce((acc,it)=>acc + normalizeQualityToTen(it.overall||0), 0) / Math.max(1, list.length)
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analyst))}</div><div class="feedMeta">Promedio satisfacción: ${avg.toFixed(2)} / 10 · Encuestas: ${list.length}</div></div>`
       }).join("")
-      const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(s.overall||"-"))}/5).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
+      const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(normalizeQualityToTen(s.overall||0)))} / 10).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
       container.innerHTML = `<h4 style="margin:0 0 8px">Promedio por analista</h4>${averages}<h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}`
     }
 
@@ -2154,6 +2175,7 @@ Cliente B`)
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
+        <div id="qualityOrb" class="qualityOrb hidden"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad</div></div>
         ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">🛟</button>` : ""}
       `
 
@@ -2182,6 +2204,13 @@ Cliente B`)
     function openTicketModal(){
       document.getElementById("ticketModal").classList.remove("hidden")
       renderTicketCustomFields()
+      if(currentRole === "consultor"){
+        const informer = document.getElementById("tInformer")
+        if(informer){
+          informer.value = String(currentUser?.email || "").toLowerCase()
+          informer.disabled = true
+        }
+      }
     }
     function closeTicketModal(){
       document.getElementById("tTitle").value = ""
@@ -2421,7 +2450,7 @@ Cliente B`)
             <div class="row">
               <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
               <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
-              <div><label>Deadline</label><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Deadline</label><div class="inline" style="gap:6px;align-items:center"><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}>${currentRole === "analista" ? `<button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">🗓️</button>` : ""}</div></div>
             </div>
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
@@ -2475,6 +2504,7 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(!tracking.users) tracking.users = {}
       const ownerKey = emailKey(owner)
       if(!tracking.users[ownerKey]) tracking.users[ownerKey] = { email: owner, totalMinutes: 0, timerStartAt: "" }
       const updated = { ...ticket, assignedTo: owner, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -2906,6 +2936,7 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
       const helpers = Array.from(new Set([...(ticket.helpers||[]), helperEmail]))
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(!tracking.users) tracking.users = {}
       const k = emailKey(helperEmail)
       if(!tracking.users[k]) tracking.users[k] = { email: helperEmail, totalMinutes: 0, timerStartAt: '' }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
@@ -3001,6 +3032,7 @@ Cliente B`)
       const me = String(currentUser.email||"").toLowerCase()
       const helpers = Array.from(new Set([...(ticket.helpers||[]), me]))
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(!tracking.users) tracking.users = {}
       const meKey = emailKey(me)
       if(!tracking.users[meKey]) tracking.users[meKey] = { email: me, totalMinutes: 0, timerStartAt: "" }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
@@ -3476,6 +3508,13 @@ Cliente B`)
       showToast("Solicitud enviada al consultor", "ok")
     }
 
+    async function requestDeadlineChangeFromDetail(ticketId, ev){
+      ev?.preventDefault?.()
+      ev?.stopPropagation?.()
+      const trigger = ev?.currentTarget || ev?.target || null
+      await requestDeadlineChangeFromDashboard(ticketId, trigger)
+    }
+
     function formatDateDMY(value){
       if(!value) return "-"
       const d = new Date(`${value}T00:00:00`)
@@ -3498,7 +3537,8 @@ Cliente B`)
         const r = anchorEl?.getBoundingClientRect ? anchorEl.getBoundingClientRect() : null
         if(r){
           input.style.left = `${Math.max(8, Math.round(r.left))}px`
-          input.style.top = `${Math.max(8, Math.round(r.bottom + 4))}px`
+          const above = Math.round(r.top - 38)
+          input.style.top = `${above > 8 ? above : Math.round(r.bottom + 4)}px`
         }else{
           input.style.left = '16px'
           input.style.top = '16px'
@@ -3600,10 +3640,23 @@ Cliente B`)
           let surveys = Object.values(surveyMap)
           if(currentRole === "analista") surveys = surveys.filter(s => String(s.analystEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
           if(currentRole === "consultor") surveys = surveys.filter(s => String(s.consultorEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
-          const avg = surveys.length ? (surveys.reduce((acc,s)=>acc + Number(s.overall||0), 0) / surveys.length) : 0
-          if(kpiQuality) kpiQuality.innerText = surveys.length ? avg.toFixed(2) : "-"
+          const avgRaw = surveys.length ? (surveys.reduce((acc,s)=>acc + normalizeQualityToTen(s.overall||0), 0) / surveys.length) : 0
+          if(kpiQuality) kpiQuality.innerText = surveys.length ? avgRaw.toFixed(2) : "-"
+          const orb = document.getElementById("qualityOrb")
+          const orbValue = document.getElementById("qualityOrbValue")
+          if(orb && orbValue){
+            if(surveys.length){
+              orb.classList.remove("hidden")
+              orb.style.background = `radial-gradient(circle at 30% 25%, rgba(255,255,255,.22), transparent 42%), ${qualityColor(avgRaw)}`
+              orbValue.textContent = `${avgRaw.toFixed(1)}`
+            }else{
+              orb.classList.add("hidden")
+            }
+          }
         }catch(_){
           if(kpiQuality) kpiQuality.innerText = "-"
+          const orb = document.getElementById("qualityOrb")
+          if(orb) orb.classList.add("hidden")
         }
 
         dashboardListCache = {
@@ -3626,7 +3679,7 @@ Cliente B`)
             if(String(latestSurvey.closeSurvey.createdAt||"") > seen){
               localStorage.setItem(key, String(latestSurvey.closeSurvey.createdAt||""))
               const s = latestSurvey.closeSurvey
-              showToast(`Ticket ${latestSurvey.id} cerrado. Encuesta: recepción ${s.reception}, comunicación ${s.communication}, satisfacción ${s.overall}/5`, "info", 5200)
+              showToast(`Ticket ${latestSurvey.id} cerrado. Encuesta: recepción ${s.reception}, comunicación ${s.communication}, satisfacción ${normalizeQualityToTen(s.overall)}/10`, "info", 5200)
             }
           }
           const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
