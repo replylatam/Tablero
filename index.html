@@ -662,6 +662,9 @@
       { email: "consultor@tablero.local", password: "Consultor.Tablero#2026", role: "consultor" },
       { email: "analista@tablero.local", password: "Analista.Tablero#2026", role: "analista" }
     ]
+    const LEGACY_PASSWORD_HINTS = {
+      "admin@tablero.local": ["1234"]
+    }
     const COMMON_LEAKED_PASSWORDS = new Set([
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
@@ -1464,7 +1467,13 @@ Cliente B`)
         const user = await getUserFromDb(email)
         if(!user || !user.active) return alert("Usuario inexistente o inactivo")
         const validPassword = await verifyPassword(user, password)
-        if(!validPassword) return alert("Contraseña incorrecta")
+        if(!validPassword){
+          const legacyHints = LEGACY_PASSWORD_HINTS[email] || []
+          if(legacyHints.includes(password)){
+            return alert("La contraseña 1234 fue deshabilitada por seguridad. Probá con la contraseña actual del admin o usá 'Olvide la contraseña'.")
+          }
+          return alert("Contraseña incorrecta")
+        }
 
         if(!user.passwordHash && user.password){
           const secureFields = await buildPasswordFields(password)
