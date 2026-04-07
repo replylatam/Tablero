@@ -106,6 +106,7 @@
       box-shadow: var(--shadow-card);
       animation: fadeUp .32s cubic-bezier(.22,.68,0,1.2) both;
     }
+    .topbarCard { position: relative; z-index: 120; overflow: visible; }
 
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px) scale(.99); }
@@ -701,6 +702,7 @@
     var ticketFilterAnalyst = ""
     var commentSortOrderByTicket = {}
     var ticketActivityTabById = {}
+    var timeMonthTabByTicket = {}
     var cachedUsersByEmail = {}
     var draggedTicketId = ""
     var ticketTimerIntervals = {}
@@ -723,6 +725,7 @@
     const SHEET_GID = "0"
     const SHEET_TICKETS_NAME = "BD"
     const SHEET_ADMINS_NAME = "BD_ADMINS"
+    const SHEET_TIMES_NAME = "BD_TIMES"
     // Reemplazar por tu URL de Web App de Apps Script para habilitar escritura en la hoja.
     // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
     const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwUyvGndwr5K7uhvgNyC_CBGt8FI6JlW62GExQsl5sxvGIYv_mHBKxotgDgaEN7EmFTwA/exec"
@@ -974,6 +977,29 @@
     function recomputeConsolidatedMinutes(timeTracking){
       const users = timeTracking?.users || {}
       return Object.values(users).reduce((acc,u)=> acc + Number(u?.totalMinutes||0), 0)
+    }
+
+    function monthFolderKey(dateInput = new Date()){
+      const d = dateInput instanceof Date ? dateInput : new Date(dateInput)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    }
+
+    function monthFolderLabel(monthKey){
+      const [y,m] = String(monthKey||"").split("-").map(Number)
+      if(!y || !m) return String(monthKey||"")
+      return new Date(y, m-1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+    }
+
+    function ensureMonthFolder(tracking, monthKey){
+      const key = String(monthKey || monthFolderKey())
+      if(!tracking.monthlyFolders) tracking.monthlyFolders = {}
+      if(!tracking.monthlyFolders[key]){
+        tracking.monthlyFolders[key] = { label: monthFolderLabel(key), entries: [] }
+      }else{
+        tracking.monthlyFolders[key].label = tracking.monthlyFolders[key].label || monthFolderLabel(key)
+        tracking.monthlyFolders[key].entries = Array.isArray(tracking.monthlyFolders[key].entries) ? tracking.monthlyFolders[key].entries : []
+      }
+      return key
     }
 
     function parseCsvRows(text){
@@ -1372,7 +1398,7 @@ Cliente B`)
       }
 
       // Enviamos text/plain para evitar preflight CORS en hosting estático (GitHub Pages).
-      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME })
+      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME, timesSheet: SHEET_TIMES_NAME })
       const res = await fetch(SHEET_WEBHOOK_URL, {
         method: "POST",
         mode: "cors",
@@ -1756,7 +1782,7 @@ Cliente B`)
       const showAnalystProfile = isAnalyst && analystPanelTab === "profile"
 
       document.getElementById("app").innerHTML = `
-        <div class="card">
+        <div class="card topbarCard">
           <div class="inline" style="justify-content:space-between">
             <div>
               <h2 style="margin:0">Tablero de tickets</h2>
@@ -2224,17 +2250,63 @@ Cliente B`)
       if(historyBtn) historyBtn.classList.toggle("active", tab === "history")
       if(timesBtn) timesBtn.classList.toggle("active", tab === "times")
       if(tab === "history") loadTicketHistory(ticketId)
-      if(tab === "times") setupLiveTimer(ticketId)
+      if(tab === "times"){
+        ensureCurrentMonthFolderForTicket(ticketId)
+        setupLiveTimer(ticketId)
+      }
       else clearLiveTimer(ticketId)
+    }
+
+    async function ensureCurrentMonthFolderForTicket(ticketId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const currentKey = monthFolderKey()
+      const exists = !!(tracking.monthlyFolders && tracking.monthlyFolders[currentKey])
+      ensureMonthFolder(tracking, currentKey)
+      timeMonthTabByTicket[ticketId] = currentKey
+      if(exists) return
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+    }
+
+    async function setTimeMonthTab(ticketId, monthKey){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const exists = !!(tracking.monthlyFolders && tracking.monthlyFolders[monthKey])
+      ensureMonthFolder(tracking, monthKey)
+      timeMonthTabByTicket[ticketId] = monthKey
+      if(!exists){
+        const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+        await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+        mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+        const ix = cachedTickets.findIndex(t => t.id === ticketId)
+        if(ix >= 0) cachedTickets[ix] = updated
+      }else{
+        ticket.timeTracking = tracking
+      }
+      openTicketDetailModal(ticketId)
     }
 
     function renderTimesTab(ticketId, usersByEmail){
       const ticket = cachedTickets.find(t => t.id === ticketId)
       if(!ticket) return '<div class="small">Sin datos de tiempo</div>'
       const tracking = ticket.timeTracking || { users:{}, consolidatedMinutes:0 }
+      const currentMonthKey = monthFolderKey()
+      ensureMonthFolder(tracking, currentMonthKey)
       const helpers = Array.from(new Set([...(ticket.helpers||[]), ...(ticket.assignedTo ? [ticket.assignedTo] : [])])).filter(Boolean)
       const analysts = Object.values(usersByEmail||{}).filter(u => u && u.role === 'analista' && u.active !== false).map(u => (u.email||'').toLowerCase()).sort()
       const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join('')}`
+      const monthKeys = Object.keys(tracking.monthlyFolders || {}).sort()
+      const selectedMonth = timeMonthTabByTicket[ticketId] && monthKeys.includes(timeMonthTabByTicket[ticketId]) ? timeMonthTabByTicket[ticketId] : currentMonthKey
+      timeMonthTabByTicket[ticketId] = selectedMonth
+      const monthData = tracking.monthlyFolders?.[selectedMonth] || { label: monthFolderLabel(selectedMonth), entries: [] }
+      const entries = Array.isArray(monthData.entries) ? [...monthData.entries] : []
+      entries.sort((a,b)=> new Date(b.loggedDate||b.createdAt||0) - new Date(a.loggedDate||a.createdAt||0))
 
       const rows = {}
       Object.entries(tracking.users || {}).forEach(([k,v]) => rows[k] = { ...(v||{}) })
@@ -2250,12 +2322,19 @@ Cliente B`)
         const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
         const running = !!u?.timerStartAt
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
+      const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(e.analyst||'-')}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
         ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
         <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button></div>
+        <div class="small" style="margin-bottom:6px">Carpetas por mes:</div>
+        <div class="inline" style="margin-bottom:10px">${monthKeys.map(mk => `<button class="${selectedMonth===mk?'':'ghost'}" onclick="setTimeMonthTab('${ticketId}','${mk}')">${htmlEscape(monthFolderLabel(mk))}</button>`).join('')}</div>
+        <div class="card" style="padding:10px;margin-bottom:10px">
+          <div class="small" style="margin-bottom:6px">Carpeta activa: <strong>${htmlEscape(monthData.label || monthFolderLabel(selectedMonth))}</strong></div>
+          ${entriesHtml}
+        </div>
         <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
         ${helpersHtml}
       </div>`
@@ -2505,11 +2584,25 @@ Cliente B`)
       openTicketDetailModal(id)
     }
 
-    async function toggleTicketTimerForUser(ticketId, userKey){
+    async function mirrorTimeEntryToSheet(entry){
+      if(!entry) return
+      const payload = {
+        entryId: entry.id,
+        ticketId: entry.ticketId,
+        monthFolder: entry.monthFolder,
+        loggedDate: entry.loggedDate,
+        hours: Number(entry.hours || 0).toFixed(2),
+        analyst: entry.analyst,
+        createdAt: entry.createdAt || new Date().toISOString()
+      }
+      await sheetWrite("upsertTimeEntry", payload).catch(err => console.warn("No se pudo espejar tiempo en sheet:", err))
+    }
+
+    async function toggleTicketTimerForUser(ticketId, userKey, monthKey){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const users = ticket.timeTracking?.users || {}
       const u = users[userKey] || {}
-      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey)
+      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey, monthKey)
       return startTicketTimerForUser(ticketId, userKey)
     }
 
@@ -2522,7 +2615,7 @@ Cliente B`)
       showToast('Timer iniciado','ok')
     }
 
-    async function stopTicketTimerForUser(ticketId, userKey){
+    async function stopTicketTimerForUser(ticketId, userKey, monthKey){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const u = (ticket.timeTracking?.users||{})[userKey] || {}
       if(!u.timerStartAt) return alert('El timer no está iniciado')
@@ -2539,20 +2632,25 @@ Cliente B`)
         curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
-      })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo cargado','ok')
     }
 
-    async function logManualTimeForUser(ticketId, userKey){
+    function currUserEmailByKey(ticket, userKey){
+      return String(ticket?.timeTracking?.users?.[userKey]?.email || currentUser.email || "").toLowerCase()
+    }
+
+    async function logManualTimeForUser(ticketId, userKey, monthKey){
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
       const minutes = hs * 60 + mins
       if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
+      const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         u.totalMinutes = Number(u.totalMinutes||0) + minutes
         tracking.users[userKey] = u
-      })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo manual cargado','ok')
     }
 
@@ -2581,10 +2679,25 @@ Cliente B`)
       openTicketDetailModal(id)
     }
 
-    async function applyTimeUpdate(id, mutate){
+    async function applyTimeUpdate(id, mutate, meta = {}){
       const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       mutate(tracking)
+      const monthKey = ensureMonthFolder(tracking, meta.monthKey || timeMonthTabByTicket[id] || monthFolderKey())
+      if(Number(meta.minutes || 0) > 0){
+        const entry = {
+          id: generateId(),
+          ticketId: id,
+          monthFolder: monthFolderLabel(monthKey),
+          monthKey,
+          loggedDate: new Date().toISOString(),
+          hours: Number(meta.minutes) / 60,
+          analyst: String(meta.analyst || currentUser.email || "").toLowerCase(),
+          createdAt: new Date().toISOString()
+        }
+        tracking.monthlyFolders[monthKey].entries.push(entry)
+        mirrorTimeEntryToSheet(entry)
+      }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
