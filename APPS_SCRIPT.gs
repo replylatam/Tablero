@@ -16,6 +16,7 @@
 const DEFAULT_GID = '0';
 const TICKETS_SHEET_NAME = 'BD';
 const ADMIN_SHEET_NAME = 'BD_ADMINS';
+const TIMES_SHEET_NAME = 'BD_TIMES';
 const DEFAULT_DRIVE_FOLDER_ID = '1IZ0GHXqSQzbHLnBmSAitnah3xDq8vy94';
 
 function doGet() {
@@ -33,6 +34,7 @@ function doPost(e) {
 
     const adminActions = new Set(['upsertClient','deleteClient','upsertUser','deleteUser']);
     const ticketActions = new Set(['createTicket','updateTicket','deleteTicket']);
+    const timeActions = new Set(['upsertTimeEntry']);
 
     if (action === 'uploadDriveFile') {
       const file = saveFileToDrive_(payload);
@@ -57,6 +59,16 @@ function doPost(e) {
       const row = findTicketRow_(sheet, id);
       if (row > 1) sheet.deleteRow(row);
       return jsonOutput({ ok: true, action, deleted: row > 1 });
+    }
+
+    if (timeActions.has(action)) {
+      const sheet = getSheetByName_(body.timesSheet || TIMES_SHEET_NAME);
+      if (!sheet) return jsonOutput({ ok: false, error: `No existe hoja ${TIMES_SHEET_NAME}` });
+      ensureTimesHeader_(sheet);
+      if (action === 'upsertTimeEntry') {
+        upsertTimeEntry_(sheet, payload);
+        return jsonOutput({ ok: true, action });
+      }
     }
 
     if (adminActions.has(action)) {
@@ -174,6 +186,15 @@ function ensureAdminHeader_(sheet) {
   }
 }
 
+function ensureTimesHeader_(sheet) {
+  const expected = ['entryId','ticketId','monthFolder','loggedDate','hours','analyst','createdAt'];
+  const firstRow = sheet.getRange(1, 1, 1, expected.length).getValues()[0];
+  const hasHeader = firstRow.some(v => String(v || '').trim() !== '');
+  if (!hasHeader) {
+    sheet.getRange(1, 1, 1, expected.length).setValues([expected]);
+  }
+}
+
 function findTicketRow_(sheet, id) {
   const last = sheet.getLastRow();
   if (last < 2) return -1;
@@ -281,6 +302,36 @@ function upsertAdminRow_(sheet, type, key, data) {
 function deleteAdminRow_(sheet, type, key) {
   const row = findAdminRow_(sheet, type, key);
   if (row > 1) sheet.deleteRow(row);
+}
+
+function findTimeEntryRow_(sheet, entryId) {
+  const last = sheet.getLastRow();
+  if (last < 2) return -1;
+  const values = sheet.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0] || '').trim() === String(entryId || '').trim()) return i + 2;
+  }
+  return -1;
+}
+
+function upsertTimeEntry_(sheet, payload) {
+  const entryId = String(payload.entryId || '').trim();
+  if (!entryId) throw new Error('Falta payload.entryId');
+  const row = [
+    entryId,
+    String(payload.ticketId || ''),
+    String(payload.monthFolder || ''),
+    String(payload.loggedDate || ''),
+    String(payload.hours || ''),
+    String(payload.analyst || ''),
+    String(payload.createdAt || new Date().toISOString())
+  ];
+  const existing = findTimeEntryRow_(sheet, entryId);
+  if (existing > 1) {
+    sheet.getRange(existing, 1, 1, 7).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
 }
 
 function jsonOutput(obj) {
