@@ -106,6 +106,7 @@
       box-shadow: var(--shadow-card);
       animation: fadeUp .32s cubic-bezier(.22,.68,0,1.2) both;
     }
+    .topbarCard { position: relative; z-index: 120; overflow: visible; }
 
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px) scale(.99); }
@@ -168,6 +169,23 @@
     button.ghost:hover { border-color: rgba(99,132,199,.45); color: var(--text-2); background: rgba(61,110,245,.06); }
 
     button:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+    .menuWrap { position: relative; }
+    .menuDropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 200px;
+      padding: 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--stroke);
+      background: var(--surface);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow-card);
+      z-index: 30;
+      display: grid;
+      gap: 6px;
+    }
+    .menuDropdown button { width: 100%; text-align: left; box-shadow: none; }
 
     /* ── Forms ─────────────────────────────────────────────────────── */
     label {
@@ -277,6 +295,23 @@
     .feedTop { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .feedType { font-weight: 600; font-size: 13.5px; }
     .feedMeta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .dashboardListScroll { max-height: 170px; overflow-y: auto; padding-right: 4px; }
+
+    .supportFab {
+      position: fixed; right: 22px; bottom: 22px; z-index: 140;
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
+    }
+    .qualityOrb {
+      position: fixed; left: 20px; top: 84px; z-index: 135;
+      width: 86px; height: 86px; border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #fff; font-weight: 700; border: 2px solid rgba(255,255,255,.25);
+      box-shadow: 0 8px 22px rgba(0,0,0,.32);
+      text-align: center;
+    }
+    .qualityOrb .smallLabel { font-size: 9px; opacity: .92; letter-spacing: .03em; text-transform: uppercase; }
 
     /* ── Comments ──────────────────────────────────────────────────── */
     .commentsSection {
@@ -352,7 +387,9 @@
 
     /* ── Priority / Urgent flags ───────────────────────────────────── */
     .urgentTopFlag {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       background: linear-gradient(135deg, #c41818, #e04040);
       color: #fff;
       padding: 5px 12px;
@@ -361,9 +398,19 @@
       font-size: 12px;
       box-shadow: 0 6px 20px rgba(224,64,64,.42);
       letter-spacing: .02em;
+      animation: urgentPulse 1.2s ease-in-out infinite;
     }
-    .urgentFlag { font-size: 11px; color: #fca5a5; margin-top: 6px; }
+    .urgentFlag { font-size: 11px; color: #fca5a5; margin-top: 6px; display:inline-flex; align-items:center; gap:6px; }
+    .urgentFlag::before { content: "🚨"; display:inline-block; transform-origin:center; animation: urgentSiren .9s ease-in-out infinite; }
     .urgentBtn { background: linear-gradient(135deg, #f59e0b, #e04040); box-shadow: 0 4px 16px rgba(224,64,64,.35); }
+    @keyframes urgentSiren {
+      0%, 100% { transform: rotate(-18deg) scale(1); }
+      50% { transform: rotate(18deg) scale(1.12); }
+    }
+    @keyframes urgentPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(224,64,64,.35); }
+      50% { box-shadow: 0 0 0 8px rgba(224,64,64,0); }
+    }
 
     /* ── Ticket Detail Layout ──────────────────────────────────────── */
     .detailLayout { display: grid; grid-template-columns: 1fr; gap: 14px; }
@@ -438,6 +485,12 @@
     .ticket:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.3); border-color: rgba(99,132,199,.35); }
 
     .ticket.problemFlag { border-left-color: var(--danger) !important; background: rgba(224,64,64,.12); }
+    .ticket.consultorPulse { border-color: rgba(239,68,68,.65); box-shadow: 0 0 0 0 rgba(239,68,68,.45); animation: ticketPulse 1.4s infinite; }
+    @keyframes ticketPulse {
+      0% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); }
+      70% { box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+    }
     .ticket.priorityAlta  { border-left-color: var(--danger); }
     .ticket.priorityMedia { border-left-color: var(--warn); }
     .ticket.priorityBaja  { border-left-color: var(--ok); }
@@ -624,6 +677,7 @@
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
         <div><label>Informador</label><select id="tInformer"></select></div>
       </div>
+      <div id="ticketCustomFieldsWrap"></div>
 
       <div class="inline" style="justify-content:flex-end">
         <button onclick="saveTicket()">Crear ticket</button>
@@ -645,6 +699,40 @@
     </div>
   </div>
 
+  <div id="supportModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Soporte técnico</h3>
+        <button class="secondary" onclick="closeSupportModal()">Cerrar</button>
+      </div>
+      <label>Título</label>
+      <input id="supportTitle" type="text" placeholder="Resumen del problema">
+      <label>Detalle</label>
+      <textarea id="supportDetail" placeholder="Describí el problema técnico"></textarea>
+      <label>Adjunto (opcional)</label>
+      <input id="supportFile" type="file">
+      <div class="inline" style="justify-content:flex-end">
+        <button onclick="submitSupportRequest()">Enviar reporte</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="closeSurveyModal" class="modalBack hidden">
+    <div class="card modal">
+      <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
+      <p class="small">Cerrar el ticket conlleva enviarle una encuesta de satisfacción al consultor. ¿Estás seguro que querés cerrarlo?</p>
+      <div class="row">
+        <div><label>¿Cómo recibiste el ticket?</label><select id="closeSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
+        <div><label>Comunicación</label><select id="closeSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
+        <div><label>Satisfacción general (1-10)</label><select id="closeSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
+      </div>
+      <div class="inline" style="justify-content:flex-end">
+        <button class="secondary" onclick="closeCloseSurveyModal()">Cancelar</button>
+        <button onclick="submitCloseSurveyAndCloseTicket()">Cerrar ticket</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     firebase.initializeApp({
       apiKey: "AIzaSyA4-yTeI0CemnlROxF9hIgj_HxiDLvYZTY",
@@ -662,6 +750,9 @@
       { email: "consultor@tablero.local", password: "Consultor.Tablero#2026", role: "consultor" },
       { email: "analista@tablero.local", password: "Analista.Tablero#2026", role: "analista" }
     ]
+    const LEGACY_PASSWORD_HINTS = {
+      "admin@tablero.local": ["1234"]
+    }
     const COMMON_LEAKED_PASSWORDS = new Set([
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
@@ -675,11 +766,13 @@
     var loginInProgress = false
     var uiTheme = localStorage.getItem("uiTheme") || "dark"
     var adminPanelTab = "panel"
+    var analystPanelTab = "panel"
     var analystActivityTab = "comments"
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = ""
     var commentSortOrderByTicket = {}
     var ticketActivityTabById = {}
+    var timeMonthTabByTicket = {}
     var cachedUsersByEmail = {}
     var draggedTicketId = ""
     var ticketTimerIntervals = {}
@@ -687,6 +780,8 @@
     var latestActivityLogs = []
     var activeEmojiPicker = null
     var dashboardListCache = {}
+    var headerMenuOpen = false
+    var pendingCloseSurvey = null
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -701,6 +796,7 @@
     const SHEET_GID = "0"
     const SHEET_TICKETS_NAME = "BD"
     const SHEET_ADMINS_NAME = "BD_ADMINS"
+    const SHEET_TIMES_NAME = "BD_TIMES"
     // Reemplazar por tu URL de Web App de Apps Script para habilitar escritura en la hoja.
     // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
     const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwUyvGndwr5K7uhvgNyC_CBGt8FI6JlW62GExQsl5sxvGIYv_mHBKxotgDgaEN7EmFTwA/exec"
@@ -782,8 +878,30 @@
 
     function setAdminTab(tab){
       adminPanelTab = tab
+      closeHeaderMenu()
       renderApp()
     }
+
+    function setAnalystTab(tab){
+      analystPanelTab = tab
+      closeHeaderMenu()
+      renderApp()
+    }
+
+    function toggleHeaderMenu(ev){
+      if(ev) ev.stopPropagation()
+      headerMenuOpen = !headerMenuOpen
+      const dd = document.getElementById("headerMenuDropdown")
+      if(dd) dd.classList.toggle("hidden", !headerMenuOpen)
+    }
+
+    function closeHeaderMenu(){
+      headerMenuOpen = false
+      const dd = document.getElementById("headerMenuDropdown")
+      if(dd) dd.classList.add("hidden")
+    }
+
+    document.addEventListener("click", () => closeHeaderMenu())
 
 
     function formatAgo(iso){
@@ -796,9 +914,20 @@
       return `hace ${Math.floor(hs/24)} d`
     }
 
-    function commentDisplayName(email){
+    function userDisplayNameByEmail(email){
+      const key = emailKey(email || "")
+      const user = cachedUsersByEmail[key] || {}
+      const nickname = String(user.nickname || "").trim()
+      const profileName = String(user.profileName || user.name || "").trim()
+      if((String(user.useNicknameInTickets || "").toLowerCase() === "true" || user.useNicknameInTickets === true) && nickname) return nickname
+      if(nickname) return nickname
+      if(profileName) return profileName
       const name = String(email||"-").split("@")[0]
       return name.charAt(0).toUpperCase() + name.slice(1)
+    }
+
+    function commentDisplayName(email){
+      return userDisplayNameByEmail(email)
     }
 
     function getDriveFileIdFromUrl(url){
@@ -917,9 +1046,44 @@
       return `${h}h ${rem}m`
     }
 
+    function normalizeQualityToTen(score){
+      const n = Number(score || 0)
+      if(n <= 0) return 0
+      return n <= 5 ? n * 2 : Math.min(10, n)
+    }
+
+    function qualityColor(score10){
+      const clamped = Math.max(0, Math.min(10, Number(score10 || 0)))
+      const hue = (clamped / 10) * 120
+      return `hsl(${hue}, 75%, 45%)`
+    }
+
     function recomputeConsolidatedMinutes(timeTracking){
       const users = timeTracking?.users || {}
       return Object.values(users).reduce((acc,u)=> acc + Number(u?.totalMinutes||0), 0)
+    }
+
+    function monthFolderKey(dateInput = new Date()){
+      const d = dateInput instanceof Date ? dateInput : new Date(dateInput)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    }
+
+    function monthFolderLabel(monthKey){
+      const [y,m] = String(monthKey||"").split("-").map(Number)
+      if(!y || !m) return String(monthKey||"")
+      return new Date(y, m-1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+    }
+
+    function ensureMonthFolder(tracking, monthKey){
+      const key = String(monthKey || monthFolderKey())
+      if(!tracking.monthlyFolders) tracking.monthlyFolders = {}
+      if(!tracking.monthlyFolders[key]){
+        tracking.monthlyFolders[key] = { label: monthFolderLabel(key), entries: [] }
+      }else{
+        tracking.monthlyFolders[key].label = tracking.monthlyFolders[key].label || monthFolderLabel(key)
+        tracking.monthlyFolders[key].entries = Array.isArray(tracking.monthlyFolders[key].entries) ? tracking.monthlyFolders[key].entries : []
+      }
+      return key
     }
 
     function parseCsvRows(text){
@@ -1236,6 +1400,87 @@ Cliente B`)
       if(cachedTickets && cachedTickets.length){
         renderTicketsFromData(cachedTickets)
       }
+      await renderTicketCustomFields()
+    }
+
+    async function getTicketCustomFields(){
+      const list = Object.values((await db.ref("ticket_custom_fields").once("value")).val() || {})
+      return list
+        .filter(f => f && f.key && f.label)
+        .sort((a,b)=> Number(a.order||0) - Number(b.order||0))
+    }
+
+    async function renderTicketCustomFields(values = {}){
+      const wrap = document.getElementById("ticketCustomFieldsWrap")
+      if(!wrap) return
+      const fields = await getTicketCustomFields()
+      if(!fields.length){ wrap.innerHTML = ""; return }
+      wrap.innerHTML = `<div class="row">${fields.map(f => {
+        const val = values[f.key] ?? ""
+        const required = f.required ? "required" : ""
+        if(f.type === "date") return `<div><label>${htmlEscape(f.label)}</label><input data-custom-field="${htmlEscape(f.key)}" type="date" value="${htmlEscape(String(val))}" ${required}></div>`
+        if(f.type === "number") return `<div><label>${htmlEscape(f.label)}</label><input data-custom-field="${htmlEscape(f.key)}" type="number" value="${htmlEscape(String(val))}" ${required}></div>`
+        if(f.type === "select"){
+          const options = Array.isArray(f.options) ? f.options : String(f.options||"").split(",").map(v=>v.trim()).filter(Boolean)
+          return `<div><label>${htmlEscape(f.label)}</label><select data-custom-field="${htmlEscape(f.key)}" ${required}><option value="">Seleccionar</option>${options.map(opt => `<option value="${htmlEscape(opt)}" ${String(val)===String(opt)?'selected':''}>${htmlEscape(opt)}</option>`).join("")}</select></div>`
+        }
+        return `<div><label>${htmlEscape(f.label)}</label><input data-custom-field="${htmlEscape(f.key)}" type="text" value="${htmlEscape(String(val))}" ${required}></div>`
+      }).join("")}</div>`
+    }
+
+    async function loadTicketFieldSettings(){
+      const container = document.getElementById("ticketFieldsConfigList")
+      if(!container) return
+      const fields = await getTicketCustomFields()
+      if(!fields.length){ container.innerHTML = "<p class='small'>No hay campos configurados.</p>"; return }
+      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option><option value="select" ${f.type==='select'?'selected':''}>Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfg-options-${f.key}" value="${htmlEscape(Array.isArray(f.options)?f.options.join(', '):String(f.options||''))}" placeholder="Alta, Media, Baja"></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
+    }
+
+    async function addTicketCustomField(){
+      if(currentRole !== "admin") return
+      const label = (document.getElementById("cfgFieldLabel")?.value || "").trim()
+      const type = (document.getElementById("cfgFieldType")?.value || "text").trim()
+      const optionsRaw = (document.getElementById("cfgFieldOptions")?.value || "").trim()
+      const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
+      const required = (document.getElementById("cfgFieldRequired")?.value || "false") === "true"
+      if(!label) return alert("Ingresá nombre del campo")
+      const key = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')
+      if(!key) return alert("Nombre de campo inválido")
+      const exists = (await db.ref("ticket_custom_fields").child(key).once("value")).val()
+      if(exists) return alert("Ya existe un campo con ese nombre")
+      const order = Date.now()
+      if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
+      const payload = { key, label, type, required, options, order }
+      await db.ref("ticket_custom_fields").child(key).set(payload)
+      await sheetWrite("appendTicketFieldColumn", { fieldKey: key, fieldLabel: label }).catch(()=>{})
+      document.getElementById("cfgFieldLabel").value = ""
+      document.getElementById("cfgFieldOptions").value = ""
+      showToast("Campo agregado", "ok")
+      loadTicketFieldSettings()
+      renderTicketCustomFields()
+    }
+
+    async function updateTicketCustomField(key){
+      if(currentRole !== "admin") return
+      const label = (document.getElementById(`cfg-name-${key}`)?.value || "").trim()
+      const type = (document.getElementById(`cfg-type-${key}`)?.value || "text").trim()
+      const optionsRaw = (document.getElementById(`cfg-options-${key}`)?.value || "").trim()
+      const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
+      const required = (document.getElementById(`cfg-required-${key}`)?.value || "false") === "true"
+      if(!label) return alert("Nombre inválido")
+      if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
+      await db.ref("ticket_custom_fields").child(key).update({ label, type, required, options })
+      showToast("Campo actualizado", "ok")
+      renderTicketCustomFields()
+    }
+
+    async function deleteTicketCustomField(key){
+      if(currentRole !== "admin") return
+      if(!confirm("¿Eliminar campo personalizado?")) return
+      await db.ref("ticket_custom_fields").child(key).remove()
+      showToast("Campo eliminado", "ok")
+      loadTicketFieldSettings()
+      renderTicketCustomFields()
     }
 
     async function saveClient(button){
@@ -1318,7 +1563,7 @@ Cliente B`)
       }
 
       // Enviamos text/plain para evitar preflight CORS en hosting estático (GitHub Pages).
-      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME })
+      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME, timesSheet: SHEET_TIMES_NAME })
       const res = await fetch(SHEET_WEBHOOK_URL, {
         method: "POST",
         mode: "cors",
@@ -1450,6 +1695,119 @@ Cliente B`)
       showToast("Solicitud enviada al administrador para cambio de contraseña.", "ok", 3200)
     }
 
+    function openSupportModal(){
+      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      document.getElementById("supportModal")?.classList.remove("hidden")
+    }
+
+    function closeSupportModal(){
+      document.getElementById("supportModal")?.classList.add("hidden")
+    }
+
+    async function submitSupportRequest(){
+      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      const title = (document.getElementById("supportTitle")?.value || "").trim()
+      const detail = (document.getElementById("supportDetail")?.value || "").trim()
+      const file = document.getElementById("supportFile")?.files?.[0] || null
+      if(!title || !detail) return alert("Título y detalle son obligatorios.")
+      let attachment = null
+      if(file){
+        try{
+          attachment = await uploadAttachmentFile(file)
+        }catch(err){
+          const dataUrl = await readFileAsDataUrl(file)
+          attachment = { name: file.name, url: dataUrl, fileId: "", inline: true }
+        }
+      }
+      const payload = {
+        id: generateId(),
+        title,
+        detail,
+        createdAt: new Date().toISOString(),
+        createdBy: String(currentUser?.email || "").toLowerCase(),
+        role: currentRole,
+        status: "open",
+        attachment
+      }
+      await db.ref("support_requests").child(payload.id).set(payload)
+      await db.ref("activity_logs").push({ eventType: "support_request_created", ticketId: "", email: payload.createdBy, role: currentRole, timestampIso: payload.createdAt, title })
+      document.getElementById("supportTitle").value = ""
+      document.getElementById("supportDetail").value = ""
+      document.getElementById("supportFile").value = ""
+      closeSupportModal()
+      showToast("Reporte enviado a soporte técnico.", "ok")
+    }
+
+    async function loadSupportAdmin(){
+      const container = document.getElementById("adminSupportList")
+      if(!container) return
+      const data = (await db.ref("support_requests").once("value")).val() || {}
+      const list = Object.values(data).sort((a,b)=> new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      container.innerHTML = list.length
+        ? list.map(it => `<div class="feedItem"><div class="feedType">${htmlEscape(it.title||"-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(it.createdBy||"-"))} · ${it.createdAt ? new Date(it.createdAt).toLocaleString() : ""}<br>${htmlEscape(it.detail||"")}</div>${it.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(it.attachment.url)}" target="_blank">📎 ${htmlEscape(it.attachment.name||"Adjunto")}</a></div>` : ""}</div>`).join("")
+        : `<p class="small">Sin reportes de soporte.</p>`
+    }
+
+    async function loadQualitySurveyAdmin(){
+      const container = document.getElementById("adminQualityList")
+      if(!container) return
+      const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      if(!surveys.length){ container.innerHTML = `<p class="small">Sin encuestas todavía.</p>`; return }
+      const byAnalyst = {}
+      surveys.forEach(s => {
+        const k = String(s.analystEmail||"sin-analista").toLowerCase()
+        if(!byAnalyst[k]) byAnalyst[k] = []
+        byAnalyst[k].push(s)
+      })
+      const averages = Object.entries(byAnalyst).map(([analyst, list]) => {
+        const avg = list.reduce((acc,it)=>acc + normalizeQualityToTen(it.overall||0), 0) / Math.max(1, list.length)
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analyst))}</div><div class="feedMeta">Promedio satisfacción: ${avg.toFixed(2)} / 10 · Encuestas: ${list.length}</div></div>`
+      }).join("")
+      const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(normalizeQualityToTen(s.overall||0)))} / 10).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
+      container.innerHTML = `<h4 style="margin:0 0 8px">Promedio por analista</h4>${averages}<h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}`
+    }
+
+    function openCloseSurveyModal(ticketId, nextTicketData){
+      pendingCloseSurvey = { ticketId, nextTicketData }
+      document.getElementById("closeSurveyReception").value = ""
+      document.getElementById("closeSurveyCommunication").value = ""
+      document.getElementById("closeSurveyOverall").value = ""
+      document.getElementById("closeSurveyModal")?.classList.remove("hidden")
+    }
+
+    function closeCloseSurveyModal(){
+      pendingCloseSurvey = null
+      document.getElementById("closeSurveyModal")?.classList.add("hidden")
+    }
+
+    async function submitCloseSurveyAndCloseTicket(){
+      if(!pendingCloseSurvey) return
+      const reception = document.getElementById("closeSurveyReception")?.value || ""
+      const communication = document.getElementById("closeSurveyCommunication")?.value || ""
+      const overall = Number(document.getElementById("closeSurveyOverall")?.value || 0)
+      if(!reception || !communication || !overall) return alert("Completá todos los campos de la encuesta.")
+      const { ticketId, nextTicketData } = pendingCloseSurvey
+      const survey = {
+        ticketId,
+        consultorEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
+        analystEmail: String(nextTicketData.assignedTo || currentUser?.email || "").toLowerCase(),
+        reception,
+        communication,
+        overall,
+        createdAt: new Date().toISOString()
+      }
+      const updated = { ...nextTicketData, status: "done", closeSurvey: survey, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(updated.dbKey || emailKey(updated.id)).update(updated)
+      await db.ref("quality_surveys").child(generateId()).set(survey)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      closeCloseSurveyModal()
+      showToast("Ticket cerrado y encuesta enviada.", "ok")
+      openTicketDetailModal(ticketId)
+      loadDashboard()
+    }
+
     async function handleLogin(){
       if(loginInProgress) return
       const email = document.getElementById("loginEmail").value.trim().toLowerCase()
@@ -1464,7 +1822,20 @@ Cliente B`)
         const user = await getUserFromDb(email)
         if(!user || !user.active) return alert("Usuario inexistente o inactivo")
         const validPassword = await verifyPassword(user, password)
-        if(!validPassword) return alert("Contraseña incorrecta")
+        if(!validPassword){
+          const legacyHints = LEGACY_PASSWORD_HINTS[email] || []
+          if(legacyHints.includes(password)){
+            return alert("La contraseña 1234 fue deshabilitada por seguridad. Probá con la contraseña actual del admin o usá 'Olvide la contraseña'.")
+          }
+          return alert("Contraseña incorrecta")
+        }
+        const twoFactorEnabled = String(user.twoFactorEnabled || "").toLowerCase() === "true" || user.twoFactorEnabled === true
+        if(twoFactorEnabled){
+          const code = prompt("Ingresá el código de 6 dígitos de Google Authenticator:")
+          if(code === null) return
+          const validCode = await verifyTotpCode(user.twoFactorSecret || "", code)
+          if(!validCode) return alert("Código de inicio seguro inválido.")
+        }
 
         if(!user.passwordHash && user.password){
           const secureFields = await buildPasswordFields(password)
@@ -1516,31 +1887,205 @@ Cliente B`)
       await rotatePasswordFlow(user)
     }
 
+    function randomBase32Secret(len = 32){
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+      const bytes = new Uint8Array(len)
+      crypto.getRandomValues(bytes)
+      let out = ""
+      for(let i=0;i<len;i++) out += alphabet[bytes[i] % alphabet.length]
+      return out
+    }
+
+    function base32ToBytes(base32){
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+      const clean = String(base32||"").toUpperCase().replace(/=+$/,"").replace(/[^A-Z2-7]/g,"")
+      let bits = ""
+      for(const ch of clean){
+        const val = alphabet.indexOf(ch)
+        if(val < 0) continue
+        bits += val.toString(2).padStart(5,"0")
+      }
+      const bytes = []
+      for(let i=0;i+8<=bits.length;i+=8) bytes.push(parseInt(bits.slice(i,i+8),2))
+      return new Uint8Array(bytes)
+    }
+
+    async function generateTotpCode(secret, timestampMs = Date.now()){
+      const keyBytes = base32ToBytes(secret)
+      if(!keyBytes.length) return ""
+      const counter = Math.floor(timestampMs / 30000)
+      const msg = new ArrayBuffer(8)
+      const view = new DataView(msg)
+      view.setUint32(0, Math.floor(counter / 0x100000000), false)
+      view.setUint32(4, counter >>> 0, false)
+      const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
+      const sig = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msg))
+      const offset = sig[sig.length - 1] & 0x0f
+      const bin = ((sig[offset] & 0x7f) << 24) | (sig[offset+1] << 16) | (sig[offset+2] << 8) | sig[offset+3]
+      return String(bin % 1000000).padStart(6, "0")
+    }
+
+    async function verifyTotpCode(secret, code){
+      const normalized = String(code||"").replace(/\s+/g, "")
+      if(!/^\d{6}$/.test(normalized)) return false
+      const now = Date.now()
+      for(const drift of [-1,0,1]){
+        const expected = await generateTotpCode(secret, now + drift*30000)
+        if(expected === normalized) return true
+      }
+      return false
+    }
+
+    async function loadMyProfileForm(){
+      if(!(currentRole === "analista" || currentRole === "admin")) return
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return
+      const profileName = document.getElementById("profileName")
+      const nickname = document.getElementById("profileNickname")
+      const useNickname = document.getElementById("profileUseNickname")
+      const avatar = document.getElementById("profileCurrentAvatar")
+      const secureToggle = document.getElementById("profileSecureLogin")
+      const secretInput = document.getElementById("profileTotpSecret")
+      const otpapp = document.getElementById("profileOtpAuthUrl")
+      if(profileName) profileName.value = String(user.profileName || user.name || "")
+      if(nickname) nickname.value = String(user.nickname || "")
+      if(useNickname) useNickname.checked = String(user.useNicknameInTickets || "").toLowerCase() === "true" || user.useNicknameInTickets === true
+      if(avatar) avatar.src = buildAvatarUrl(user, user.email || currentUser.email)
+      if(secureToggle) secureToggle.checked = String(user.twoFactorEnabled || "").toLowerCase() === "true" || user.twoFactorEnabled === true
+      if(secretInput) secretInput.value = String(user.twoFactorSecret || "")
+      const otpValue = String(user.twoFactorOtpAuthUrl || "")
+      if(otpapp) otpapp.value = otpValue
+    }
+
+    async function saveMyProfile(){
+      if(!(currentRole === "analista" || currentRole === "admin")) return alert("Disponible para analistas y admin.")
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      const profileName = (document.getElementById("profileName")?.value || "").trim()
+      const nickname = (document.getElementById("profileNickname")?.value || "").trim()
+      const useNickname = !!document.getElementById("profileUseNickname")?.checked
+      const file = document.getElementById("profilePhoto")?.files?.[0] || null
+      let photoFields = {}
+      if(file){
+        const uploaded = await uploadUserPhotoFile(file)
+        photoFields = {
+          photoUrl: uploaded.url || "",
+          photoFileId: uploaded.fileId || "",
+          photoDataUrl: uploaded.inline ? (uploaded.url || "") : (user.photoDataUrl || "")
+        }
+      }
+      const payload = {
+        ...user,
+        key: emailKey(user.email),
+        profileName,
+        nickname,
+        useNicknameInTickets: useNickname,
+        ...photoFields
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast("Perfil actualizado.", "ok")
+      await loadFilterOptions()
+      await loadMyProfileForm()
+    }
+
+    async function changeMyPasswordFromProfile(){
+      if(!(currentRole === "analista" || currentRole === "admin")) return alert("Disponible para analistas y admin.")
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      const currentPassword = (document.getElementById("profileCurrentPassword")?.value || "").trim()
+      const next = (document.getElementById("profileNewPassword")?.value || "").trim()
+      const confirmNext = (document.getElementById("profileConfirmPassword")?.value || "").trim()
+      if(!currentPassword || !next || !confirmNext) return alert("Completá los campos de contraseña.")
+      const validCurrent = await verifyPassword(user, currentPassword)
+      if(!validCurrent) return alert("La contraseña actual no coincide.")
+      const policy = passwordPolicyError(next)
+      if(policy) return alert(policy)
+      if(next !== confirmNext) return alert("La confirmación no coincide.")
+      const secureFields = await buildPasswordFields(next)
+      const payload = { ...user, key: emailKey(user.email), password: "", ...secureFields }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      document.getElementById("profileCurrentPassword").value = ""
+      document.getElementById("profileNewPassword").value = ""
+      document.getElementById("profileConfirmPassword").value = ""
+      showToast("Contraseña actualizada.", "ok")
+    }
+
+    async function generateAuthenticatorSecret(){
+      if(currentRole !== "analista") return
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return
+      const secret = randomBase32Secret(32)
+      const issuer = "Tablero"
+      const label = encodeURIComponent(`${issuer}:${user.email}`)
+      const otpauth = `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
+      document.getElementById("profileTotpSecret").value = secret
+      document.getElementById("profileOtpAuthUrl").value = otpauth
+      document.getElementById("profileOtpCode").value = ""
+      showToast("Se generó una nueva clave. Escaneala en Google Authenticator y verificá el código.", "info", 3200)
+    }
+
+    async function saveSecureLoginSettings(){
+      if(currentRole !== "analista") return alert("Disponible solo para analistas por ahora.")
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      const enabled = !!document.getElementById("profileSecureLogin")?.checked
+      const secret = (document.getElementById("profileTotpSecret")?.value || "").trim().toUpperCase()
+      const otpAuth = (document.getElementById("profileOtpAuthUrl")?.value || "").trim()
+      const otpCode = (document.getElementById("profileOtpCode")?.value || "").trim()
+      if(enabled){
+        if(!secret) return alert("Generá una clave para Google Authenticator.")
+        const ok = await verifyTotpCode(secret, otpCode)
+        if(!ok) return alert("Código de Google Authenticator inválido.")
+      }
+      const payload = {
+        ...user,
+        key: emailKey(user.email),
+        twoFactorEnabled: enabled,
+        twoFactorSecret: enabled ? secret : "",
+        twoFactorOtpAuthUrl: enabled ? otpAuth : ""
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast(enabled ? "Inicio seguro activado." : "Inicio seguro desactivado.", "ok")
+      await loadMyProfileForm()
+    }
+
     function renderApp(){
       const isAdmin = currentRole === "admin"
       const isAnalyst = currentRole === "analista"
       const canCreateTicket = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const showAdminPanel = isAdmin && adminPanelTab !== "panel"
+      const showAnalystProfile = isAnalyst && analystPanelTab === "profile"
+      const showAdminProfile = isAdmin && adminPanelTab === "profile"
+      const showProfileView = showAnalystProfile || showAdminProfile
 
       document.getElementById("app").innerHTML = `
-        <div class="card">
+        <div class="card topbarCard">
           <div class="inline" style="justify-content:space-between">
             <div>
               <h2 style="margin:0">Tablero de tickets</h2>
               <p class="small" style="margin:6px 0 0">Panel ${htmlEscape(currentRole)} · ${htmlEscape(currentUser.email)}</p>
             </div>
             <div class="inline">
-              ${isAdmin?`<button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel')">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config')">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity')">Actividad reciente</button>`:""}
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
-              <button class="ghost" onclick="changeOwnPassword()">Cambiar contraseña</button>
-              <button id="themeToggleBtn" class="ghost" onclick="toggleTheme()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
+              ${(isAdmin && showAdminPanel) || (isAnalyst && showAnalystProfile) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
+              <div class="menuWrap" onclick="event.stopPropagation()">
+                <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
+                <div id="headerMenuDropdown" class="menuDropdown hidden">
+                  <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
+                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('activity')">Actividad reciente</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Organizar agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Organizar agenda</button>` : ""}
+                  ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Mi agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Mi agenda</button>` : ""}
+                </div>
+              </div>
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
           </div>
         </div>
 
-        ${showAdminPanel ? (adminPanelTab==='config' ? `
-          <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
+        ${showAdminPanel ? (adminPanelTab==='people' ? `
+          <div class="card"><h3 style="margin-top:0">Gestión de personas</h3>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
             <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
@@ -1553,7 +2098,55 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Cuando un analista cierra un ticket, completa una encuesta de calidad. Esa información se asocia al consultor del ticket y se usa para calcular el puntaje promedio.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          <div class="card">
+            <h3 style="margin-top:0">Mi perfil (Admin)</h3>
+            <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
+            <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo en tickets</span></div>
+            <div class="row" style="margin-top:8px"><div><label>Foto de perfil</label><input id="profilePhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveMyProfile()">Guardar perfil</button></div></div>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
+            <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
+          </div>
+          ` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : showAnalystProfile ? `
+          <div class="card">
+            <h3 style="margin-top:0">Mi perfil (Analista)</h3>
+            <div class="row">
+              <div style="max-width:280px">
+                <img id="profileCurrentAvatar" class="commentAvatar" alt="avatar" style="width:80px;height:80px;border-radius:50%;display:block;margin-bottom:8px" />
+                <label>Foto de perfil</label>
+                <input id="profilePhoto" type="file" accept="image/*">
+              </div>
+              <div>
+                <label>Nombre del perfil</label>
+                <input id="profileName" type="text" placeholder="Nombre visible en tickets">
+                <label>Apodo</label>
+                <input id="profileNickname" type="text" placeholder="Ej: Naty, Nico, etc.">
+                <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo como nombre visible en tickets</span></div>
+                <div style="margin-top:10px"><button onclick="saveMyProfile()">Guardar perfil</button></div>
+              </div>
+            </div>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <h4 style="margin:0 0 8px">Cambiar contraseña</h4>
+            <div class="row">
+              <div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div>
+              <div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div>
+              <div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div>
+            </div>
+            <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <h4 style="margin:0 0 8px">Inicio seguro (Google Authenticator)</h4>
+            <div class="inline" style="margin-bottom:8px"><input id="profileSecureLogin" type="checkbox" style="width:auto;margin:0"><span>Solicitar código de autenticador al iniciar sesión</span></div>
+            <div class="row">
+              <div><label>Secreto base32</label><input id="profileTotpSecret" type="text" placeholder="Generar y guardar en tu autenticador"></div>
+              <div><label>OTP Auth URL</label><input id="profileOtpAuthUrl" type="text" placeholder="URL para apps TOTP"></div>
+              <div><label>Código actual (6 dígitos)</label><input id="profileOtpCode" type="text" maxlength="6"></div>
+            </div>
+            <div class="inline">
+              <button class="ghost" onclick="generateAuthenticatorSecret()">Generar clave</button>
+              <button onclick="saveSecureLoginSettings()">Guardar inicio seguro</button>
+            </div>
+          </div>` : `
           <div class="grid">
             <div class="card">
               <h3 style="margin:0 0 10px">Dashboard</h3>
@@ -1561,12 +2154,14 @@ Cliente B`)
                 ${currentRole !== "consultor"
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
-                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>`
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
+                     <div class="kpi"><div class="label">Puntaje de calidad</div><div class="value" id="kpiQuality">-</div></div>`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
-                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>
+                     <div class="kpi"><div class="label">Puntaje de calidad</div><div class="value" id="kpiQuality">-</div></div>`}
               </div>
               <div id="dashboardTicketList" class="small" style="margin-top:10px"></div>
               
@@ -1580,29 +2175,50 @@ Cliente B`)
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
+        <div id="qualityOrb" class="qualityOrb hidden"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad</div></div>
+        ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">🛟</button>` : ""}
       `
 
       applyTheme()
-      if(isAdmin && adminPanelTab === 'config'){ loadUsersAdmin(); loadClientsAdmin() }
+      closeHeaderMenu()
+      if(isAdmin && adminPanelTab === 'people'){ loadUsersAdmin(); loadClientsAdmin() }
+      if(isAdmin && adminPanelTab === 'support'){ loadSupportAdmin() }
+      if(isAdmin && adminPanelTab === 'settings'){ loadTicketFieldSettings() }
+      if(isAdmin && adminPanelTab === 'quality'){ loadQualitySurveyAdmin() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
-      loadFilterOptions()
-      setupRealtimeStreams()
-      if(!showAdminPanel || adminPanelTab === 'activity') loadDashboard()
-      if(!showAdminPanel) loadTickets()
-      if(isAdmin && adminPanelTab === 'config'){ }
+      if(!showProfileView){
+        loadFilterOptions()
+        setupRealtimeStreams()
+        if(!showAdminPanel || adminPanelTab === 'activity') loadDashboard()
+        if(!showAdminPanel) loadTickets()
+      }else{
+        loadMyProfileForm()
+      }
+      if(isAdmin && adminPanelTab === 'people'){ }
     }
 
     function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets() }
     function updateClientFilter(value){ ticketFilterClient = (value||"").trim().toLowerCase(); globalThis.ticketFilterClient = ticketFilterClient; loadTickets() }
     function updateAnalystFilter(value){ ticketFilterAnalyst = (value||"").trim().toLowerCase(); loadTickets() }
 
-    function openTicketModal(){ document.getElementById("ticketModal").classList.remove("hidden") }
+    function openTicketModal(){
+      document.getElementById("ticketModal").classList.remove("hidden")
+      renderTicketCustomFields()
+      if(currentRole === "consultor"){
+        const informer = document.getElementById("tInformer")
+        if(informer){
+          informer.value = String(currentUser?.email || "").toLowerCase()
+          informer.disabled = true
+        }
+      }
+    }
     function closeTicketModal(){
       document.getElementById("tTitle").value = ""
       document.getElementById("tDescription").value = ""
       document.getElementById("tPriority").value = "Media"
       document.getElementById("tClient").value = ""
       document.getElementById("tDeadline").value = ""
+      renderTicketCustomFields({})
       document.getElementById("ticketModal").classList.add("hidden")
     }
 
@@ -1612,7 +2228,17 @@ Cliente B`)
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
-      const informer = (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase()
+      const informer = (currentRole === "consultor"
+        ? String(currentUser.email || "").trim().toLowerCase()
+        : (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase())
+      const customFieldsDefs = await getTicketCustomFields()
+      const customFields = {}
+      for(const field of customFieldsDefs){
+        const input = document.querySelector(`[data-custom-field="${field.key}"]`)
+        const value = String(input?.value ?? "").trim()
+        if(field.required && !value) return alert(`Completá el campo obligatorio: ${field.label}`)
+        customFields[field.key] = value
+      }
 
       if(!title || !description || !client) return alert("Completá título, detalle y cliente/área")
       if(!informer) return alert("Seleccioná informador")
@@ -1640,7 +2266,8 @@ Cliente B`)
         problemReportedBy: "",
         problemReportedAt: "",
         helpers: [],
-        timeTracking: { users: {}, consolidatedMinutes: 0 }
+        timeTracking: { users: {}, consolidatedMinutes: 0 },
+        customFields
       }
 
       const dbKey = emailKey(code)
@@ -1715,6 +2342,17 @@ Cliente B`)
       }).length
     }
 
+    function hasConsultorUnreadForCurrent(ticket){
+      if(!(currentRole === "admin" || currentRole === "analista")) return false
+      const myKey = emailKey(currentUser?.email || "")
+      return Object.values(ticket?.comments || {}).some(c => {
+        const author = String(c?.author || "").toLowerCase()
+        const authorRole = String(cachedUsersByEmail?.[emailKey(author)]?.role || "").toLowerCase()
+        const readBy = c?.readBy || {}
+        return authorRole === "consultor" && !readBy[myKey]
+      })
+    }
+
     function renderConsultorTicketList(tickets){
       const sorted = [...tickets].sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
       if(!sorted.length) return `<div class="small">Sin tickets</div>`
@@ -1738,7 +2376,7 @@ Cliente B`)
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
-                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo||"Sin asignar")}</div></div>
+                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div>
               </div>
@@ -1752,12 +2390,13 @@ Cliente B`)
       const assignedTo = String(ticket.assignedTo||"").toLowerCase()
       const assignedAvatar = assignedTo ? userAvatarByEmail(assignedTo) : ""
       const canDrag = currentRole === "admin" || currentRole === "analista"
+      const pulseClass = hasConsultorUnreadForCurrent(ticket) ? "consultorPulse" : ""
       return `
-        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
-          <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
-          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
+          <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(ticket.informer||ticket.createdBy||"-"))}</div>
+          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? userDisplayNameByEmail(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
           <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
@@ -1783,6 +2422,11 @@ Cliente B`)
       const informerOptions = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}" ${currentInformer===c?"selected":""}>${htmlEscape(c)}</option>`).join("")}`
       const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticketWithRead.status===key?"selected":""}>${label}</option>`).join("")
       const clientOptions = `<option value="">Seleccionar cliente</option>${(cachedClients||[]).map(c => `<option value="${htmlEscape(c)}" ${String(ticketWithRead.client||'')===String(c)?'selected':''}>${htmlEscape(c)}</option>`).join("")}`
+      const customDefs = await getTicketCustomFields()
+      const customValues = ticketWithRead.customFields || {}
+      const customDetailHtml = customDefs.length
+        ? `<div class="row">${customDefs.map(f => `<div><label>${htmlEscape(f.label)}</label><input value="${htmlEscape(String(customValues[f.key] ?? ''))}" disabled></div>`).join("")}</div>`
+        : ""
 
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
@@ -1806,11 +2450,12 @@ Cliente B`)
             <div class="row">
               <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
               <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
-              <div><label>Deadline</label><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}></div>
+              <div><label>Deadline</label><div class="inline" style="gap:6px;align-items:center"><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}>${currentRole === "analista" ? `<button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">🗓️</button>` : ""}</div></div>
             </div>
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${informerOptions}</select></div>
+            ${customDetailHtml}
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
 
@@ -1820,7 +2465,7 @@ Cliente B`)
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
       setupLiveTimer(id)
-      setTicketActivityTab(id, ticketActivityTabById[id] || "comments")
+      setTicketActivityTab(id, "comments")
     }
 
 
@@ -1852,6 +2497,25 @@ Cliente B`)
       if(owner){ owner.value = (currentUser.email||"").toLowerCase(); autoSaveTicketDetail(id) }
     }
 
+    async function assignTicketOwner(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const owner = (document.getElementById(`detail-owner-${id}`)?.value || "").trim().toLowerCase()
+      if(!owner) return alert("Seleccioná un responsable")
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(!tracking.users) tracking.users = {}
+      const ownerKey = emailKey(owner)
+      if(!tracking.users[ownerKey]) tracking.users[ownerKey] = { email: owner, totalMinutes: 0, timerStartAt: "" }
+      const updated = { ...ticket, assignedTo: owner, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      showToast("Responsable asignado", "ok")
+      openTicketDetailModal(id)
+    }
+
     async function autoSaveTicketDetail(id){
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const ticket = cachedTickets.find(t => t.id === id)
@@ -1878,6 +2542,9 @@ Cliente B`)
         timeTracking: tracking,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
+      }
+      if(currentRole === "analista" && ticket.status !== "done" && updated.status === "done"){
+        return openCloseSurveyModal(id, updated)
       }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
@@ -1942,17 +2609,63 @@ Cliente B`)
       if(historyBtn) historyBtn.classList.toggle("active", tab === "history")
       if(timesBtn) timesBtn.classList.toggle("active", tab === "times")
       if(tab === "history") loadTicketHistory(ticketId)
-      if(tab === "times") setupLiveTimer(ticketId)
+      if(tab === "times"){
+        ensureCurrentMonthFolderForTicket(ticketId)
+        setupLiveTimer(ticketId)
+      }
       else clearLiveTimer(ticketId)
+    }
+
+    async function ensureCurrentMonthFolderForTicket(ticketId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const currentKey = monthFolderKey()
+      const exists = !!(tracking.monthlyFolders && tracking.monthlyFolders[currentKey])
+      ensureMonthFolder(tracking, currentKey)
+      timeMonthTabByTicket[ticketId] = currentKey
+      if(exists) return
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+    }
+
+    async function setTimeMonthTab(ticketId, monthKey){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const exists = !!(tracking.monthlyFolders && tracking.monthlyFolders[monthKey])
+      ensureMonthFolder(tracking, monthKey)
+      timeMonthTabByTicket[ticketId] = monthKey
+      if(!exists){
+        const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+        await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+        mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+        const ix = cachedTickets.findIndex(t => t.id === ticketId)
+        if(ix >= 0) cachedTickets[ix] = updated
+      }else{
+        ticket.timeTracking = tracking
+      }
+      openTicketDetailModal(ticketId)
     }
 
     function renderTimesTab(ticketId, usersByEmail){
       const ticket = cachedTickets.find(t => t.id === ticketId)
       if(!ticket) return '<div class="small">Sin datos de tiempo</div>'
       const tracking = ticket.timeTracking || { users:{}, consolidatedMinutes:0 }
+      const currentMonthKey = monthFolderKey()
+      ensureMonthFolder(tracking, currentMonthKey)
       const helpers = Array.from(new Set([...(ticket.helpers||[]), ...(ticket.assignedTo ? [ticket.assignedTo] : [])])).filter(Boolean)
       const analysts = Object.values(usersByEmail||{}).filter(u => u && u.role === 'analista' && u.active !== false).map(u => (u.email||'').toLowerCase()).sort()
-      const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join('')}`
+      const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}`
+      const monthKeys = Object.keys(tracking.monthlyFolders || {}).sort()
+      const selectedMonth = timeMonthTabByTicket[ticketId] && monthKeys.includes(timeMonthTabByTicket[ticketId]) ? timeMonthTabByTicket[ticketId] : currentMonthKey
+      timeMonthTabByTicket[ticketId] = selectedMonth
+      const monthData = tracking.monthlyFolders?.[selectedMonth] || { label: monthFolderLabel(selectedMonth), entries: [] }
+      const entries = Array.isArray(monthData.entries) ? [...monthData.entries] : []
+      entries.sort((a,b)=> new Date(b.loggedDate||b.createdAt||0) - new Date(a.loggedDate||a.createdAt||0))
 
       const rows = {}
       Object.entries(tracking.users || {}).forEach(([k,v]) => rows[k] = { ...(v||{}) })
@@ -1968,12 +2681,19 @@ Cliente B`)
         const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
         const running = !!u?.timerStartAt
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
+      const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
-        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
-        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button></div>
+        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
+        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="assignHelperFromDropdown('${ticketId}')">Sumar ayudante</button></div>
+        <div class="small" style="margin-bottom:6px">Carpetas por mes:</div>
+        <div class="inline" style="margin-bottom:10px">${monthKeys.map(mk => `<button class="${selectedMonth===mk?'':'ghost'}" onclick="setTimeMonthTab('${ticketId}','${mk}')">${htmlEscape(monthFolderLabel(mk))}</button>`).join('')}</div>
+        <div class="card" style="padding:10px;margin-bottom:10px">
+          <div class="small" style="margin-bottom:6px">Carpeta activa: <strong>${htmlEscape(monthData.label || monthFolderLabel(selectedMonth))}</strong></div>
+          ${entriesHtml}
+        </div>
         <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
         ${helpersHtml}
       </div>`
@@ -1986,17 +2706,17 @@ Cliente B`)
       return `
         <div class="commentsSection">
           <div class="commentsHeader">
-            <div><div class="commentsTitle">Información interna del ticket</div><div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div></div>
+            <div><div class="commentsTitle">Información interna del ticket</div>${currentRole !== "consultor" ? `<div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div>` : ""}</div>
             <button class="ghost sortBtn" onclick="toggleCommentsSort('${id}')">${sortOrder === "asc" ? "Más antiguos primero" : "Más recientes primero"}</button>
           </div>
-          <div class="activityTabs">
+          ${currentRole !== "consultor" ? `<div class="activityTabs">
             <button id="activity-btn-comments-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "comments" ? "active" : ""}" onclick="setTicketActivityTab('${id}','comments')">Comentarios</button>
             <button id="activity-btn-history-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "history" ? "active" : ""}" onclick="setTicketActivityTab('${id}','history')">Historial</button>
             <button id="activity-btn-times-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "times" ? "active" : ""}" onclick="setTicketActivityTab('${id}','times')">Tiempos</button>
-          </div>
+          </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -2015,8 +2735,8 @@ Cliente B`)
             </div>
           </div>
 
-          <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">Cargando...</div>
-          <div id="ticket-times-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "times" ? "" : "hidden"}">${renderTimesTab(id, usersByEmail)}</div>
+          <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">${currentRole !== "consultor" ? "Cargando..." : ""}</div>
+          <div id="ticket-times-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "times" ? "" : "hidden"}">${currentRole !== "consultor" ? renderTimesTab(id, usersByEmail) : ""}</div>
         </div>
       `
     }
@@ -2139,6 +2859,9 @@ Cliente B`)
       if(!ticket || ticket.status === status) return
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      if(currentRole === "analista" && ticket.status !== "done" && status === "done"){
+        return openCloseSurveyModal(ticketId, updated)
+      }
       showToast("Moviendo ticket...", "info", 1400)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
@@ -2213,6 +2936,7 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
       const helpers = Array.from(new Set([...(ticket.helpers||[]), helperEmail]))
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(!tracking.users) tracking.users = {}
       const k = emailKey(helperEmail)
       if(!tracking.users[k]) tracking.users[k] = { email: helperEmail, totalMinutes: 0, timerStartAt: '' }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
@@ -2223,11 +2947,25 @@ Cliente B`)
       openTicketDetailModal(id)
     }
 
-    async function toggleTicketTimerForUser(ticketId, userKey){
+    async function mirrorTimeEntryToSheet(entry){
+      if(!entry) return
+      const payload = {
+        entryId: entry.id,
+        ticketId: entry.ticketId,
+        monthFolder: entry.monthFolder,
+        loggedDate: entry.loggedDate,
+        hours: Number(entry.hours || 0).toFixed(2),
+        analyst: entry.analyst,
+        createdAt: entry.createdAt || new Date().toISOString()
+      }
+      await sheetWrite("upsertTimeEntry", payload).catch(err => console.warn("No se pudo espejar tiempo en sheet:", err))
+    }
+
+    async function toggleTicketTimerForUser(ticketId, userKey, monthKey){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const users = ticket.timeTracking?.users || {}
       const u = users[userKey] || {}
-      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey)
+      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey, monthKey)
       return startTicketTimerForUser(ticketId, userKey)
     }
 
@@ -2240,7 +2978,7 @@ Cliente B`)
       showToast('Timer iniciado','ok')
     }
 
-    async function stopTicketTimerForUser(ticketId, userKey){
+    async function stopTicketTimerForUser(ticketId, userKey, monthKey){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const u = (ticket.timeTracking?.users||{})[userKey] || {}
       if(!u.timerStartAt) return alert('El timer no está iniciado')
@@ -2257,20 +2995,25 @@ Cliente B`)
         curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
-      })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo cargado','ok')
     }
 
-    async function logManualTimeForUser(ticketId, userKey){
+    function currUserEmailByKey(ticket, userKey){
+      return String(ticket?.timeTracking?.users?.[userKey]?.email || currentUser.email || "").toLowerCase()
+    }
+
+    async function logManualTimeForUser(ticketId, userKey, monthKey){
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
       const minutes = hs * 60 + mins
       if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
+      const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         u.totalMinutes = Number(u.totalMinutes||0) + minutes
         tracking.users[userKey] = u
-      })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo manual cargado','ok')
     }
 
@@ -2289,6 +3032,7 @@ Cliente B`)
       const me = String(currentUser.email||"").toLowerCase()
       const helpers = Array.from(new Set([...(ticket.helpers||[]), me]))
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      if(!tracking.users) tracking.users = {}
       const meKey = emailKey(me)
       if(!tracking.users[meKey]) tracking.users[meKey] = { email: me, totalMinutes: 0, timerStartAt: "" }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
@@ -2299,10 +3043,25 @@ Cliente B`)
       openTicketDetailModal(id)
     }
 
-    async function applyTimeUpdate(id, mutate){
+    async function applyTimeUpdate(id, mutate, meta = {}){
       const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       mutate(tracking)
+      const monthKey = ensureMonthFolder(tracking, meta.monthKey || timeMonthTabByTicket[id] || monthFolderKey())
+      if(Number(meta.minutes || 0) > 0){
+        const entry = {
+          id: generateId(),
+          ticketId: id,
+          monthFolder: monthFolderLabel(monthKey),
+          monthKey,
+          loggedDate: new Date().toISOString(),
+          hours: Number(meta.minutes) / 60,
+          analyst: String(meta.analyst || currentUser.email || "").toLowerCase(),
+          createdAt: new Date().toISOString()
+        }
+        tracking.monthlyFolders[monthKey].entries.push(entry)
+        mirrorTimeEntryToSheet(entry)
+      }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
@@ -2421,6 +3180,9 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const updated = { ...ticket, status: next, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      if(currentRole === "analista" && ticket.status !== "done" && next === "done"){
+        return openCloseSurveyModal(id, updated)
+      }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status })
@@ -2498,6 +3260,7 @@ Cliente B`)
 
 
     async function deleteComment(ticketId, commentId){
+      if(currentRole === "consultor") return alert("No tenés permisos para borrar comentarios")
       const ticket = cachedTickets.find(t => t.id === ticketId)
       if(!ticket || !commentId) return
       const comments = { ...(ticket.comments || {}) }
@@ -2745,6 +3508,13 @@ Cliente B`)
       showToast("Solicitud enviada al consultor", "ok")
     }
 
+    async function requestDeadlineChangeFromDetail(ticketId, ev){
+      ev?.preventDefault?.()
+      ev?.stopPropagation?.()
+      const trigger = ev?.currentTarget || ev?.target || null
+      await requestDeadlineChangeFromDashboard(ticketId, trigger)
+    }
+
     function formatDateDMY(value){
       if(!value) return "-"
       const d = new Date(`${value}T00:00:00`)
@@ -2767,7 +3537,8 @@ Cliente B`)
         const r = anchorEl?.getBoundingClientRect ? anchorEl.getBoundingClientRect() : null
         if(r){
           input.style.left = `${Math.max(8, Math.round(r.left))}px`
-          input.style.top = `${Math.max(8, Math.round(r.bottom + 4))}px`
+          const above = Math.round(r.top - 38)
+          input.style.top = `${above > 8 ? above : Math.round(r.bottom + 4)}px`
         }else{
           input.style.left = '16px'
           input.style.top = '16px'
@@ -2795,9 +3566,13 @@ Cliente B`)
         container.innerHTML = `<div class="small">${htmlEscape(label)}: sin tickets.</div>`
         return
       }
+      const topTickets = tickets.slice(0,2)
       container.innerHTML = `
         <div class="small" style="margin-bottom:6px"><strong>${htmlEscape(label)}</strong> (${tickets.length})</div>
-        ${tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+        <div class="dashboardListScroll">
+          ${topTickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+          ${tickets.slice(2).map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+        </div>
       `
     }
 
@@ -2853,12 +3628,36 @@ Cliente B`)
         const kpiUrgent = document.getElementById("kpiUrgent")
         const kpiNearDeadline = document.getElementById("kpiNearDeadline")
         const kpiPendingMessages = document.getElementById("kpiPendingMessages")
+        const kpiQuality = document.getElementById("kpiQuality")
         if(kpiUnassigned) kpiUnassigned.innerText = unassignedTickets.length
         if(kpiDoing) kpiDoing.innerText = doingTickets.length
         if(kpiProblems) kpiProblems.innerText = problemTickets.length
         if(kpiUrgent) kpiUrgent.innerText = urgentTickets.length
         if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
         if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
+        try{
+          const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+          let surveys = Object.values(surveyMap)
+          if(currentRole === "analista") surveys = surveys.filter(s => String(s.analystEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          if(currentRole === "consultor") surveys = surveys.filter(s => String(s.consultorEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          const avgRaw = surveys.length ? (surveys.reduce((acc,s)=>acc + normalizeQualityToTen(s.overall||0), 0) / surveys.length) : 0
+          if(kpiQuality) kpiQuality.innerText = surveys.length ? avgRaw.toFixed(2) : "-"
+          const orb = document.getElementById("qualityOrb")
+          const orbValue = document.getElementById("qualityOrbValue")
+          if(orb && orbValue){
+            if(surveys.length){
+              orb.classList.remove("hidden")
+              orb.style.background = `radial-gradient(circle at 30% 25%, rgba(255,255,255,.22), transparent 42%), ${qualityColor(avgRaw)}`
+              orbValue.textContent = `${avgRaw.toFixed(1)}`
+            }else{
+              orb.classList.add("hidden")
+            }
+          }
+        }catch(_){
+          if(kpiQuality) kpiQuality.innerText = "-"
+          const orb = document.getElementById("qualityOrb")
+          if(orb) orb.classList.add("hidden")
+        }
 
         dashboardListCache = {
           urgent: urgentTickets,
@@ -2872,6 +3671,17 @@ Cliente B`)
 
         if(currentRole === "consultor") {
           const onlyMine = normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
+          const closedWithSurvey = onlyMine.filter(t => t.status === "done" && t.closeSurvey && t.closeSurvey.createdAt)
+          const latestSurvey = closedWithSurvey.sort((a,b)=>new Date(b.closeSurvey.createdAt||0)-new Date(a.closeSurvey.createdAt||0))[0]
+          if(latestSurvey){
+            const key = `consultor_last_survey_${String(currentUser.email||"").toLowerCase()}`
+            const seen = localStorage.getItem(key) || ""
+            if(String(latestSurvey.closeSurvey.createdAt||"") > seen){
+              localStorage.setItem(key, String(latestSurvey.closeSurvey.createdAt||""))
+              const s = latestSurvey.closeSurvey
+              showToast(`Ticket ${latestSurvey.id} cerrado. Encuesta: recepción ${s.reception}, comunicación ${s.communication}, satisfacción ${normalizeQualityToTen(s.overall)}/10`, "info", 5200)
+            }
+          }
           const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
 
           const commentsContainer = document.getElementById("consultorCommentsActivity")
