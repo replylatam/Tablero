@@ -92,7 +92,7 @@
       z-index: 0;
     }
 
-    .container { max-width: 1440px; margin: 0 auto; position: relative; z-index: 1; }
+    .container { max-width: 1680px; margin: 0 auto; position: relative; z-index: 1; }
 
     /* ── Cards ─────────────────────────────────────────────────────── */
     .card {
@@ -258,6 +258,8 @@
       line-height: 1;
     }
     .grid { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: stretch; }
+    .grid.adminFull { grid-template-columns: 1fr !important; }
+    .dashboardAdmin { min-height: 420px; }
     .agendaDropdown {
       border: 1px solid var(--stroke);
       border-radius: 10px;
@@ -2336,8 +2338,8 @@ Cliente B`)
               <button onclick="saveSecureLoginSettings()">Guardar inicio seguro</button>
             </div>
           </div>` : `
-          <div class="grid">
-            <div class="card">
+          <div class="grid ${currentRole === "admin" ? "adminFull" : ""}">
+            <div class="card ${currentRole === "admin" ? "dashboardAdmin" : ""}">
               <h3 style="margin:0 0 10px">Dashboard</h3>
               <div class="kpiGrid ${currentRole === "consultor" || currentRole === "admin" ? "singleRow" : ""}">
                 ${currentRole !== "consultor"
