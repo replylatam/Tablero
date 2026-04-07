@@ -106,6 +106,7 @@
       box-shadow: var(--shadow-card);
       animation: fadeUp .32s cubic-bezier(.22,.68,0,1.2) both;
     }
+    .topbarCard { position: relative; z-index: 120; overflow: visible; }
 
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px) scale(.99); }
@@ -168,6 +169,23 @@
     button.ghost:hover { border-color: rgba(99,132,199,.45); color: var(--text-2); background: rgba(61,110,245,.06); }
 
     button:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+    .menuWrap { position: relative; }
+    .menuDropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 200px;
+      padding: 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--stroke);
+      background: var(--surface);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow-card);
+      z-index: 30;
+      display: grid;
+      gap: 6px;
+    }
+    .menuDropdown button { width: 100%; text-align: left; box-shadow: none; }
 
     /* ── Forms ─────────────────────────────────────────────────────── */
     label {
@@ -662,6 +680,9 @@
       { email: "consultor@tablero.local", password: "Consultor.Tablero#2026", role: "consultor" },
       { email: "analista@tablero.local", password: "Analista.Tablero#2026", role: "analista" }
     ]
+    const LEGACY_PASSWORD_HINTS = {
+      "admin@tablero.local": ["1234"]
+    }
     const COMMON_LEAKED_PASSWORDS = new Set([
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
@@ -675,11 +696,13 @@
     var loginInProgress = false
     var uiTheme = localStorage.getItem("uiTheme") || "dark"
     var adminPanelTab = "panel"
+    var analystPanelTab = "panel"
     var analystActivityTab = "comments"
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = ""
     var commentSortOrderByTicket = {}
     var ticketActivityTabById = {}
+    var timeMonthTabByTicket = {}
     var cachedUsersByEmail = {}
     var draggedTicketId = ""
     var ticketTimerIntervals = {}
@@ -687,6 +710,7 @@
     var latestActivityLogs = []
     var activeEmojiPicker = null
     var dashboardListCache = {}
+    var headerMenuOpen = false
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -701,6 +725,7 @@
     const SHEET_GID = "0"
     const SHEET_TICKETS_NAME = "BD"
     const SHEET_ADMINS_NAME = "BD_ADMINS"
+    const SHEET_TIMES_NAME = "BD_TIMES"
     // Reemplazar por tu URL de Web App de Apps Script para habilitar escritura en la hoja.
     // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
     const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwUyvGndwr5K7uhvgNyC_CBGt8FI6JlW62GExQsl5sxvGIYv_mHBKxotgDgaEN7EmFTwA/exec"
@@ -785,6 +810,27 @@
       renderApp()
     }
 
+    function setAnalystTab(tab){
+      analystPanelTab = tab
+      closeHeaderMenu()
+      renderApp()
+    }
+
+    function toggleHeaderMenu(ev){
+      if(ev) ev.stopPropagation()
+      headerMenuOpen = !headerMenuOpen
+      const dd = document.getElementById("headerMenuDropdown")
+      if(dd) dd.classList.toggle("hidden", !headerMenuOpen)
+    }
+
+    function closeHeaderMenu(){
+      headerMenuOpen = false
+      const dd = document.getElementById("headerMenuDropdown")
+      if(dd) dd.classList.add("hidden")
+    }
+
+    document.addEventListener("click", () => closeHeaderMenu())
+
 
     function formatAgo(iso){
       if(!iso) return ""
@@ -796,9 +842,20 @@
       return `hace ${Math.floor(hs/24)} d`
     }
 
-    function commentDisplayName(email){
+    function userDisplayNameByEmail(email){
+      const key = emailKey(email || "")
+      const user = cachedUsersByEmail[key] || {}
+      const nickname = String(user.nickname || "").trim()
+      const profileName = String(user.profileName || user.name || "").trim()
+      if((String(user.useNicknameInTickets || "").toLowerCase() === "true" || user.useNicknameInTickets === true) && nickname) return nickname
+      if(nickname) return nickname
+      if(profileName) return profileName
       const name = String(email||"-").split("@")[0]
       return name.charAt(0).toUpperCase() + name.slice(1)
+    }
+
+    function commentDisplayName(email){
+      return userDisplayNameByEmail(email)
     }
 
     function getDriveFileIdFromUrl(url){
@@ -920,6 +977,29 @@
     function recomputeConsolidatedMinutes(timeTracking){
       const users = timeTracking?.users || {}
       return Object.values(users).reduce((acc,u)=> acc + Number(u?.totalMinutes||0), 0)
+    }
+
+    function monthFolderKey(dateInput = new Date()){
+      const d = dateInput instanceof Date ? dateInput : new Date(dateInput)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    }
+
+    function monthFolderLabel(monthKey){
+      const [y,m] = String(monthKey||"").split("-").map(Number)
+      if(!y || !m) return String(monthKey||"")
+      return new Date(y, m-1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+    }
+
+    function ensureMonthFolder(tracking, monthKey){
+      const key = String(monthKey || monthFolderKey())
+      if(!tracking.monthlyFolders) tracking.monthlyFolders = {}
+      if(!tracking.monthlyFolders[key]){
+        tracking.monthlyFolders[key] = { label: monthFolderLabel(key), entries: [] }
+      }else{
+        tracking.monthlyFolders[key].label = tracking.monthlyFolders[key].label || monthFolderLabel(key)
+        tracking.monthlyFolders[key].entries = Array.isArray(tracking.monthlyFolders[key].entries) ? tracking.monthlyFolders[key].entries : []
+      }
+      return key
     }
 
     function parseCsvRows(text){
@@ -1318,7 +1398,7 @@ Cliente B`)
       }
 
       // Enviamos text/plain para evitar preflight CORS en hosting estático (GitHub Pages).
-      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME })
+      const requestBody = JSON.stringify({ action, payload, sheetId: SHEET_ID, gid: SHEET_GID, ticketSheet: SHEET_TICKETS_NAME, adminSheet: SHEET_ADMINS_NAME, timesSheet: SHEET_TIMES_NAME })
       const res = await fetch(SHEET_WEBHOOK_URL, {
         method: "POST",
         mode: "cors",
@@ -1464,7 +1544,20 @@ Cliente B`)
         const user = await getUserFromDb(email)
         if(!user || !user.active) return alert("Usuario inexistente o inactivo")
         const validPassword = await verifyPassword(user, password)
-        if(!validPassword) return alert("Contraseña incorrecta")
+        if(!validPassword){
+          const legacyHints = LEGACY_PASSWORD_HINTS[email] || []
+          if(legacyHints.includes(password)){
+            return alert("La contraseña 1234 fue deshabilitada por seguridad. Probá con la contraseña actual del admin o usá 'Olvide la contraseña'.")
+          }
+          return alert("Contraseña incorrecta")
+        }
+        const twoFactorEnabled = String(user.twoFactorEnabled || "").toLowerCase() === "true" || user.twoFactorEnabled === true
+        if(twoFactorEnabled){
+          const code = prompt("Ingresá el código de 6 dígitos de Google Authenticator:")
+          if(code === null) return
+          const validCode = await verifyTotpCode(user.twoFactorSecret || "", code)
+          if(!validCode) return alert("Código de inicio seguro inválido.")
+        }
 
         if(!user.passwordHash && user.password){
           const secureFields = await buildPasswordFields(password)
@@ -1516,14 +1609,180 @@ Cliente B`)
       await rotatePasswordFlow(user)
     }
 
+    function randomBase32Secret(len = 32){
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+      const bytes = new Uint8Array(len)
+      crypto.getRandomValues(bytes)
+      let out = ""
+      for(let i=0;i<len;i++) out += alphabet[bytes[i] % alphabet.length]
+      return out
+    }
+
+    function base32ToBytes(base32){
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+      const clean = String(base32||"").toUpperCase().replace(/=+$/,"").replace(/[^A-Z2-7]/g,"")
+      let bits = ""
+      for(const ch of clean){
+        const val = alphabet.indexOf(ch)
+        if(val < 0) continue
+        bits += val.toString(2).padStart(5,"0")
+      }
+      const bytes = []
+      for(let i=0;i+8<=bits.length;i+=8) bytes.push(parseInt(bits.slice(i,i+8),2))
+      return new Uint8Array(bytes)
+    }
+
+    async function generateTotpCode(secret, timestampMs = Date.now()){
+      const keyBytes = base32ToBytes(secret)
+      if(!keyBytes.length) return ""
+      const counter = Math.floor(timestampMs / 30000)
+      const msg = new ArrayBuffer(8)
+      const view = new DataView(msg)
+      view.setUint32(0, Math.floor(counter / 0x100000000), false)
+      view.setUint32(4, counter >>> 0, false)
+      const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
+      const sig = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msg))
+      const offset = sig[sig.length - 1] & 0x0f
+      const bin = ((sig[offset] & 0x7f) << 24) | (sig[offset+1] << 16) | (sig[offset+2] << 8) | sig[offset+3]
+      return String(bin % 1000000).padStart(6, "0")
+    }
+
+    async function verifyTotpCode(secret, code){
+      const normalized = String(code||"").replace(/\s+/g, "")
+      if(!/^\d{6}$/.test(normalized)) return false
+      const now = Date.now()
+      for(const drift of [-1,0,1]){
+        const expected = await generateTotpCode(secret, now + drift*30000)
+        if(expected === normalized) return true
+      }
+      return false
+    }
+
+    async function loadMyProfileForm(){
+      if(currentRole !== "analista") return
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return
+      const profileName = document.getElementById("profileName")
+      const nickname = document.getElementById("profileNickname")
+      const useNickname = document.getElementById("profileUseNickname")
+      const avatar = document.getElementById("profileCurrentAvatar")
+      const secureToggle = document.getElementById("profileSecureLogin")
+      const secretInput = document.getElementById("profileTotpSecret")
+      const otpapp = document.getElementById("profileOtpAuthUrl")
+      if(profileName) profileName.value = String(user.profileName || user.name || "")
+      if(nickname) nickname.value = String(user.nickname || "")
+      if(useNickname) useNickname.checked = String(user.useNicknameInTickets || "").toLowerCase() === "true" || user.useNicknameInTickets === true
+      if(avatar) avatar.src = buildAvatarUrl(user, user.email || currentUser.email)
+      if(secureToggle) secureToggle.checked = String(user.twoFactorEnabled || "").toLowerCase() === "true" || user.twoFactorEnabled === true
+      if(secretInput) secretInput.value = String(user.twoFactorSecret || "")
+      const otpValue = String(user.twoFactorOtpAuthUrl || "")
+      if(otpapp) otpapp.value = otpValue
+    }
+
+    async function saveMyProfile(){
+      if(currentRole !== "analista") return alert("Disponible solo para analistas por ahora.")
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      const profileName = (document.getElementById("profileName")?.value || "").trim()
+      const nickname = (document.getElementById("profileNickname")?.value || "").trim()
+      const useNickname = !!document.getElementById("profileUseNickname")?.checked
+      const file = document.getElementById("profilePhoto")?.files?.[0] || null
+      let photoFields = {}
+      if(file){
+        const uploaded = await uploadUserPhotoFile(file)
+        photoFields = {
+          photoUrl: uploaded.url || "",
+          photoFileId: uploaded.fileId || "",
+          photoDataUrl: uploaded.inline ? (uploaded.url || "") : (user.photoDataUrl || "")
+        }
+      }
+      const payload = {
+        ...user,
+        key: emailKey(user.email),
+        profileName,
+        nickname,
+        useNicknameInTickets: useNickname,
+        ...photoFields
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast("Perfil actualizado.", "ok")
+      await loadFilterOptions()
+      await loadMyProfileForm()
+    }
+
+    async function changeMyPasswordFromProfile(){
+      if(currentRole !== "analista") return alert("Disponible solo para analistas por ahora.")
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      const currentPassword = (document.getElementById("profileCurrentPassword")?.value || "").trim()
+      const next = (document.getElementById("profileNewPassword")?.value || "").trim()
+      const confirmNext = (document.getElementById("profileConfirmPassword")?.value || "").trim()
+      if(!currentPassword || !next || !confirmNext) return alert("Completá los campos de contraseña.")
+      const validCurrent = await verifyPassword(user, currentPassword)
+      if(!validCurrent) return alert("La contraseña actual no coincide.")
+      const policy = passwordPolicyError(next)
+      if(policy) return alert(policy)
+      if(next !== confirmNext) return alert("La confirmación no coincide.")
+      const secureFields = await buildPasswordFields(next)
+      const payload = { ...user, key: emailKey(user.email), password: "", ...secureFields }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      document.getElementById("profileCurrentPassword").value = ""
+      document.getElementById("profileNewPassword").value = ""
+      document.getElementById("profileConfirmPassword").value = ""
+      showToast("Contraseña actualizada.", "ok")
+    }
+
+    async function generateAuthenticatorSecret(){
+      if(currentRole !== "analista") return
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return
+      const secret = randomBase32Secret(32)
+      const issuer = "Tablero"
+      const label = encodeURIComponent(`${issuer}:${user.email}`)
+      const otpauth = `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
+      document.getElementById("profileTotpSecret").value = secret
+      document.getElementById("profileOtpAuthUrl").value = otpauth
+      document.getElementById("profileOtpCode").value = ""
+      showToast("Se generó una nueva clave. Escaneala en Google Authenticator y verificá el código.", "info", 3200)
+    }
+
+    async function saveSecureLoginSettings(){
+      if(currentRole !== "analista") return alert("Disponible solo para analistas por ahora.")
+      const user = await getUserFromDb(currentUser.email)
+      if(!user) return alert("No se encontró tu usuario.")
+      const enabled = !!document.getElementById("profileSecureLogin")?.checked
+      const secret = (document.getElementById("profileTotpSecret")?.value || "").trim().toUpperCase()
+      const otpAuth = (document.getElementById("profileOtpAuthUrl")?.value || "").trim()
+      const otpCode = (document.getElementById("profileOtpCode")?.value || "").trim()
+      if(enabled){
+        if(!secret) return alert("Generá una clave para Google Authenticator.")
+        const ok = await verifyTotpCode(secret, otpCode)
+        if(!ok) return alert("Código de Google Authenticator inválido.")
+      }
+      const payload = {
+        ...user,
+        key: emailKey(user.email),
+        twoFactorEnabled: enabled,
+        twoFactorSecret: enabled ? secret : "",
+        twoFactorOtpAuthUrl: enabled ? otpAuth : ""
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast(enabled ? "Inicio seguro activado." : "Inicio seguro desactivado.", "ok")
+      await loadMyProfileForm()
+    }
+
     function renderApp(){
       const isAdmin = currentRole === "admin"
       const isAnalyst = currentRole === "analista"
       const canCreateTicket = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const showAdminPanel = isAdmin && adminPanelTab !== "panel"
+      const showAnalystProfile = isAnalyst && analystPanelTab === "profile"
 
       document.getElementById("app").innerHTML = `
-        <div class="card">
+        <div class="card topbarCard">
           <div class="inline" style="justify-content:space-between">
             <div>
               <h2 style="margin:0">Tablero de tickets</h2>
@@ -1532,8 +1791,14 @@ Cliente B`)
             <div class="inline">
               ${isAdmin?`<button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel')">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config')">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity')">Actividad reciente</button>`:""}
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
-              <button class="ghost" onclick="changeOwnPassword()">Cambiar contraseña</button>
-              <button id="themeToggleBtn" class="ghost" onclick="toggleTheme()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
+              ${isAnalyst && showAnalystProfile ? `<button class="ghost" onclick="setAnalystTab('panel')">Volver al panel</button>` : ""}
+              <div class="menuWrap" onclick="event.stopPropagation()">
+                <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
+                <div id="headerMenuDropdown" class="menuDropdown hidden">
+                  <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
+                  ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button>` : ""}
+                </div>
+              </div>
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
           </div>
@@ -1553,7 +1818,45 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : `
+          </div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : showAnalystProfile ? `
+          <div class="card">
+            <h3 style="margin-top:0">Mi perfil (Analista)</h3>
+            <div class="row">
+              <div style="max-width:280px">
+                <img id="profileCurrentAvatar" class="commentAvatar" alt="avatar" style="width:80px;height:80px;border-radius:50%;display:block;margin-bottom:8px" />
+                <label>Foto de perfil</label>
+                <input id="profilePhoto" type="file" accept="image/*">
+              </div>
+              <div>
+                <label>Nombre del perfil</label>
+                <input id="profileName" type="text" placeholder="Nombre visible en tickets">
+                <label>Apodo</label>
+                <input id="profileNickname" type="text" placeholder="Ej: Naty, Nico, etc.">
+                <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo como nombre visible en tickets</span></div>
+                <div style="margin-top:10px"><button onclick="saveMyProfile()">Guardar perfil</button></div>
+              </div>
+            </div>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <h4 style="margin:0 0 8px">Cambiar contraseña</h4>
+            <div class="row">
+              <div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div>
+              <div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div>
+              <div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div>
+            </div>
+            <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
+            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
+            <h4 style="margin:0 0 8px">Inicio seguro (Google Authenticator)</h4>
+            <div class="inline" style="margin-bottom:8px"><input id="profileSecureLogin" type="checkbox" style="width:auto;margin:0"><span>Solicitar código de autenticador al iniciar sesión</span></div>
+            <div class="row">
+              <div><label>Secreto base32</label><input id="profileTotpSecret" type="text" placeholder="Generar y guardar en tu autenticador"></div>
+              <div><label>OTP Auth URL</label><input id="profileOtpAuthUrl" type="text" placeholder="URL para apps TOTP"></div>
+              <div><label>Código actual (6 dígitos)</label><input id="profileOtpCode" type="text" maxlength="6"></div>
+            </div>
+            <div class="inline">
+              <button class="ghost" onclick="generateAuthenticatorSecret()">Generar clave</button>
+              <button onclick="saveSecureLoginSettings()">Guardar inicio seguro</button>
+            </div>
+          </div>` : `
           <div class="grid">
             <div class="card">
               <h3 style="margin:0 0 10px">Dashboard</h3>
@@ -1583,12 +1886,17 @@ Cliente B`)
       `
 
       applyTheme()
+      closeHeaderMenu()
       if(isAdmin && adminPanelTab === 'config'){ loadUsersAdmin(); loadClientsAdmin() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
-      loadFilterOptions()
-      setupRealtimeStreams()
-      if(!showAdminPanel || adminPanelTab === 'activity') loadDashboard()
-      if(!showAdminPanel) loadTickets()
+      if(!showAnalystProfile){
+        loadFilterOptions()
+        setupRealtimeStreams()
+        if(!showAdminPanel || adminPanelTab === 'activity') loadDashboard()
+        if(!showAdminPanel) loadTickets()
+      }else{
+        loadMyProfileForm()
+      }
       if(isAdmin && adminPanelTab === 'config'){ }
     }
 
@@ -1942,17 +2250,63 @@ Cliente B`)
       if(historyBtn) historyBtn.classList.toggle("active", tab === "history")
       if(timesBtn) timesBtn.classList.toggle("active", tab === "times")
       if(tab === "history") loadTicketHistory(ticketId)
-      if(tab === "times") setupLiveTimer(ticketId)
+      if(tab === "times"){
+        ensureCurrentMonthFolderForTicket(ticketId)
+        setupLiveTimer(ticketId)
+      }
       else clearLiveTimer(ticketId)
+    }
+
+    async function ensureCurrentMonthFolderForTicket(ticketId){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const currentKey = monthFolderKey()
+      const exists = !!(tracking.monthlyFolders && tracking.monthlyFolders[currentKey])
+      ensureMonthFolder(tracking, currentKey)
+      timeMonthTabByTicket[ticketId] = currentKey
+      if(exists) return
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+    }
+
+    async function setTimeMonthTab(ticketId, monthKey){
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const exists = !!(tracking.monthlyFolders && tracking.monthlyFolders[monthKey])
+      ensureMonthFolder(tracking, monthKey)
+      timeMonthTabByTicket[ticketId] = monthKey
+      if(!exists){
+        const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+        await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+        mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+        const ix = cachedTickets.findIndex(t => t.id === ticketId)
+        if(ix >= 0) cachedTickets[ix] = updated
+      }else{
+        ticket.timeTracking = tracking
+      }
+      openTicketDetailModal(ticketId)
     }
 
     function renderTimesTab(ticketId, usersByEmail){
       const ticket = cachedTickets.find(t => t.id === ticketId)
       if(!ticket) return '<div class="small">Sin datos de tiempo</div>'
       const tracking = ticket.timeTracking || { users:{}, consolidatedMinutes:0 }
+      const currentMonthKey = monthFolderKey()
+      ensureMonthFolder(tracking, currentMonthKey)
       const helpers = Array.from(new Set([...(ticket.helpers||[]), ...(ticket.assignedTo ? [ticket.assignedTo] : [])])).filter(Boolean)
       const analysts = Object.values(usersByEmail||{}).filter(u => u && u.role === 'analista' && u.active !== false).map(u => (u.email||'').toLowerCase()).sort()
       const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join('')}`
+      const monthKeys = Object.keys(tracking.monthlyFolders || {}).sort()
+      const selectedMonth = timeMonthTabByTicket[ticketId] && monthKeys.includes(timeMonthTabByTicket[ticketId]) ? timeMonthTabByTicket[ticketId] : currentMonthKey
+      timeMonthTabByTicket[ticketId] = selectedMonth
+      const monthData = tracking.monthlyFolders?.[selectedMonth] || { label: monthFolderLabel(selectedMonth), entries: [] }
+      const entries = Array.isArray(monthData.entries) ? [...monthData.entries] : []
+      entries.sort((a,b)=> new Date(b.loggedDate||b.createdAt||0) - new Date(a.loggedDate||a.createdAt||0))
 
       const rows = {}
       Object.entries(tracking.users || {}).forEach(([k,v]) => rows[k] = { ...(v||{}) })
@@ -1968,12 +2322,19 @@ Cliente B`)
         const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
         const running = !!u?.timerStartAt
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
+      const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(e.analyst||'-')}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
         ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
         <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button></div>
+        <div class="small" style="margin-bottom:6px">Carpetas por mes:</div>
+        <div class="inline" style="margin-bottom:10px">${monthKeys.map(mk => `<button class="${selectedMonth===mk?'':'ghost'}" onclick="setTimeMonthTab('${ticketId}','${mk}')">${htmlEscape(monthFolderLabel(mk))}</button>`).join('')}</div>
+        <div class="card" style="padding:10px;margin-bottom:10px">
+          <div class="small" style="margin-bottom:6px">Carpeta activa: <strong>${htmlEscape(monthData.label || monthFolderLabel(selectedMonth))}</strong></div>
+          ${entriesHtml}
+        </div>
         <div class="small" style="margin-bottom:8px">Ayudantes: ${htmlEscape(helpers.join(', ') || 'Ninguno')}</div>
         ${helpersHtml}
       </div>`
@@ -2223,11 +2584,25 @@ Cliente B`)
       openTicketDetailModal(id)
     }
 
-    async function toggleTicketTimerForUser(ticketId, userKey){
+    async function mirrorTimeEntryToSheet(entry){
+      if(!entry) return
+      const payload = {
+        entryId: entry.id,
+        ticketId: entry.ticketId,
+        monthFolder: entry.monthFolder,
+        loggedDate: entry.loggedDate,
+        hours: Number(entry.hours || 0).toFixed(2),
+        analyst: entry.analyst,
+        createdAt: entry.createdAt || new Date().toISOString()
+      }
+      await sheetWrite("upsertTimeEntry", payload).catch(err => console.warn("No se pudo espejar tiempo en sheet:", err))
+    }
+
+    async function toggleTicketTimerForUser(ticketId, userKey, monthKey){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const users = ticket.timeTracking?.users || {}
       const u = users[userKey] || {}
-      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey)
+      if(u.timerStartAt) return stopTicketTimerForUser(ticketId, userKey, monthKey)
       return startTicketTimerForUser(ticketId, userKey)
     }
 
@@ -2240,7 +2615,7 @@ Cliente B`)
       showToast('Timer iniciado','ok')
     }
 
-    async function stopTicketTimerForUser(ticketId, userKey){
+    async function stopTicketTimerForUser(ticketId, userKey, monthKey){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const u = (ticket.timeTracking?.users||{})[userKey] || {}
       if(!u.timerStartAt) return alert('El timer no está iniciado')
@@ -2257,20 +2632,25 @@ Cliente B`)
         curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
-      })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo cargado','ok')
     }
 
-    async function logManualTimeForUser(ticketId, userKey){
+    function currUserEmailByKey(ticket, userKey){
+      return String(ticket?.timeTracking?.users?.[userKey]?.email || currentUser.email || "").toLowerCase()
+    }
+
+    async function logManualTimeForUser(ticketId, userKey, monthKey){
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
       const minutes = hs * 60 + mins
       if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
+      const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         u.totalMinutes = Number(u.totalMinutes||0) + minutes
         tracking.users[userKey] = u
-      })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo manual cargado','ok')
     }
 
@@ -2299,10 +2679,25 @@ Cliente B`)
       openTicketDetailModal(id)
     }
 
-    async function applyTimeUpdate(id, mutate){
+    async function applyTimeUpdate(id, mutate, meta = {}){
       const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       mutate(tracking)
+      const monthKey = ensureMonthFolder(tracking, meta.monthKey || timeMonthTabByTicket[id] || monthFolderKey())
+      if(Number(meta.minutes || 0) > 0){
+        const entry = {
+          id: generateId(),
+          ticketId: id,
+          monthFolder: monthFolderLabel(monthKey),
+          monthKey,
+          loggedDate: new Date().toISOString(),
+          hours: Number(meta.minutes) / 60,
+          analyst: String(meta.analyst || currentUser.email || "").toLowerCase(),
+          createdAt: new Date().toISOString()
+        }
+        tracking.monthlyFolders[monthKey].entries.push(entry)
+        mirrorTimeEntryToSheet(entry)
+      }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
