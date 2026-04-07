@@ -238,6 +238,25 @@
     .row { display: flex; gap: 10px; flex-wrap: wrap; }
     .row > * { flex: 1 1 220px; }
     .inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .deadlineControl {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .deadlineActions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .deadlineTodayBtn {
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 8px;
+      min-height: 24px;
+      line-height: 1;
+    }
     .grid { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: stretch; }
     @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .9fr; } }
 
@@ -304,7 +323,7 @@
       font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
     }
     .qualityOrb {
-      position: fixed; left: 24px; top: 56px; z-index: 135;
+      position: fixed; left: 24px; top: 32px; z-index: 135;
       width: 92px; height: 92px; border-radius: 50%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       color: var(--text); font-weight: 700;
@@ -2466,7 +2485,16 @@ Cliente B`)
             <div class="row">
               <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
               <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
-              <div><label>Deadline</label><div class="inline" style="gap:6px;align-items:center"><input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}>${currentRole === "analista" ? `<button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">🗓️</button>` : ""}</div></div>
+              <div>
+                <label>Deadline</label>
+                <div class="deadlineControl">
+                  <input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}>
+                  <div class="deadlineActions">
+                    <button class="ghost deadlineTodayBtn" ${canEdit ? "" : "disabled"} title="Usar fecha actual" onclick="setDeadlineToTodayFromDetail('${ticketWithRead.id}')">Fecha actual</button>
+                    ${currentRole === "analista" ? `<button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar cambio de deadline</button>` : ""}
+                  </div>
+                </div>
+              </div>
             </div>
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
@@ -3499,6 +3527,8 @@ Cliente B`)
       const currentValue = ticket.deadline || toLocalDateOnly(new Date())
       const requestedDeadline = await pickDateFromCalendar(currentValue, triggerEl)
       if(!requestedDeadline) return
+      const confirmSend = confirm(`¿Enviar solicitud de cambio de deadline para ${ticketId}?\nNueva fecha propuesta: ${requestedDeadline}`)
+      if(!confirmSend) return
       const comments = { ...(ticket.comments || {}) }
       const autoMessage = `Solicitud automática: ${currentUser.email} solicita cambio de deadline a ${requestedDeadline} para revisión del consultor.`
       const duplicated = Object.values(comments).some(c => String(c?.message||'').trim() === autoMessage && String(c?.author||'').toLowerCase() === String(currentUser.email||'').toLowerCase())
@@ -3522,6 +3552,14 @@ Cliente B`)
       await logActivity("ticket_comentario", { ticketId, source: "deadline_request_auto_comment" })
       await loadDashboard()
       showToast("Solicitud enviada al consultor", "ok")
+    }
+
+    async function setDeadlineToTodayFromDetail(ticketId){
+      const input = document.getElementById(`detail-deadline-${ticketId}`)
+      if(!input || input.disabled) return
+      input.value = toLocalDateOnly(new Date())
+      await autoSaveTicketDetail(ticketId)
+      showToast("Deadline actualizado a fecha actual", "ok")
     }
 
     async function requestDeadlineChangeFromDetail(ticketId, ev){
@@ -3655,9 +3693,9 @@ Cliente B`)
           const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
           let surveys = Object.values(surveyMap)
           if(currentRole === "analista") surveys = surveys.filter(s => String(s.analystEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
-          if(currentRole === "consultor") surveys = surveys.filter(s => String(s.consultorEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          else if(currentRole === "consultor") surveys = surveys.filter(s => String(s.consultorEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          else surveys = []
           const avgRaw = surveys.length ? (surveys.reduce((acc,s)=>acc + normalizeQualityToTen(s.overall||0), 0) / surveys.length) : 0
-          if(kpiQuality) kpiQuality.innerText = surveys.length ? avgRaw.toFixed(2) : "-"
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
           if(orb && orbValue){
@@ -3671,7 +3709,6 @@ Cliente B`)
             }
           }
         }catch(_){
-          if(kpiQuality) kpiQuality.innerText = "-"
           const orb = document.getElementById("qualityOrb")
           if(orb) orb.classList.add("hidden")
         }
