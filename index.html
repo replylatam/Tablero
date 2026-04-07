@@ -752,6 +752,26 @@
     </div>
   </div>
 
+  <div id="userEditModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Editar usuario</h3>
+        <button class="secondary" onclick="closeUserEditModal()">Cerrar</button>
+      </div>
+      <div class="row">
+        <div><label>Email</label><input id="userEditEmail" type="text" disabled></div>
+        <div><label>Rol</label><select id="userEditRole" onchange="toggleUserEditTeamVisibility()"><option value="admin">Admin</option><option value="consultor">Consultor</option><option value="analista">Analista</option></select></div>
+        <div id="userEditTeamWrap"><label>Equipo (si es analista)</label><select id="userEditTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div>
+      </div>
+      <label>Actualizar foto (opcional)</label>
+      <input id="userEditPhoto" type="file" accept="image/*">
+      <div class="inline" style="justify-content:flex-end">
+        <button class="secondary" onclick="closeUserEditModal()">Cancelar</button>
+        <button onclick="saveUserEdit()">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
   <div id="closeSurveyModal" class="modalBack hidden">
     <div class="card modal">
       <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
@@ -798,9 +818,7 @@
 
     const db = firebase.database()
     const DEFAULT_USERS = [
-      { email: "admin@tablero.local", password: "Admin.Tablero#2026", role: "admin" },
-      { email: "consultor@tablero.local", password: "Consultor.Tablero#2026", role: "consultor" },
-      { email: "analista@tablero.local", password: "Analista.Tablero#2026", role: "analista" }
+      { email: "admin@tablero.local", password: "Admin.Tablero#2026", role: "admin" }
     ]
     const LEGACY_PASSWORD_HINTS = {
       "admin@tablero.local": ["1234"]
@@ -835,6 +853,7 @@
     var headerMenuOpen = false
     var pendingCloseSurvey = null
     var pendingConsultorSurveyTicket = null
+    var userEditContext = null
     var adminAgendaTeam = "equipo_1"
     var adminAgendaFilters = { ticketId: "", title: "", analyst: "", status: "" }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
@@ -3532,65 +3551,71 @@ Cliente B`)
         const key = emailKey(u.email)
         const isSelf = (u.email||"").toLowerCase() === (currentUser.email||"").toLowerCase()
         const team = String(u.analystTeam || "")
-        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} · ${u.role === "analista" ? `Equipo: ${htmlEscape(analystTeamLabel(team))}` : "Clave: Oculta"}</span></div></div><div class="inline">${u.role === "analista" ? `<select id="user-team-${key}" style="margin:0;max-width:160px"><option value="">Sin equipo</option><option value="equipo_1" ${team==="equipo_1"?"selected":""}>Equipo 1</option><option value="equipo_2" ${team==="equipo_2"?"selected":""}>Equipo 2</option></select><button class="ghost" onclick="saveAnalystTeam('${key}','${u.email||''}')">Guardar equipo</button>` : ""}<input id="user-photo-${key}" type="file" accept="image/*" style="max-width:200px;margin:0"><button class="ghost" onclick="updateUserPhoto('${key}','${u.email||''}','${u.role||'consultor'}', this)">Actualizar foto</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
+        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
       }).join("")
     }
 
-    async function saveAnalystTeam(key,email){
+    async function openUserEditModal(key){
       if(currentRole !== "admin") return
-      const team = String(document.getElementById(`user-team-${key}`)?.value || "")
       const user = (await db.ref("users_by_email").child(key).once("value")).val()
       if(!user) return alert("No se encontró el usuario.")
-      const payload = { ...user, key, email, analystTeam: team, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      userEditContext = { key }
+      const emailInput = document.getElementById("userEditEmail")
+      const roleSelect = document.getElementById("userEditRole")
+      const teamSelect = document.getElementById("userEditTeam")
+      const photoInput = document.getElementById("userEditPhoto")
+      if(emailInput) emailInput.value = String(user.email || "")
+      if(roleSelect) roleSelect.value = String(user.role || "consultor")
+      if(teamSelect) teamSelect.value = String(user.analystTeam || "")
+      if(photoInput) photoInput.value = ""
+      toggleUserEditTeamVisibility()
+      document.getElementById("userEditModal")?.classList.remove("hidden")
+    }
+
+    function closeUserEditModal(){
+      userEditContext = null
+      document.getElementById("userEditModal")?.classList.add("hidden")
+    }
+
+    function toggleUserEditTeamVisibility(){
+      const role = document.getElementById("userEditRole")?.value || "consultor"
+      const wrap = document.getElementById("userEditTeamWrap")
+      if(wrap) wrap.style.display = role === "analista" ? "" : "none"
+    }
+
+    async function saveUserEdit(){
+      if(currentRole !== "admin" || !userEditContext?.key) return
+      const key = userEditContext.key
+      const user = (await db.ref("users_by_email").child(key).once("value")).val()
+      if(!user) return alert("No se encontró el usuario.")
+      const role = String(document.getElementById("userEditRole")?.value || user.role || "consultor")
+      const analystTeam = role === "analista" ? String(document.getElementById("userEditTeam")?.value || "") : ""
+      const file = document.getElementById("userEditPhoto")?.files?.[0] || null
+      let photoPayload = {}
+      if(file){
+        const uploaded = await uploadUserPhotoFile(file)
+        photoPayload = {
+          photoUrl: uploaded.url || user.photoUrl || "",
+          photoFileId: uploaded.fileId || user.photoFileId || "",
+          photoDataUrl: uploaded.inline ? (uploaded.url || "") : (user.photoDataUrl || "")
+        }
+      }
+      const payload = {
+        ...user,
+        key,
+        role,
+        analystTeam,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email,
+        ...photoPayload
+      }
       await db.ref("users_by_email").child(key).update(payload)
       await adminWrite("upsertUser", payload).catch(()=>{})
-      showToast("Equipo actualizado.", "ok")
+      closeUserEditModal()
+      showToast("Usuario actualizado.", "ok")
       await loadUsersAdmin()
       await loadFilterOptions()
       if(adminPanelTab === "agenda") loadAdminAgenda()
-    }
-
-    async function updateUserPhoto(key,email,role,btn){
-      if(currentRole !== "admin") return
-      const file = document.getElementById(`user-photo-${key}`)?.files?.[0]
-      if(!file) return alert("Seleccioná una foto")
-      const button = btn || null
-      const oldText = button ? button.textContent : ""
-      try{
-        if(button){ button.disabled = true; button.textContent = "Cambiando..." }
-        showToast("Guardando foto...", "info", 1800)
-        const uploaded = await uploadUserPhotoFile(file)
-        const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
-      const users = Object.values(usersMap).length ? Object.values(usersMap) : await fetchUsersFromSheet()
-        const existing = users.find(u => emailKey(u.email) === key) || {}
-        const payload = {
-          key,
-          email,
-          password: existing.password || "",
-          passwordHash: existing.passwordHash || "",
-          passwordSalt: existing.passwordSalt || "",
-          passwordUpdatedAt: existing.passwordUpdatedAt || "",
-          role,
-          analystTeam: existing.analystTeam || "",
-          active: existing.active !== false,
-          createdAt: existing.createdAt || new Date().toISOString(),
-          createdBy: existing.createdBy || currentUser.email,
-          lastAccessAt: existing.lastAccessAt || "",
-          photoUrl: uploaded.url || "",
-          photoFileId: uploaded.fileId || "",
-          photoDataUrl: uploaded.inline ? (uploaded.url || "") : (existing.photoDataUrl || "")
-        }
-        await adminWrite("upsertUser", payload)
-        await db.ref("users_by_email").child(key).update(payload)
-        showToast("Foto actualizada", "ok")
-        await loadUsersAdmin()
-        await loadFilterOptions()
-      }catch(err){
-        console.error("Error actualizando foto:", err)
-        showToast(err?.message || "No se pudo actualizar la foto", "error", 3000)
-      }finally{
-        if(button){ button.disabled = false; button.textContent = oldText || "Actualizar foto" }
-      }
     }
 
     async function deleteUserAccess(key,email){
