@@ -2278,7 +2278,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div><label>Analista (múltiple)</label><select id="agendaFilterAnalyst" multiple size="4" onchange="updateAdminAgendaFilter('analyst', this)"></select></div><div><label>Estado (múltiple)</label><select id="agendaFilterStatus" multiple size="4" onchange="updateAdminAgendaFilter('status', this)">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div><label>Analistas (múltiple)</label><details id="agendaFilterAnalystDropdown" style="border:1px solid var(--stroke);border-radius:10px;padding:8px;background:var(--surface-2)"><summary class="small" style="cursor:pointer">Seleccionar analistas</summary><div id="agendaFilterAnalystChecks" style="margin-top:6px;display:grid;gap:4px"></div></details></div><div><label>Estados (múltiple)</label><details id="agendaFilterStatusDropdown" style="border:1px solid var(--stroke);border-radius:10px;padding:8px;background:var(--surface-2)"><summary class="small" style="cursor:pointer">Seleccionar estados</summary><div id="agendaFilterStatusChecks" style="margin-top:6px;display:grid;gap:4px">${Object.entries(STATUS).map(([k,v]) => `<label class=\"small\" style=\"display:flex;gap:6px;align-items:center\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\">${htmlEscape(v)}</label>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2342,14 +2342,15 @@ Cliente B`)
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>
+              ${currentRole === "admin" ? `<div class="inline" style="justify-content:space-between;align-items:center;margin-top:10px"><h4 style="margin:0">Analytics</h4><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()" style="margin:0"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               
             </div>
-            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Analytics</h3><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()" style="margin:0"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div id="adminChartsArea" style="margin-top:8px"></div></div>`}
+            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
 
           <div class="card">
-            <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3><span class="small">Vista Kanban de operación</span></div>
+            <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
             <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
@@ -2627,7 +2628,7 @@ Cliente B`)
           <div class="inline" style="gap:8px">
             ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
             ${ticketWithRead.hasProblem ? `<span class="urgentTopFlag">🛑 CON PROBLEMAS</span>` : ''}
-            ${ticketWithRead.plannedWorkDate ? `<span class="badge ok">Planificado para trabajar: ${htmlEscape(formatDateDMY(ticketWithRead.plannedWorkDate))}</span>` : ""}
+            ${ticketWithRead.plannedWorkDate ? `<span class="badge ok">Planificado para trabajar: ${htmlEscape(plannedWorkLabel(ticketWithRead.plannedWorkDate))}</span>` : ""}
           </div>
           <div class="inline" style="gap:8px">${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
         </div>
@@ -3692,6 +3693,14 @@ Cliente B`)
       loadAdminAgenda()
     }
 
+    function updateAdminAgendaCheckboxFilter(field, rawValue, checked){
+      const value = String(rawValue || "").trim().toLowerCase()
+      const current = Array.isArray(adminAgendaFilters[field]) ? [...adminAgendaFilters[field]] : []
+      const next = checked ? Array.from(new Set([...current, value])) : current.filter(v => v !== value)
+      adminAgendaFilters[field] = next
+      loadAdminAgenda()
+    }
+
     function ticketLastCommentAt(ticket){
       const comments = Object.values(parseCommentsValue(ticket?.comments || {}))
       if(!comments.length) return ""
@@ -3728,18 +3737,21 @@ Cliente B`)
       if(statusQ.length) scoped = scoped.filter(t => statusQ.includes(String(t.status||"").toLowerCase()))
       scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
 
-      const analystSelect = document.getElementById("agendaFilterAnalyst")
+      const analystChecks = document.getElementById("agendaFilterAnalystChecks")
       const ticketInput = document.getElementById("agendaFilterTicketId")
       const titleInput = document.getElementById("agendaFilterTitle")
-      const statusSelect = document.getElementById("agendaFilterStatus")
+      const statusChecks = document.getElementById("agendaFilterStatusChecks")
       if(ticketInput) ticketInput.value = adminAgendaFilters.ticketId || ""
       if(titleInput) titleInput.value = adminAgendaFilters.title || ""
-      if(statusSelect){
-        Array.from(statusSelect.options).forEach(opt => { opt.selected = (adminAgendaFilters.status || []).includes(String(opt.value||"").toLowerCase()) })
+      if(statusChecks){
+        Array.from(statusChecks.querySelectorAll("input[type='checkbox']")).forEach(chk => {
+          chk.checked = (adminAgendaFilters.status || []).includes(String(chk.value || "").toLowerCase())
+        })
       }
-      if(analystSelect){
-        analystSelect.innerHTML = `${teamAnalysts.map(email => `<option value="${htmlEscape(email)}">${htmlEscape(analystDisplayNameWithTeam(email))}</option>`).join("")}`
-        Array.from(analystSelect.options).forEach(opt => { opt.selected = (adminAgendaFilters.analyst || []).includes(String(opt.value||"").toLowerCase()) })
+      if(analystChecks){
+        analystChecks.innerHTML = teamAnalysts.length
+          ? teamAnalysts.map(email => `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" value="${htmlEscape(email)}" onchange="updateAdminAgendaCheckboxFilter('analyst', this.value, this.checked)" ${(adminAgendaFilters.analyst || []).includes(email) ? "checked" : ""}>${htmlEscape(analystDisplayNameWithTeam(email))}</label>`).join("")
+          : `<span class="small">Sin analistas en este equipo.</span>`
       }
       const s1 = document.getElementById("agenda-team-1")
       const s2 = document.getElementById("agenda-team-2")
@@ -3881,6 +3893,17 @@ Cliente B`)
       const mm = String(d.getMonth()+1).padStart(2,'0')
       const yy = d.getFullYear()
       return `${dd}/${mm}/${yy}`
+    }
+
+    function plannedWorkLabel(value){
+      if(!value) return "-"
+      const today = toLocalDateOnly(new Date())
+      const tomorrowDate = new Date()
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+      const tomorrow = toLocalDateOnly(tomorrowDate)
+      if(value === today) return "HOY"
+      if(value === tomorrow) return "MAÑANA"
+      return formatDateDMY(value)
     }
 
     async function pickDateFromCalendar(defaultValue, anchorEl){
@@ -4141,15 +4164,16 @@ Cliente B`)
                 acc += (v/total)*360
                 return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
               }).join(", ")
-              return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
+              const hoverDetail = entries.map(([k,v]) => `${formatter(k)}: ${v}`).join(" | ")
+              return `<div class="card" style="padding:10px;margin:0" title="${htmlEscape(hoverDetail)}"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
             }
 
             chartsArea.innerHTML = `
               <div class="row" style="margin-bottom:8px">
-                <div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 4px">Tickets del mes</h4><div style="font-size:24px;font-weight:700">${monthTickets.length}</div><div class="small">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
-                <div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 4px">Tendencia</h4><div style="font-size:24px;font-weight:700">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="small">Comparado con ${htmlEscape(prevKey)}</div></div>
+                <div class="card" style="padding:10px;margin:0" title="Total de tickets creados en el mes seleccionado"><h4 style="margin:0 0 4px">Tickets del mes</h4><div style="font-size:24px;font-weight:700">${monthTickets.length}</div><div class="small">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
+                <div class="card" style="padding:10px;margin:0" title="Variación porcentual respecto al mes anterior"><h4 style="margin:0 0 4px">Tendencia</h4><div style="font-size:24px;font-weight:700">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="small">Comparado con ${htmlEscape(prevKey)}</div></div>
               </div>
-              <div class="row">
+              <div class="row" style="flex-wrap:nowrap;overflow-x:auto">
                 <div>${renderPie("Torta: tickets por analista", byAnalyst, (k)=> analystDisplayNameWithTeam(k==="sin_asignar"?"":k) || "Sin asignar")}</div>
                 <div>${renderPie("Torta: tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
                 <div>${renderPie("Torta: tickets por día de semana", byWeekday, (k)=>k)}</div>
