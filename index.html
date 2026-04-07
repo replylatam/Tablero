@@ -295,6 +295,14 @@
     .feedTop { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .feedType { font-weight: 600; font-size: 13.5px; }
     .feedMeta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .dashboardListScroll { max-height: 170px; overflow-y: auto; padding-right: 4px; }
+
+    .supportFab {
+      position: fixed; right: 22px; bottom: 22px; z-index: 140;
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
+    }
 
     /* ── Comments ──────────────────────────────────────────────────── */
     .commentsSection {
@@ -660,6 +668,24 @@
         </div>
       </div>
       <div id="ticketDetailContent"></div>
+    </div>
+  </div>
+
+  <div id="supportModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Soporte técnico</h3>
+        <button class="secondary" onclick="closeSupportModal()">Cerrar</button>
+      </div>
+      <label>Título</label>
+      <input id="supportTitle" type="text" placeholder="Resumen del problema">
+      <label>Detalle</label>
+      <textarea id="supportDetail" placeholder="Describí el problema técnico"></textarea>
+      <label>Adjunto (opcional)</label>
+      <input id="supportFile" type="file">
+      <div class="inline" style="justify-content:flex-end">
+        <button onclick="submitSupportRequest()">Enviar reporte</button>
+      </div>
     </div>
   </div>
 
@@ -1530,6 +1556,59 @@ Cliente B`)
       showToast("Solicitud enviada al administrador para cambio de contraseña.", "ok", 3200)
     }
 
+    function openSupportModal(){
+      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      document.getElementById("supportModal")?.classList.remove("hidden")
+    }
+
+    function closeSupportModal(){
+      document.getElementById("supportModal")?.classList.add("hidden")
+    }
+
+    async function submitSupportRequest(){
+      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      const title = (document.getElementById("supportTitle")?.value || "").trim()
+      const detail = (document.getElementById("supportDetail")?.value || "").trim()
+      const file = document.getElementById("supportFile")?.files?.[0] || null
+      if(!title || !detail) return alert("Título y detalle son obligatorios.")
+      let attachment = null
+      if(file){
+        try{
+          attachment = await uploadAttachmentFile(file)
+        }catch(err){
+          const dataUrl = await readFileAsDataUrl(file)
+          attachment = { name: file.name, url: dataUrl, fileId: "", inline: true }
+        }
+      }
+      const payload = {
+        id: generateId(),
+        title,
+        detail,
+        createdAt: new Date().toISOString(),
+        createdBy: String(currentUser?.email || "").toLowerCase(),
+        role: currentRole,
+        status: "open",
+        attachment
+      }
+      await db.ref("support_requests").child(payload.id).set(payload)
+      await db.ref("activity_logs").push({ eventType: "support_request_created", ticketId: "", email: payload.createdBy, role: currentRole, timestampIso: payload.createdAt, title })
+      document.getElementById("supportTitle").value = ""
+      document.getElementById("supportDetail").value = ""
+      document.getElementById("supportFile").value = ""
+      closeSupportModal()
+      showToast("Reporte enviado a soporte técnico.", "ok")
+    }
+
+    async function loadSupportAdmin(){
+      const container = document.getElementById("adminSupportList")
+      if(!container) return
+      const data = (await db.ref("support_requests").once("value")).val() || {}
+      const list = Object.values(data).sort((a,b)=> new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      container.innerHTML = list.length
+        ? list.map(it => `<div class="feedItem"><div class="feedType">${htmlEscape(it.title||"-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(it.createdBy||"-"))} · ${it.createdAt ? new Date(it.createdAt).toLocaleString() : ""}<br>${htmlEscape(it.detail||"")}</div>${it.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(it.attachment.url)}" target="_blank">📎 ${htmlEscape(it.attachment.name||"Adjunto")}</a></div>` : ""}</div>`).join("")
+        : `<p class="small">Sin reportes de soporte.</p>`
+    }
+
     async function handleLogin(){
       if(loginInProgress) return
       const email = document.getElementById("loginEmail").value.trim().toLowerCase()
@@ -1789,7 +1868,7 @@ Cliente B`)
               <p class="small" style="margin:6px 0 0">Panel ${htmlEscape(currentRole)} · ${htmlEscape(currentUser.email)}</p>
             </div>
             <div class="inline">
-              ${isAdmin?`<button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel')">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config')">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity')">Actividad reciente</button>`:""}
+              ${isAdmin?`<button class="${adminPanelTab==='panel'?'':'ghost'}" onclick="setAdminTab('panel')">Panel</button><button class="${adminPanelTab==='config'?'':'ghost'}" onclick="setAdminTab('config')">Configuraciones</button><button class="${adminPanelTab==='activity'?'':'ghost'}" onclick="setAdminTab('activity')">Actividad reciente</button><button class="${adminPanelTab==='support'?'':'ghost'}" onclick="setAdminTab('support')">Soporte técnico</button>`:""}
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
               ${isAnalyst && showAnalystProfile ? `<button class="ghost" onclick="setAnalystTab('panel')">Volver al panel</button>` : ""}
               <div class="menuWrap" onclick="event.stopPropagation()">
@@ -1818,7 +1897,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : showAnalystProfile ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : showAnalystProfile ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Analista)</h3>
             <div class="row">
@@ -1883,11 +1962,13 @@ Cliente B`)
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
+        ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">🛟</button>` : ""}
       `
 
       applyTheme()
       closeHeaderMenu()
       if(isAdmin && adminPanelTab === 'config'){ loadUsersAdmin(); loadClientsAdmin() }
+      if(isAdmin && adminPanelTab === 'support'){ loadSupportAdmin() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
       if(!showAnalystProfile){
         loadFilterOptions()
@@ -2046,7 +2127,7 @@ Cliente B`)
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
-                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo||"Sin asignar")}</div></div>
+                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div>
               </div>
@@ -2064,8 +2145,8 @@ Cliente B`)
         <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
-          <div class="meta">Informador: ${htmlEscape(ticket.informer||ticket.createdBy||"-")}</div>
-          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo||"Sin asignar")}</div></div>
+          <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(ticket.informer||ticket.createdBy||"-"))}</div>
+          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? userDisplayNameByEmail(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
           <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
@@ -2158,6 +2239,24 @@ Cliente B`)
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const owner = document.getElementById(`detail-owner-${id}`)
       if(owner){ owner.value = (currentUser.email||"").toLowerCase(); autoSaveTicketDetail(id) }
+    }
+
+    async function assignTicketOwner(id){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const owner = (document.getElementById(`detail-owner-${id}`)?.value || "").trim().toLowerCase()
+      if(!owner) return alert("Seleccioná un responsable")
+      const ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const ownerKey = emailKey(owner)
+      if(!tracking.users[ownerKey]) tracking.users[ownerKey] = { email: owner, totalMinutes: 0, timerStartAt: "" }
+      const updated = { ...ticket, assignedTo: owner, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      showToast("Responsable asignado", "ok")
+      openTicketDetailModal(id)
     }
 
     async function autoSaveTicketDetail(id){
@@ -2300,7 +2399,7 @@ Cliente B`)
       ensureMonthFolder(tracking, currentMonthKey)
       const helpers = Array.from(new Set([...(ticket.helpers||[]), ...(ticket.assignedTo ? [ticket.assignedTo] : [])])).filter(Boolean)
       const analysts = Object.values(usersByEmail||{}).filter(u => u && u.role === 'analista' && u.active !== false).map(u => (u.email||'').toLowerCase()).sort()
-      const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join('')}`
+      const options = `<option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}`
       const monthKeys = Object.keys(tracking.monthlyFolders || {}).sort()
       const selectedMonth = timeMonthTabByTicket[ticketId] && monthKeys.includes(timeMonthTabByTicket[ticketId]) ? timeMonthTabByTicket[ticketId] : currentMonthKey
       timeMonthTabByTicket[ticketId] = selectedMonth
@@ -2322,13 +2421,13 @@ Cliente B`)
         const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
         const running = !!u?.timerStartAt
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(email||'-')}</strong><div class="small">Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
-      const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(e.analyst||'-')}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
+      const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
-        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" onchange="autoSaveTicketDetail('${ticketId}')" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketToMe('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
-        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="joinAsHelper('${ticketId}')">Sumarme como ayudante</button></div>
+        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
+        <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="assignHelperFromDropdown('${ticketId}')">Sumar ayudante</button></div>
         <div class="small" style="margin-bottom:6px">Carpetas por mes:</div>
         <div class="inline" style="margin-bottom:10px">${monthKeys.map(mk => `<button class="${selectedMonth===mk?'':'ghost'}" onclick="setTimeMonthTab('${ticketId}','${mk}')">${htmlEscape(monthFolderLabel(mk))}</button>`).join('')}</div>
         <div class="card" style="padding:10px;margin-bottom:10px">
@@ -3190,9 +3289,13 @@ Cliente B`)
         container.innerHTML = `<div class="small">${htmlEscape(label)}: sin tickets.</div>`
         return
       }
+      const topTickets = tickets.slice(0,2)
       container.innerHTML = `
         <div class="small" style="margin-bottom:6px"><strong>${htmlEscape(label)}</strong> (${tickets.length})</div>
-        ${tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+        <div class="dashboardListScroll">
+          ${topTickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+          ${tickets.slice(2).map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+        </div>
       `
     }
 
