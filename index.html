@@ -378,7 +378,9 @@
 
     /* ── Priority / Urgent flags ───────────────────────────────────── */
     .urgentTopFlag {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       background: linear-gradient(135deg, #c41818, #e04040);
       color: #fff;
       padding: 5px 12px;
@@ -387,9 +389,19 @@
       font-size: 12px;
       box-shadow: 0 6px 20px rgba(224,64,64,.42);
       letter-spacing: .02em;
+      animation: urgentPulse 1.2s ease-in-out infinite;
     }
-    .urgentFlag { font-size: 11px; color: #fca5a5; margin-top: 6px; }
+    .urgentFlag { font-size: 11px; color: #fca5a5; margin-top: 6px; display:inline-flex; align-items:center; gap:6px; }
+    .urgentFlag::before { content: "🚨"; display:inline-block; transform-origin:center; animation: urgentSiren .9s ease-in-out infinite; }
     .urgentBtn { background: linear-gradient(135deg, #f59e0b, #e04040); box-shadow: 0 4px 16px rgba(224,64,64,.35); }
+    @keyframes urgentSiren {
+      0%, 100% { transform: rotate(-18deg) scale(1); }
+      50% { transform: rotate(18deg) scale(1.12); }
+    }
+    @keyframes urgentPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(224,64,64,.35); }
+      50% { box-shadow: 0 0 0 8px rgba(224,64,64,0); }
+    }
 
     /* ── Ticket Detail Layout ──────────────────────────────────────── */
     .detailLayout { display: grid; grid-template-columns: 1fr; gap: 14px; }
@@ -1719,7 +1731,19 @@ Cliente B`)
       const container = document.getElementById("adminQualityList")
       if(!container) return
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
-      container.innerHTML = surveys.length ? surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Recepción: ${htmlEscape(s.reception||"-")} · Comunicación: ${htmlEscape(s.communication||"-")} · Satisfacción: ${htmlEscape(String(s.overall||"-"))}/5<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("") : `<p class="small">Sin encuestas todavía.</p>`
+      if(!surveys.length){ container.innerHTML = `<p class="small">Sin encuestas todavía.</p>`; return }
+      const byAnalyst = {}
+      surveys.forEach(s => {
+        const k = String(s.analystEmail||"sin-analista").toLowerCase()
+        if(!byAnalyst[k]) byAnalyst[k] = []
+        byAnalyst[k].push(s)
+      })
+      const averages = Object.entries(byAnalyst).map(([analyst, list]) => {
+        const avg = list.reduce((acc,it)=>acc + Number(it.overall||0), 0) / Math.max(1, list.length)
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analyst))}</div><div class="feedMeta">Promedio satisfacción: ${avg.toFixed(2)} / 5 · Encuestas: ${list.length}</div></div>`
+      }).join("")
+      const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(s.overall||"-"))}/5).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
+      container.innerHTML = `<h4 style="margin:0 0 8px">Promedio por analista</h4>${averages}<h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}`
     }
 
     function openCloseSurveyModal(ticketId, nextTicketData){
@@ -1745,7 +1769,7 @@ Cliente B`)
       const survey = {
         ticketId,
         consultorEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
-        analystEmail: String(currentUser?.email || "").toLowerCase(),
+        analystEmail: String(nextTicketData.assignedTo || currentUser?.email || "").toLowerCase(),
         reception,
         communication,
         overall,
@@ -2115,7 +2139,8 @@ Cliente B`)
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
-                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>
+                     <div class="kpi"><div class="label">Puntaje de calidad</div><div class="value" id="kpiQuality">-</div></div>`}
               </div>
               <div id="dashboardTicketList" class="small" style="margin-top:10px"></div>
               
@@ -2174,7 +2199,9 @@ Cliente B`)
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
-      const informer = (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase()
+      const informer = (currentRole === "consultor"
+        ? String(currentUser.email || "").trim().toLowerCase()
+        : (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase())
       const customFieldsDefs = await getTicketCustomFields()
       const customFields = {}
       for(const field of customFieldsDefs){
@@ -2366,6 +2393,11 @@ Cliente B`)
       const informerOptions = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}" ${currentInformer===c?"selected":""}>${htmlEscape(c)}</option>`).join("")}`
       const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticketWithRead.status===key?"selected":""}>${label}</option>`).join("")
       const clientOptions = `<option value="">Seleccionar cliente</option>${(cachedClients||[]).map(c => `<option value="${htmlEscape(c)}" ${String(ticketWithRead.client||'')===String(c)?'selected':''}>${htmlEscape(c)}</option>`).join("")}`
+      const customDefs = await getTicketCustomFields()
+      const customValues = ticketWithRead.customFields || {}
+      const customDetailHtml = customDefs.length
+        ? `<div class="row">${customDefs.map(f => `<div><label>${htmlEscape(f.label)}</label><input value="${htmlEscape(String(customValues[f.key] ?? ''))}" disabled></div>`).join("")}</div>`
+        : ""
 
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
@@ -2394,6 +2426,7 @@ Cliente B`)
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${informerOptions}</select></div>
+            ${customDetailHtml}
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
 
@@ -2403,7 +2436,7 @@ Cliente B`)
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
       setupLiveTimer(id)
-      setTicketActivityTab(id, ticketActivityTabById[id] || "comments")
+      setTicketActivityTab(id, "comments")
     }
 
 
@@ -2643,17 +2676,17 @@ Cliente B`)
       return `
         <div class="commentsSection">
           <div class="commentsHeader">
-            <div><div class="commentsTitle">Información interna del ticket</div><div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div></div>
+            <div><div class="commentsTitle">Información interna del ticket</div>${currentRole !== "consultor" ? `<div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div>` : ""}</div>
             <button class="ghost sortBtn" onclick="toggleCommentsSort('${id}')">${sortOrder === "asc" ? "Más antiguos primero" : "Más recientes primero"}</button>
           </div>
-          <div class="activityTabs">
+          ${currentRole !== "consultor" ? `<div class="activityTabs">
             <button id="activity-btn-comments-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "comments" ? "active" : ""}" onclick="setTicketActivityTab('${id}','comments')">Comentarios</button>
             <button id="activity-btn-history-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "history" ? "active" : ""}" onclick="setTicketActivityTab('${id}','history')">Historial</button>
             <button id="activity-btn-times-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "times" ? "active" : ""}" onclick="setTicketActivityTab('${id}','times')">Tiempos</button>
-          </div>
+          </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -2672,8 +2705,8 @@ Cliente B`)
             </div>
           </div>
 
-          <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">Cargando...</div>
-          <div id="ticket-times-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "times" ? "" : "hidden"}">${renderTimesTab(id, usersByEmail)}</div>
+          <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">${currentRole !== "consultor" ? "Cargando..." : ""}</div>
+          <div id="ticket-times-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "times" ? "" : "hidden"}">${currentRole !== "consultor" ? renderTimesTab(id, usersByEmail) : ""}</div>
         </div>
       `
     }
@@ -3195,6 +3228,7 @@ Cliente B`)
 
 
     async function deleteComment(ticketId, commentId){
+      if(currentRole === "consultor") return alert("No tenés permisos para borrar comentarios")
       const ticket = cachedTickets.find(t => t.id === ticketId)
       if(!ticket || !commentId) return
       const comments = { ...(ticket.comments || {}) }
@@ -3565,6 +3599,7 @@ Cliente B`)
           const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
           let surveys = Object.values(surveyMap)
           if(currentRole === "analista") surveys = surveys.filter(s => String(s.analystEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          if(currentRole === "consultor") surveys = surveys.filter(s => String(s.consultorEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
           const avg = surveys.length ? (surveys.reduce((acc,s)=>acc + Number(s.overall||0), 0) / surveys.length) : 0
           if(kpiQuality) kpiQuality.innerText = surveys.length ? avg.toFixed(2) : "-"
         }catch(_){
