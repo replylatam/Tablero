@@ -772,6 +772,16 @@
     </div>
   </div>
 
+  <div id="dashboardListModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 id="dashboardListModalTitle" style="margin:0">Detalle</h3>
+        <button class="secondary" onclick="closeDashboardListModal()">Cerrar</button>
+      </div>
+      <div id="dashboardListModalContent"></div>
+    </div>
+  </div>
+
   <div id="closeSurveyModal" class="modalBack hidden">
     <div class="card modal">
       <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
@@ -855,7 +865,7 @@
     var pendingConsultorSurveyTicket = null
     var userEditContext = null
     var adminAgendaTeam = "equipo_1"
-    var adminAgendaFilters = { ticketId: "", title: "", analyst: "", status: "" }
+    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: [] }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -980,12 +990,19 @@
 
     function formatAgo(iso){
       if(!iso) return ""
-      const ms = Date.now() - new Date(iso).getTime()
-      const mins = Math.max(1, Math.floor(ms/60000))
-      if(mins < 60) return `hace ${mins} min`
-      const hs = Math.floor(mins/60)
-      if(hs < 24) return `hace ${hs} h`
-      return `hace ${Math.floor(hs/24)} d`
+      return formatDateTime24(iso)
+    }
+
+    function formatDateTime24(value){
+      if(!value) return ""
+      const d = new Date(value)
+      if(Number.isNaN(d.getTime())) return String(value)
+      const hh = String(d.getHours()).padStart(2, "0")
+      const mm = String(d.getMinutes()).padStart(2, "0")
+      const dd = String(d.getDate()).padStart(2, "0")
+      const mo = String(d.getMonth() + 1).padStart(2, "0")
+      const yy = d.getFullYear()
+      return `${hh}:${mm} - ${dd}/${mo}/${yy}`
     }
 
     function userDisplayNameByEmail(email){
@@ -2238,7 +2255,7 @@ Cliente B`)
                 <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
                 <div id="headerMenuDropdown" class="menuDropdown hidden">
                   <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
-                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('activity')">Actividad reciente</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
+                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
                   ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Mi agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Mi agenda</button>` : ""}
                 </div>
               </div>
@@ -2261,7 +2278,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div><label>Analista</label><select id="agendaFilterAnalyst" onchange="updateAdminAgendaFilter('analyst', this.value)"><option value="">Todos</option></select></div><div><label>Estado</label><select id="agendaFilterStatus" onchange="updateAdminAgendaFilter('status', this.value)"><option value="">Todos</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div><label>Analista (múltiple)</label><select id="agendaFilterAnalyst" multiple size="4" onchange="updateAdminAgendaFilter('analyst', this)"></select></div><div><label>Estado (múltiple)</label><select id="agendaFilterStatus" multiple size="4" onchange="updateAdminAgendaFilter('status', this)">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2271,7 +2288,7 @@ Cliente B`)
             <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
             <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
           </div>
-          ` : `<div class="card"><h3 style="margin-top:0">Actividad reciente</h3><div id="adminRecentActivity" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` ) : showAnalystProfile ? `
+          ` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Analista)</h3>
             <div class="row">
@@ -2313,7 +2330,7 @@ Cliente B`)
           <div class="grid">
             <div class="card">
               <h3 style="margin:0 0 10px">Dashboard</h3>
-              <div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : ""}">
+              <div class="kpiGrid ${currentRole === "consultor" || currentRole === "admin" ? "singleRow" : ""}">
                 ${currentRole !== "consultor"
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
@@ -2325,10 +2342,10 @@ Cliente B`)
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>
-              <div id="dashboardTicketList" class="small" style="margin-top:10px"></div>
+              <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               
             </div>
-            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div id="recentActivity" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>`}
+            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" onclick="loadDashboard()">Actualizar</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Analytics</h3><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()" style="margin:0"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div id="adminChartsArea" style="margin-top:8px"></div></div>`}
           </div>
 
           <div class="card">
@@ -2352,7 +2369,7 @@ Cliente B`)
       if(!showProfileView){
         loadFilterOptions()
         setupRealtimeStreams()
-        if(!showAdminPanel || adminPanelTab === 'activity') loadDashboard()
+        if(!showAdminPanel) loadDashboard()
         if(!showAdminPanel) loadTickets()
       }else{
         loadMyProfileForm()
@@ -2610,6 +2627,7 @@ Cliente B`)
           <div class="inline" style="gap:8px">
             ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
             ${ticketWithRead.hasProblem ? `<span class="urgentTopFlag">🛑 CON PROBLEMAS</span>` : ''}
+            ${ticketWithRead.plannedWorkDate ? `<span class="badge ok">Planificado para trabajar: ${htmlEscape(formatDateDMY(ticketWithRead.plannedWorkDate))}</span>` : ""}
           </div>
           <div class="inline" style="gap:8px">${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
         </div>
@@ -3665,7 +3683,12 @@ Cliente B`)
     }
 
     function updateAdminAgendaFilter(field, value){
-      adminAgendaFilters[field] = String(value || "").trim().toLowerCase()
+      if(field === "analyst" || field === "status"){
+        const selected = Array.from(value?.selectedOptions || []).map(o => String(o.value || "").trim().toLowerCase()).filter(Boolean)
+        adminAgendaFilters[field] = selected
+      }else{
+        adminAgendaFilters[field] = String(value || "").trim().toLowerCase()
+      }
       loadAdminAgenda()
     }
 
@@ -3697,12 +3720,12 @@ Cliente B`)
 
       const ticketIdQ = adminAgendaFilters.ticketId || ""
       const titleQ = adminAgendaFilters.title || ""
-      const analystQ = adminAgendaFilters.analyst || ""
-      const statusQ = adminAgendaFilters.status || ""
+      const analystQ = Array.isArray(adminAgendaFilters.analyst) ? adminAgendaFilters.analyst : []
+      const statusQ = Array.isArray(adminAgendaFilters.status) ? adminAgendaFilters.status : []
       if(ticketIdQ) scoped = scoped.filter(t => String(t.id||"").toLowerCase().includes(ticketIdQ))
       if(titleQ) scoped = scoped.filter(t => String(t.title||"").toLowerCase().includes(titleQ))
-      if(analystQ) scoped = scoped.filter(t => String(t.assignedTo||"").toLowerCase() === analystQ)
-      if(statusQ) scoped = scoped.filter(t => String(t.status||"").toLowerCase() === statusQ)
+      if(analystQ.length) scoped = scoped.filter(t => analystQ.includes(String(t.assignedTo||"").toLowerCase()))
+      if(statusQ.length) scoped = scoped.filter(t => statusQ.includes(String(t.status||"").toLowerCase()))
       scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
 
       const analystSelect = document.getElementById("agendaFilterAnalyst")
@@ -3711,10 +3734,12 @@ Cliente B`)
       const statusSelect = document.getElementById("agendaFilterStatus")
       if(ticketInput) ticketInput.value = adminAgendaFilters.ticketId || ""
       if(titleInput) titleInput.value = adminAgendaFilters.title || ""
-      if(statusSelect) statusSelect.value = adminAgendaFilters.status || ""
+      if(statusSelect){
+        Array.from(statusSelect.options).forEach(opt => { opt.selected = (adminAgendaFilters.status || []).includes(String(opt.value||"").toLowerCase()) })
+      }
       if(analystSelect){
-        analystSelect.innerHTML = `<option value="">Todos</option>${teamAnalysts.map(email => `<option value="${htmlEscape(email)}">${htmlEscape(analystDisplayNameWithTeam(email))}</option>`).join("")}`
-        analystSelect.value = adminAgendaFilters.analyst || ""
+        analystSelect.innerHTML = `${teamAnalysts.map(email => `<option value="${htmlEscape(email)}">${htmlEscape(analystDisplayNameWithTeam(email))}</option>`).join("")}`
+        Array.from(analystSelect.options).forEach(opt => { opt.selected = (adminAgendaFilters.analyst || []).includes(String(opt.value||"").toLowerCase()) })
       }
       const s1 = document.getElementById("agenda-team-1")
       const s2 = document.getElementById("agenda-team-2")
@@ -3737,12 +3762,15 @@ Cliente B`)
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado de la tarea</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha del ult. comentario</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. atención</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
               </tr>
             </thead>
             <tbody>
               ${scoped.map(t => {
                 const lastComment = ticketLastCommentAt(t)
+                const daysSince = lastComment ? Math.floor((Date.now() - new Date(lastComment).getTime()) / 86400000) : null
                 return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
@@ -3750,14 +3778,27 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(t.informer||t.createdBy||"-"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${lastComment ? htmlEscape(new Date(lastComment).toLocaleString()) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${lastComment ? htmlEscape(formatDateTime24(lastComment)) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysSince === null ? "-" : `${daysSince} día(s)`}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
                 </tr>`
               }).join("")}
             </tbody>
           </table>
         </div>
       `
+    }
+
+    async function updateTicketPlanningDate(ticketId, value){
+      const ticket = (cachedTickets || []).find(t => t.id === ticketId)
+      if(!ticket) return
+      const updated = { ...ticket, plannedWorkDate: String(value || ""), updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      showToast("Planificación guardada.", "ok", 1200)
     }
 
 
@@ -3876,8 +3917,8 @@ Cliente B`)
       })
     }
 
-    function renderDashboardList(label, tickets){
-      const container = document.getElementById("dashboardTicketList")
+    function renderDashboardList(label, tickets, containerId = "dashboardTicketList"){
+      const container = document.getElementById(containerId)
       if(!container) return
       if(!tickets?.length){
         container.innerHTML = `<div class="small">${htmlEscape(label)}: sin tickets.</div>`
@@ -3902,7 +3943,15 @@ Cliente B`)
         doing: "Tickets en curso",
         pending_messages: "Tickets con mensajes pendientes"
       }
-      renderDashboardList(map[type] || "Tickets", dashboardListCache[type] || [])
+      const label = map[type] || "Tickets"
+      renderDashboardList(label, dashboardListCache[type] || [], "dashboardListModalContent")
+      const title = document.getElementById("dashboardListModalTitle")
+      if(title) title.textContent = label
+      document.getElementById("dashboardListModal")?.classList.remove("hidden")
+    }
+
+    function closeDashboardListModal(){
+      document.getElementById("dashboardListModal")?.classList.add("hidden")
     }
 
     async function loadDashboard(){
@@ -3991,7 +4040,7 @@ Cliente B`)
           doing: doingTickets,
           pending_messages: pendingMessageTickets
         }
-        showDashboardList(currentRole === "consultor" ? "pending_messages" : "urgent")
+        renderDashboardList(currentRole === "consultor" ? "Tickets con mensajes pendientes" : "Tickets urgentes", currentRole === "consultor" ? pendingMessageTickets : urgentTickets)
 
         if(currentRole === "consultor") {
           const onlyMine = visibleTickets
@@ -4048,7 +4097,69 @@ Cliente B`)
           return
         }
 
-        const container = document.getElementById(currentRole === "admin" ? "adminRecentActivity" : "recentActivity")
+        if(currentRole === "admin"){
+          const chartsArea = document.getElementById("adminChartsArea")
+          if(chartsArea){
+            const monthInput = document.getElementById("adminChartMonth")
+            const now = new Date()
+            const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
+            if(monthInput && !monthInput.value) monthInput.value = currentMonthKey
+            const selectedMonth = (monthInput?.value || currentMonthKey)
+            const monthTickets = normalizedTickets.filter(t => String(t.createdAt||"").slice(0,7) === selectedMonth)
+            const prevDate = new Date(`${selectedMonth}-01T00:00:00`)
+            prevDate.setMonth(prevDate.getMonth()-1)
+            const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,'0')}`
+            const prevCount = normalizedTickets.filter(t => String(t.createdAt||"").slice(0,7) === prevKey).length
+            const trend = prevCount ? (((monthTickets.length - prevCount) / prevCount) * 100) : (monthTickets.length ? 100 : 0)
+
+            const byAnalyst = {}
+            const byConsultor = {}
+            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0, "Sáb":0, "Dom":0 }
+            monthTickets.forEach(t => {
+              const analyst = String(t.assignedTo||"sin_asignar").toLowerCase()
+              const consultor = String(t.informer||t.createdBy||"sin_consultor").toLowerCase()
+              byAnalyst[analyst] = (byAnalyst[analyst] || 0) + 1
+              byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
+              const d = new Date(t.createdAt || Date.now())
+              const wk = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][d.getDay()]
+              byWeekday[wk] = (byWeekday[wk] || 0) + 1
+            })
+
+            const renderBar = (title, mapObj, formatter) => {
+              const entries = Object.entries(mapObj).sort((a,b)=>b[1]-a[1]).slice(0,8)
+              const max = Math.max(1, ...entries.map(([,v])=>v))
+              return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4>${entries.length ? entries.map(([k,v]) => `<div class="small" style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;gap:8px"><span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div><div style="height:8px;border-radius:8px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${Math.round((v/max)*100)}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></div></div></div>`).join("") : `<p class="small">Sin datos.</p>`}</div>`
+            }
+            const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
+            const renderPie = (title, mapObj, formatter) => {
+              const entries = Object.entries(mapObj).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
+              const total = entries.reduce((a,[,v])=>a+v,0)
+              if(!total) return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4><p class="small">Sin datos.</p></div>`
+              let acc = 0
+              const stops = entries.map(([_,v],i) => {
+                const start = acc
+                acc += (v/total)*360
+                return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
+              }).join(", ")
+              return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
+            }
+
+            chartsArea.innerHTML = `
+              <div class="row" style="margin-bottom:8px">
+                <div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 4px">Tickets del mes</h4><div style="font-size:24px;font-weight:700">${monthTickets.length}</div><div class="small">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
+                <div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 4px">Tendencia</h4><div style="font-size:24px;font-weight:700">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="small">Comparado con ${htmlEscape(prevKey)}</div></div>
+              </div>
+              <div class="row">
+                <div>${renderPie("Torta: tickets por analista", byAnalyst, (k)=> analystDisplayNameWithTeam(k==="sin_asignar"?"":k) || "Sin asignar")}</div>
+                <div>${renderPie("Torta: tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
+                <div>${renderPie("Torta: tickets por día de semana", byWeekday, (k)=>k)}</div>
+              </div>
+            `
+          }
+          return
+        }
+
+        const container = document.getElementById("recentActivity")
         if(!container) return
         let sorted = activity.sort((a,b)=>new Date(b.timestampIso||0)-new Date(a.timestampIso||0))
         if(currentRole === "analista"){
