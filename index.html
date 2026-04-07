@@ -464,6 +464,12 @@
     .ticket:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.3); border-color: rgba(99,132,199,.35); }
 
     .ticket.problemFlag { border-left-color: var(--danger) !important; background: rgba(224,64,64,.12); }
+    .ticket.consultorPulse { border-color: rgba(239,68,68,.65); box-shadow: 0 0 0 0 rgba(239,68,68,.45); animation: ticketPulse 1.4s infinite; }
+    @keyframes ticketPulse {
+      0% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); }
+      70% { box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+    }
     .ticket.priorityAlta  { border-left-color: var(--danger); }
     .ticket.priorityMedia { border-left-color: var(--warn); }
     .ticket.priorityBaja  { border-left-color: var(--ok); }
@@ -690,6 +696,22 @@
     </div>
   </div>
 
+  <div id="closeSurveyModal" class="modalBack hidden">
+    <div class="card modal">
+      <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
+      <p class="small">Cerrar el ticket conlleva enviarle una encuesta de satisfacción al consultor. ¿Estás seguro que querés cerrarlo?</p>
+      <div class="row">
+        <div><label>¿Cómo recibiste el ticket?</label><select id="closeSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
+        <div><label>Comunicación</label><select id="closeSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
+        <div><label>Satisfacción general</label><select id="closeSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+      </div>
+      <div class="inline" style="justify-content:flex-end">
+        <button class="secondary" onclick="closeCloseSurveyModal()">Cancelar</button>
+        <button onclick="submitCloseSurveyAndCloseTicket()">Cerrar ticket</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     firebase.initializeApp({
       apiKey: "AIzaSyA4-yTeI0CemnlROxF9hIgj_HxiDLvYZTY",
@@ -738,6 +760,7 @@
     var activeEmojiPicker = null
     var dashboardListCache = {}
     var headerMenuOpen = false
+    var pendingCloseSurvey = null
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -834,6 +857,7 @@
 
     function setAdminTab(tab){
       adminPanelTab = tab
+      closeHeaderMenu()
       renderApp()
     }
 
@@ -1363,6 +1387,10 @@ Cliente B`)
         const required = f.required ? "required" : ""
         if(f.type === "date") return `<div><label>${htmlEscape(f.label)}</label><input data-custom-field="${htmlEscape(f.key)}" type="date" value="${htmlEscape(String(val))}" ${required}></div>`
         if(f.type === "number") return `<div><label>${htmlEscape(f.label)}</label><input data-custom-field="${htmlEscape(f.key)}" type="number" value="${htmlEscape(String(val))}" ${required}></div>`
+        if(f.type === "select"){
+          const options = Array.isArray(f.options) ? f.options : String(f.options||"").split(",").map(v=>v.trim()).filter(Boolean)
+          return `<div><label>${htmlEscape(f.label)}</label><select data-custom-field="${htmlEscape(f.key)}" ${required}><option value="">Seleccionar</option>${options.map(opt => `<option value="${htmlEscape(opt)}" ${String(val)===String(opt)?'selected':''}>${htmlEscape(opt)}</option>`).join("")}</select></div>`
+        }
         return `<div><label>${htmlEscape(f.label)}</label><input data-custom-field="${htmlEscape(f.key)}" type="text" value="${htmlEscape(String(val))}" ${required}></div>`
       }).join("")}</div>`
     }
@@ -1372,13 +1400,15 @@ Cliente B`)
       if(!container) return
       const fields = await getTicketCustomFields()
       if(!fields.length){ container.innerHTML = "<p class='small'>No hay campos configurados.</p>"; return }
-      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option></select></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
+      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option><option value="select" ${f.type==='select'?'selected':''}>Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfg-options-${f.key}" value="${htmlEscape(Array.isArray(f.options)?f.options.join(', '):String(f.options||''))}" placeholder="Alta, Media, Baja"></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
     }
 
     async function addTicketCustomField(){
       if(currentRole !== "admin") return
       const label = (document.getElementById("cfgFieldLabel")?.value || "").trim()
       const type = (document.getElementById("cfgFieldType")?.value || "text").trim()
+      const optionsRaw = (document.getElementById("cfgFieldOptions")?.value || "").trim()
+      const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
       const required = (document.getElementById("cfgFieldRequired")?.value || "false") === "true"
       if(!label) return alert("Ingresá nombre del campo")
       const key = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')
@@ -1386,10 +1416,12 @@ Cliente B`)
       const exists = (await db.ref("ticket_custom_fields").child(key).once("value")).val()
       if(exists) return alert("Ya existe un campo con ese nombre")
       const order = Date.now()
-      const payload = { key, label, type, required, order }
+      if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
+      const payload = { key, label, type, required, options, order }
       await db.ref("ticket_custom_fields").child(key).set(payload)
       await sheetWrite("appendTicketFieldColumn", { fieldKey: key, fieldLabel: label }).catch(()=>{})
       document.getElementById("cfgFieldLabel").value = ""
+      document.getElementById("cfgFieldOptions").value = ""
       showToast("Campo agregado", "ok")
       loadTicketFieldSettings()
       renderTicketCustomFields()
@@ -1399,9 +1431,12 @@ Cliente B`)
       if(currentRole !== "admin") return
       const label = (document.getElementById(`cfg-name-${key}`)?.value || "").trim()
       const type = (document.getElementById(`cfg-type-${key}`)?.value || "text").trim()
+      const optionsRaw = (document.getElementById(`cfg-options-${key}`)?.value || "").trim()
+      const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
       const required = (document.getElementById(`cfg-required-${key}`)?.value || "false") === "true"
       if(!label) return alert("Nombre inválido")
-      await db.ref("ticket_custom_fields").child(key).update({ label, type, required })
+      if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
+      await db.ref("ticket_custom_fields").child(key).update({ label, type, required, options })
       showToast("Campo actualizado", "ok")
       renderTicketCustomFields()
     }
@@ -1680,6 +1715,54 @@ Cliente B`)
         : `<p class="small">Sin reportes de soporte.</p>`
     }
 
+    async function loadQualitySurveyAdmin(){
+      const container = document.getElementById("adminQualityList")
+      if(!container) return
+      const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      container.innerHTML = surveys.length ? surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Recepción: ${htmlEscape(s.reception||"-")} · Comunicación: ${htmlEscape(s.communication||"-")} · Satisfacción: ${htmlEscape(String(s.overall||"-"))}/5<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("") : `<p class="small">Sin encuestas todavía.</p>`
+    }
+
+    function openCloseSurveyModal(ticketId, nextTicketData){
+      pendingCloseSurvey = { ticketId, nextTicketData }
+      document.getElementById("closeSurveyReception").value = ""
+      document.getElementById("closeSurveyCommunication").value = ""
+      document.getElementById("closeSurveyOverall").value = ""
+      document.getElementById("closeSurveyModal")?.classList.remove("hidden")
+    }
+
+    function closeCloseSurveyModal(){
+      pendingCloseSurvey = null
+      document.getElementById("closeSurveyModal")?.classList.add("hidden")
+    }
+
+    async function submitCloseSurveyAndCloseTicket(){
+      if(!pendingCloseSurvey) return
+      const reception = document.getElementById("closeSurveyReception")?.value || ""
+      const communication = document.getElementById("closeSurveyCommunication")?.value || ""
+      const overall = Number(document.getElementById("closeSurveyOverall")?.value || 0)
+      if(!reception || !communication || !overall) return alert("Completá todos los campos de la encuesta.")
+      const { ticketId, nextTicketData } = pendingCloseSurvey
+      const survey = {
+        ticketId,
+        consultorEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
+        analystEmail: String(currentUser?.email || "").toLowerCase(),
+        reception,
+        communication,
+        overall,
+        createdAt: new Date().toISOString()
+      }
+      const updated = { ...nextTicketData, status: "done", closeSurvey: survey, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(updated.dbKey || emailKey(updated.id)).update(updated)
+      await db.ref("quality_surveys").child(generateId()).set(survey)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      closeCloseSurveyModal()
+      showToast("Ticket cerrado y encuesta enviada.", "ok")
+      openTicketDetailModal(ticketId)
+      loadDashboard()
+    }
+
     async function handleLogin(){
       if(loginInProgress) return
       const email = document.getElementById("loginEmail").value.trim().toLowerCase()
@@ -1942,12 +2025,12 @@ Cliente B`)
             </div>
             <div class="inline">
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
-              ${(isAnalyst && showAnalystProfile) || (isAdmin && showAdminProfile) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
+              ${(isAdmin && showAdminPanel) || (isAnalyst && showAnalystProfile) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
               <div class="menuWrap" onclick="event.stopPropagation()">
                 <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
                 <div id="headerMenuDropdown" class="menuDropdown hidden">
                   <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
-                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('activity')">Actividad reciente</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Organizar agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Organizar agenda</button>` : ""}
+                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('activity')">Actividad reciente</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Organizar agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Organizar agenda</button>` : ""}
                   ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Mi agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Mi agenda</button>` : ""}
                 </div>
               </div>
@@ -1970,7 +2053,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option></select></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Cuando un analista cierra un ticket, completa una encuesta de calidad. Esa información se asocia al consultor del ticket y se usa para calcular el puntaje promedio.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2026,7 +2109,8 @@ Cliente B`)
                 ${currentRole !== "consultor"
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
-                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>`
+                     <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
+                     <div class="kpi"><div class="label">Puntaje de calidad</div><div class="value" id="kpiQuality">-</div></div>`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
@@ -2053,6 +2137,7 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'people'){ loadUsersAdmin(); loadClientsAdmin() }
       if(isAdmin && adminPanelTab === 'support'){ loadSupportAdmin() }
       if(isAdmin && adminPanelTab === 'settings'){ loadTicketFieldSettings() }
+      if(isAdmin && adminPanelTab === 'quality'){ loadQualitySurveyAdmin() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
       if(!showProfileView){
         loadFilterOptions()
@@ -2201,6 +2286,17 @@ Cliente B`)
       }).length
     }
 
+    function hasConsultorUnreadForCurrent(ticket){
+      if(!(currentRole === "admin" || currentRole === "analista")) return false
+      const myKey = emailKey(currentUser?.email || "")
+      return Object.values(ticket?.comments || {}).some(c => {
+        const author = String(c?.author || "").toLowerCase()
+        const authorRole = String(cachedUsersByEmail?.[emailKey(author)]?.role || "").toLowerCase()
+        const readBy = c?.readBy || {}
+        return authorRole === "consultor" && !readBy[myKey]
+      })
+    }
+
     function renderConsultorTicketList(tickets){
       const sorted = [...tickets].sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
       if(!sorted.length) return `<div class="small">Sin tickets</div>`
@@ -2238,8 +2334,9 @@ Cliente B`)
       const assignedTo = String(ticket.assignedTo||"").toLowerCase()
       const assignedAvatar = assignedTo ? userAvatarByEmail(assignedTo) : ""
       const canDrag = currentRole === "admin" || currentRole === "analista"
+      const pulseClass = hasConsultorUnreadForCurrent(ticket) ? "consultorPulse" : ""
       return `
-        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${currentRole === "consultor" ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(ticket.informer||ticket.createdBy||"-"))}</div>
@@ -2382,6 +2479,9 @@ Cliente B`)
         timeTracking: tracking,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
+      }
+      if(currentRole === "analista" && ticket.status !== "done" && updated.status === "done"){
+        return openCloseSurveyModal(id, updated)
       }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
@@ -2696,6 +2796,9 @@ Cliente B`)
       if(!ticket || ticket.status === status) return
       if(!(currentRole === "admin" || currentRole === "analista")) return
       const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      if(currentRole === "analista" && ticket.status !== "done" && status === "done"){
+        return openCloseSurveyModal(ticketId, updated)
+      }
       showToast("Moviendo ticket...", "info", 1400)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
@@ -3012,6 +3115,9 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const updated = { ...ticket, status: next, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      if(currentRole === "analista" && ticket.status !== "done" && next === "done"){
+        return openCloseSurveyModal(id, updated)
+      }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status })
@@ -3448,12 +3554,22 @@ Cliente B`)
         const kpiUrgent = document.getElementById("kpiUrgent")
         const kpiNearDeadline = document.getElementById("kpiNearDeadline")
         const kpiPendingMessages = document.getElementById("kpiPendingMessages")
+        const kpiQuality = document.getElementById("kpiQuality")
         if(kpiUnassigned) kpiUnassigned.innerText = unassignedTickets.length
         if(kpiDoing) kpiDoing.innerText = doingTickets.length
         if(kpiProblems) kpiProblems.innerText = problemTickets.length
         if(kpiUrgent) kpiUrgent.innerText = urgentTickets.length
         if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
         if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
+        try{
+          const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+          let surveys = Object.values(surveyMap)
+          if(currentRole === "analista") surveys = surveys.filter(s => String(s.analystEmail||"").toLowerCase() === String(currentUser?.email||"").toLowerCase())
+          const avg = surveys.length ? (surveys.reduce((acc,s)=>acc + Number(s.overall||0), 0) / surveys.length) : 0
+          if(kpiQuality) kpiQuality.innerText = surveys.length ? avg.toFixed(2) : "-"
+        }catch(_){
+          if(kpiQuality) kpiQuality.innerText = "-"
+        }
 
         dashboardListCache = {
           urgent: urgentTickets,
@@ -3467,6 +3583,17 @@ Cliente B`)
 
         if(currentRole === "consultor") {
           const onlyMine = normalizedTickets.filter(t => String(t.informer||t.createdBy||"").toLowerCase() === String(currentUser.email||"").toLowerCase())
+          const closedWithSurvey = onlyMine.filter(t => t.status === "done" && t.closeSurvey && t.closeSurvey.createdAt)
+          const latestSurvey = closedWithSurvey.sort((a,b)=>new Date(b.closeSurvey.createdAt||0)-new Date(a.closeSurvey.createdAt||0))[0]
+          if(latestSurvey){
+            const key = `consultor_last_survey_${String(currentUser.email||"").toLowerCase()}`
+            const seen = localStorage.getItem(key) || ""
+            if(String(latestSurvey.closeSurvey.createdAt||"") > seen){
+              localStorage.setItem(key, String(latestSurvey.closeSurvey.createdAt||""))
+              const s = latestSurvey.closeSurvey
+              showToast(`Ticket ${latestSurvey.id} cerrado. Encuesta: recepción ${s.reception}, comunicación ${s.communication}, satisfacción ${s.overall}/5`, "info", 5200)
+            }
+          }
           const roleByEmail = Object.fromEntries(users.map(u => [String(u.email||"").toLowerCase(), u.role]))
 
           const commentsContainer = document.getElementById("consultorCommentsActivity")
