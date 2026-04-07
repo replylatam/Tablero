@@ -835,6 +835,8 @@
     var headerMenuOpen = false
     var pendingCloseSurvey = null
     var pendingConsultorSurveyTicket = null
+    var adminAgendaTeam = "equipo_1"
+    var adminAgendaFilters = { ticketId: "", title: "", analyst: "", status: "" }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -977,6 +979,22 @@
       if(profileName) return profileName
       const name = String(email||"-").split("@")[0]
       return name.charAt(0).toUpperCase() + name.slice(1)
+    }
+
+    function analystTeamLabel(team){
+      if(String(team||"").toLowerCase() === "equipo_1") return "Equipo 1"
+      if(String(team||"").toLowerCase() === "equipo_2") return "Equipo 2"
+      return "Sin equipo"
+    }
+
+    function analystDisplayNameWithTeam(email){
+      const key = emailKey(email || "")
+      const user = cachedUsersByEmail[key] || {}
+      const base = userDisplayNameByEmail(email)
+      if(String(user.role||"").toLowerCase() !== "analista") return base
+      const team = String(user.analystTeam||"").toLowerCase()
+      if(!team) return `${base} · Sin equipo`
+      return `${base} · ${analystTeamLabel(team)}`
     }
 
     function commentDisplayName(email){
@@ -2201,7 +2219,7 @@ Cliente B`)
                 <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
                 <div id="headerMenuDropdown" class="menuDropdown hidden">
                   <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
-                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('activity')">Actividad reciente</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Organizar agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Organizar agenda</button>` : ""}
+                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('activity')">Actividad reciente</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
                   ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="showToast('Mi agenda: en desarrollo', 'info', 2600);closeHeaderMenu()">Mi agenda</button>` : ""}
                 </div>
               </div>
@@ -2214,7 +2232,7 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Gestión de personas</h3>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
-            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
+            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Equipo (si es analista)</label><select id="uTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
             <div class="row" style="align-items:end"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button><button class="ghost helpIcon" onclick="showImportFormatHelp('users')">?</button></div></div>
             <div id="usersList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
@@ -2224,7 +2242,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div><label>Analista</label><select id="agendaFilterAnalyst" onchange="updateAdminAgendaFilter('analyst', this.value)"><option value="">Todos</option></select></div><div><label>Estado</label><select id="agendaFilterStatus" onchange="updateAdminAgendaFilter('status', this.value)"><option value="">Todos</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2310,6 +2328,7 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'support'){ loadSupportAdmin() }
       if(isAdmin && adminPanelTab === 'settings'){ loadTicketFieldSettings() }
       if(isAdmin && adminPanelTab === 'quality'){ loadQualitySurveyAdmin() }
+      if(isAdmin && adminPanelTab === 'agenda'){ loadAdminAgenda() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
       if(!showProfileView){
         loadFilterOptions()
@@ -2506,7 +2525,7 @@ Cliente B`)
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
-                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar")}</div></div>
+                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div>
               </div>
@@ -2526,7 +2545,7 @@ Cliente B`)
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(ticket.informer||ticket.createdBy||"-"))}</div>
-          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? userDisplayNameByEmail(ticket.assignedTo) : "Sin asignar")}</div></div>
+          <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? analystDisplayNameWithTeam(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
           <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
@@ -3463,6 +3482,7 @@ Cliente B`)
       const email = document.getElementById("uEmail").value.trim().toLowerCase()
       const password = document.getElementById("uPassword").value.trim()
       const role = document.getElementById("uRole").value
+      const analystTeam = document.getElementById("uTeam")?.value || ""
       const photoFile = document.getElementById("uPhoto")?.files?.[0] || null
       if(!email || !password) return alert("Completá email y contraseña")
       const policy = passwordPolicyError(password)
@@ -3485,6 +3505,7 @@ Cliente B`)
         key: emailKey(email),
         email, password: "", role, active: true,
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
+        analystTeam: role === "analista" ? analystTeam : "",
         ...secureFields,
         photoUrl,
         photoFileId,
@@ -3495,6 +3516,7 @@ Cliente B`)
       alert("Usuario creado correctamente")
       document.getElementById("uEmail").value = ""
       document.getElementById("uPassword").value = ""
+      document.getElementById("uTeam").value = ""
       document.getElementById("uPhoto").value = ""
       await loadUsersAdmin()
       await loadFilterOptions()
@@ -3509,8 +3531,23 @@ Cliente B`)
       container.innerHTML = users.map(u => {
         const key = emailKey(u.email)
         const isSelf = (u.email||"").toLowerCase() === (currentUser.email||"").toLowerCase()
-        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} · Clave: Oculta</span></div></div><div class="inline"><input id="user-photo-${key}" type="file" accept="image/*" style="max-width:200px;margin:0"><button class="ghost" onclick="updateUserPhoto('${key}','${u.email||''}','${u.role||'consultor'}', this)">Actualizar foto</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
+        const team = String(u.analystTeam || "")
+        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} · ${u.role === "analista" ? `Equipo: ${htmlEscape(analystTeamLabel(team))}` : "Clave: Oculta"}</span></div></div><div class="inline">${u.role === "analista" ? `<select id="user-team-${key}" style="margin:0;max-width:160px"><option value="">Sin equipo</option><option value="equipo_1" ${team==="equipo_1"?"selected":""}>Equipo 1</option><option value="equipo_2" ${team==="equipo_2"?"selected":""}>Equipo 2</option></select><button class="ghost" onclick="saveAnalystTeam('${key}','${u.email||''}')">Guardar equipo</button>` : ""}<input id="user-photo-${key}" type="file" accept="image/*" style="max-width:200px;margin:0"><button class="ghost" onclick="updateUserPhoto('${key}','${u.email||''}','${u.role||'consultor'}', this)">Actualizar foto</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
       }).join("")
+    }
+
+    async function saveAnalystTeam(key,email){
+      if(currentRole !== "admin") return
+      const team = String(document.getElementById(`user-team-${key}`)?.value || "")
+      const user = (await db.ref("users_by_email").child(key).once("value")).val()
+      if(!user) return alert("No se encontró el usuario.")
+      const payload = { ...user, key, email, analystTeam: team, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("users_by_email").child(key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast("Equipo actualizado.", "ok")
+      await loadUsersAdmin()
+      await loadFilterOptions()
+      if(adminPanelTab === "agenda") loadAdminAgenda()
     }
 
     async function updateUserPhoto(key,email,role,btn){
@@ -3534,6 +3571,7 @@ Cliente B`)
           passwordSalt: existing.passwordSalt || "",
           passwordUpdatedAt: existing.passwordUpdatedAt || "",
           role,
+          analystTeam: existing.analystTeam || "",
           active: existing.active !== false,
           createdAt: existing.createdAt || new Date().toISOString(),
           createdBy: existing.createdBy || currentUser.email,
@@ -3594,6 +3632,107 @@ Cliente B`)
       if(btnComments) btnComments.classList.toggle("ghost", consultorActivityTab !== "comments")
       if(btnRequests) btnRequests.classList.toggle("ghost", consultorActivityTab !== "requests")
       if(btnSurveys) btnSurveys.classList.toggle("ghost", consultorActivityTab !== "surveys")
+    }
+
+    function setAdminAgendaTeam(team){
+      adminAgendaTeam = team === "equipo_2" ? "equipo_2" : "equipo_1"
+      loadAdminAgenda()
+    }
+
+    function updateAdminAgendaFilter(field, value){
+      adminAgendaFilters[field] = String(value || "").trim().toLowerCase()
+      loadAdminAgenda()
+    }
+
+    function ticketLastCommentAt(ticket){
+      const comments = Object.values(parseCommentsValue(ticket?.comments || {}))
+      if(!comments.length) return ""
+      const latest = comments.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0]
+      return latest?.createdAt || ""
+    }
+
+    async function loadAdminAgenda(){
+      if(currentRole !== "admin" || adminPanelTab !== "agenda") return
+      const wrap = document.getElementById("adminAgendaTableWrap")
+      if(!wrap) return
+      let usersMap = cachedUsersByEmail || {}
+      if(!Object.keys(usersMap).length){
+        usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+        cachedUsersByEmail = usersMap
+      }
+      let tickets = cachedTickets || []
+      if(!tickets.length){
+        try{ tickets = await fetchTicketsFromDb() }catch(_){ tickets = [] }
+      }
+      const teamAnalysts = Object.values(usersMap || {})
+        .filter(u => String(u?.role||"") === "analista" && String(u?.analystTeam||"").toLowerCase() === adminAgendaTeam)
+        .map(u => String(u.email||"").toLowerCase())
+      const teamSet = new Set(teamAnalysts)
+      let scoped = tickets.filter(t => teamSet.has(String(t.assignedTo||"").toLowerCase()))
+
+      const ticketIdQ = adminAgendaFilters.ticketId || ""
+      const titleQ = adminAgendaFilters.title || ""
+      const analystQ = adminAgendaFilters.analyst || ""
+      const statusQ = adminAgendaFilters.status || ""
+      if(ticketIdQ) scoped = scoped.filter(t => String(t.id||"").toLowerCase().includes(ticketIdQ))
+      if(titleQ) scoped = scoped.filter(t => String(t.title||"").toLowerCase().includes(titleQ))
+      if(analystQ) scoped = scoped.filter(t => String(t.assignedTo||"").toLowerCase() === analystQ)
+      if(statusQ) scoped = scoped.filter(t => String(t.status||"").toLowerCase() === statusQ)
+      scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
+
+      const analystSelect = document.getElementById("agendaFilterAnalyst")
+      const ticketInput = document.getElementById("agendaFilterTicketId")
+      const titleInput = document.getElementById("agendaFilterTitle")
+      const statusSelect = document.getElementById("agendaFilterStatus")
+      if(ticketInput) ticketInput.value = adminAgendaFilters.ticketId || ""
+      if(titleInput) titleInput.value = adminAgendaFilters.title || ""
+      if(statusSelect) statusSelect.value = adminAgendaFilters.status || ""
+      if(analystSelect){
+        analystSelect.innerHTML = `<option value="">Todos</option>${teamAnalysts.map(email => `<option value="${htmlEscape(email)}">${htmlEscape(analystDisplayNameWithTeam(email))}</option>`).join("")}`
+        analystSelect.value = adminAgendaFilters.analyst || ""
+      }
+      const s1 = document.getElementById("agenda-team-1")
+      const s2 = document.getElementById("agenda-team-2")
+      if(s1) s1.classList.toggle("ghost", adminAgendaTeam !== "equipo_1")
+      if(s2) s2.classList.toggle("ghost", adminAgendaTeam !== "equipo_2")
+
+      if(!scoped.length){
+        wrap.innerHTML = `<p class="small">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</p>`
+        return
+      }
+      wrap.innerHTML = `
+        <div style="overflow:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Número de ticket</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista asignado</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado de la tarea</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha del ult. comentario</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${scoped.map(t => {
+                const lastComment = ticketLastCommentAt(t)
+                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(t.informer||t.createdBy||"-"))}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${lastComment ? htmlEscape(new Date(lastComment).toLocaleString()) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
+                </tr>`
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `
     }
 
 
