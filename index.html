@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>NOVA</title>
-  <link rel="icon" type="image/png" href="icon.png">
-  
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Ctext y=%2750%27 font-size=%2750%27%3E🎫%3C/text%3E%3C/svg%3E" />
+
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -891,8 +891,8 @@
     var pendingConsultorSurveyTicket = null
     var userEditContext = null
     var adminAgendaTeam = "equipo_1"
-    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: [], client: "", consultor: "" }
-    var analystAgendaFilters = { ticketId: "", title: "", status: [], client: "", consultor: "" }
+    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
+    var analystAgendaFilters = { ticketId: "", title: "", status: ["done"], client: "", consultor: "" }
     var analystAgendaVisible = false
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
@@ -2307,7 +2307,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Analistas (múltiple)</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Estados (múltiple)</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2367,7 +2367,7 @@ Cliente B`)
               <div class="agendaFilterField"><label>Título</label><input id="analystAgendaFilterTitle" oninput="updateAnalystAgendaFilter('title', this.value)" placeholder="Título"></div>
               <div class="agendaFilterField"><label>Cliente</label><input id="analystAgendaFilterClient" oninput="updateAnalystAgendaFilter('client', this.value)" placeholder="Cliente"></div>
               <div class="agendaFilterField"><label>Consultor</label><input id="analystAgendaFilterConsultor" oninput="updateAnalystAgendaFilter('consultor', this.value)" placeholder="Consultor"></div>
-              <div class="agendaFilterField"><label>Estados (múltiple)</label><details class="agendaDropdown"><summary class="small">Seleccionar estados</summary><div id="analystAgendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAnalystAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div>
+              <div class="agendaFilterField"><label>Ocultar estados</label><details class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="analystAgendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAnalystAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div>
             </div>
             <div id="analystAgendaTableWrap" style="margin-top:10px"></div>
           </div>` : `
@@ -3782,8 +3782,8 @@ Cliente B`)
       if(titleQ) scoped = scoped.filter(t => String(t.title||"").toLowerCase().includes(titleQ))
       if(clientQ) scoped = scoped.filter(t => String(t.client||"").toLowerCase().includes(clientQ))
       if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ) || String(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ))
-      if(analystQ.length) scoped = scoped.filter(t => analystQ.includes(String(t.assignedTo||"").toLowerCase()))
-      if(statusQ.length) scoped = scoped.filter(t => statusQ.includes(String(t.status||"").toLowerCase()))
+      if(analystQ.length) scoped = scoped.filter(t => !analystQ.includes(String(t.assignedTo||"").toLowerCase()))
+      if(statusQ.length) scoped = scoped.filter(t => !statusQ.includes(String(t.status||"").toLowerCase()))
       scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
 
       const analystChecks = document.getElementById("agendaFilterAnalystChecks")
@@ -3831,6 +3831,7 @@ Cliente B`)
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
               </tr>
             </thead>
@@ -3850,6 +3851,7 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.recurrence||"")}" onchange="updateTicketAgendaField('${t.id}', 'recurrence', this.value)" placeholder="Sin recurrencia"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" placeholder="Agregar observación"></td>
                 </tr>`
               }).join("")}
@@ -3873,7 +3875,7 @@ Cliente B`)
     }
 
     async function updateTicketAgendaField(ticketId, field, value){
-      const allowed = new Set(["recurrence", "observations"])
+      const allowed = new Set(["recurrence", "observations", "remainingQuantity"])
       if(!allowed.has(field)) return
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
@@ -3947,7 +3949,7 @@ Cliente B`)
       if(titleQ) scoped = scoped.filter(t => String(t.title||"").toLowerCase().includes(titleQ))
       if(clientQ) scoped = scoped.filter(t => String(t.client||"").toLowerCase().includes(clientQ))
       if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ) || String(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ))
-      if(statusQ.length) scoped = scoped.filter(t => statusQ.includes(String(t.status||"").toLowerCase()))
+      if(statusQ.length) scoped = scoped.filter(t => !statusQ.includes(String(t.status||"").toLowerCase()))
       scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
 
       const ticketInput = document.getElementById("analystAgendaFilterTicketId")
@@ -3988,6 +3990,7 @@ Cliente B`)
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
             </tr></thead>
             <tbody>
@@ -4000,6 +4003,7 @@ Cliente B`)
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.recurrence||"")}" onchange="updateTicketAgendaField('${t.id}', 'recurrence', this.value)" placeholder="Sin recurrencia"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" placeholder="Agregar observación"></td>
               </tr>`).join("")}
             </tbody>
