@@ -445,6 +445,17 @@
     .commentEditor:empty::before { content: attr(data-placeholder); color: var(--muted); }
     .commentBody.formatted p { margin: .25rem 0; }
     .commentBody.formatted ul { margin: .25rem 0 .25rem 1.25rem; }
+    .mentionTag {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(61,110,245,.18);
+      border: 1px solid rgba(61,110,245,.42);
+      color: #a5bfff;
+      font-weight: 600;
+      letter-spacing: .01em;
+    }
 
     /* ── Priority / Urgent flags ───────────────────────────────────── */
     .urgentTopFlag {
@@ -1107,6 +1118,59 @@
         .replace(/\son\w+=(["']).*?\1/gi, "")
     }
 
+    function mentionableUsers(){
+      return Object.values(cachedUsersByEmail || {})
+        .filter(u => u && u.email && u.active !== false)
+        .map(u => String(u.email || "").toLowerCase())
+    }
+
+    function resolveMentionToken(token){
+      const normalized = String(token || "").replace(/^@/, "").trim().toLowerCase()
+      if(!normalized) return ""
+      const users = mentionableUsers()
+      const direct = users.find(email => email === normalized)
+      if(direct) return direct
+      return users.find(email => email.split("@")[0] === normalized) || ""
+    }
+
+    function enhanceCommentHtmlWithMentions(html){
+      const wrapper = document.createElement("div")
+      wrapper.innerHTML = safeCommentHtml(html)
+      const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT, null)
+      const nodes = []
+      while(walker.nextNode()) nodes.push(walker.currentNode)
+      nodes.forEach(node => {
+        const text = node.nodeValue || ""
+        if(!/@[a-zA-Z0-9._-]{2,}/.test(text)) return
+        const frag = document.createDocumentFragment()
+        const regex = /(^|[\s(])@([a-zA-Z0-9._-]{2,})/g
+        let cursor = 0
+        let match
+        while((match = regex.exec(text))){
+          const fullStart = match.index
+          const prefix = match[1] || ""
+          const token = match[2] || ""
+          const mentionStart = fullStart + prefix.length
+          if(fullStart > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, fullStart)))
+          if(prefix) frag.appendChild(document.createTextNode(prefix))
+          const resolvedEmail = resolveMentionToken(token)
+          if(resolvedEmail){
+            const span = document.createElement("span")
+            span.className = "mentionTag"
+            span.title = userDisplayNameByEmail(resolvedEmail)
+            span.textContent = `@${token}`
+            frag.appendChild(span)
+          }else{
+            frag.appendChild(document.createTextNode(`@${token}`))
+          }
+          cursor = mentionStart + token.length + 1
+        }
+        if(cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)))
+        node.parentNode.replaceChild(frag, node)
+      })
+      return wrapper.innerHTML
+    }
+
     function commentPlainTextFromHtml(html){
       const div = document.createElement("div")
       div.innerHTML = String(html || "")
@@ -1523,8 +1587,8 @@ Cliente B`)
         const consultors = Object.values(usersByEmailData).filter(u => u && u.role === "consultor" && u.active !== false).map(u => (u.email||"").toLowerCase()).sort()
         const defaultInformer = currentRole === "consultor" ? (currentUser?.email||"").toLowerCase() : ""
         informerSelect.innerHTML = `<option value="">Seleccionar informador</option>${consultors.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
-        informerSelect.value = defaultInformer
-        if(currentRole === "consultor") informerSelect.disabled = true
+        informerSelect.value = informerSelect.value || defaultInformer
+        informerSelect.disabled = false
       }
 
       const ticketClientSelect = document.getElementById("tClient")
@@ -2430,11 +2494,10 @@ Cliente B`)
     function openTicketModal(){
       document.getElementById("ticketModal").classList.remove("hidden")
       renderTicketCustomFields()
-      if(currentRole === "consultor"){
+      if(currentRole === "consultor" || currentRole === "analista"){
         const informer = document.getElementById("tInformer")
-        if(informer){
+        if(informer && !informer.value){
           informer.value = String(currentUser?.email || "").toLowerCase()
-          informer.disabled = true
         }
       }
     }
@@ -2454,9 +2517,7 @@ Cliente B`)
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
-      const informer = (currentRole === "consultor"
-        ? String(currentUser.email || "").trim().toLowerCase()
-        : (document.getElementById("tInformer")?.value || currentUser.email).trim().toLowerCase())
+      const informer = (document.getElementById("tInformer")?.value || currentUser.email || "").trim().toLowerCase()
       const customFieldsDefs = await getTicketCustomFields()
       const customFields = {}
       for(const field of customFieldsDefs){
@@ -2639,6 +2700,7 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return alert("No se encontró el ticket")
       const canEdit = currentRole === "admin"
+      const canEditInformer = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const canManageStatus = currentRole === "admin" || currentRole === "analista"
       const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
       cachedUsersByEmail = usersByEmail
@@ -2695,7 +2757,7 @@ Cliente B`)
             </div>
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
-            <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${informerOptions}</select></div>
+            <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
             ${customDetailHtml}
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
@@ -2758,10 +2820,11 @@ Cliente B`)
     }
 
     async function autoSaveTicketDetail(id){
-      if(!(currentRole === "admin" || currentRole === "analista")) return
+      if(!(currentRole === "admin" || currentRole === "analista" || currentRole === "consultor")) return
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const canEditFields = currentRole === "admin"
+      const canEditInformer = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase()
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       if(nextAssignedTo){
@@ -2776,7 +2839,7 @@ Cliente B`)
         description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
         priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
-        informer: canEditFields ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
+        informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
         assignedTo: nextAssignedTo,
         deadline: canEditFields ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
         status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
@@ -2921,8 +2984,9 @@ Cliente B`)
         const email = String(u?.email || '')
         const mine = emailKey(email) === emailKey(currentUser.email) || uk === emailKey(currentUser.email)
         const running = !!u?.timerStartAt
+        const canLogManual = mine || canManageHelpers
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${mine ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button><button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
       const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
@@ -2957,7 +3021,7 @@ Cliente B`)
           </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${safeCommentHtml(c.messageHtml)}</div>` : `<div class="commentBody">${htmlEscape(c.message||"")}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -2966,7 +3030,7 @@ Cliente B`)
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertUnorderedList')">• Lista</button>
                 <label class="colorBtn" title="Color de letra"><span>A</span><input type="color" onchange="formatCommentEditor('${id}','foreColor', this.value)"></label>
               </div>
-              <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario" onkeydown="handleCommentKeydown(event,'${id}')"></div>
+              <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario (podés mencionar con @usuario)" onkeydown="handleCommentKeydown(event,'${id}')"></div>
               <div class="inline" style="align-items:center;margin-top:8px">
                 ${currentRole !== "consultor" ? `<div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-internal-${id}"><span class="slider"></span></label><span>Interno</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-max-attention-${id}"><span class="slider"></span></label><span>Atención máxima</span></div>` : ""}
                 <label class="ghost attachBtn" for="comment-file-${id}" title="Adjuntar archivo">📎</label>
@@ -3006,7 +3070,15 @@ Cliente B`)
       })
       const items = Object.entries(normalized)
         .sort((a,b) => defaults.indexOf(a[1].emoji) - defaults.indexOf(b[1].emoji))
-        .map(([key, info]) => `<button class="ghost" style="padding:4px 8px" onclick="reactToComment('${ticketId}','${commentId}','${htmlEscape(info.emoji)}')">${htmlEscape(info.emoji)} ${Object.keys(info.users||{}).length}</button>`)
+        .map(([key, info]) => {
+          const reactors = Object.values(info.users || {})
+            .map(v => String(v?.email || "").toLowerCase())
+            .filter(Boolean)
+          const tooltip = reactors.length
+            ? `Reaccionaron: ${reactors.map(email => userDisplayNameByEmail(email)).join(", ")}`
+            : "Sin reacciones"
+          return `<button class="ghost" title="${htmlEscape(tooltip)}" style="padding:4px 8px" onclick="reactToComment('${ticketId}','${commentId}','${htmlEscape(info.emoji)}')">${htmlEscape(info.emoji)} ${Object.keys(info.users||{}).length}</button>`
+        })
       items.push(`<button class="ghost" style="padding:4px 8px" onclick="pickCustomReaction('${ticketId}','${commentId}',event)">➕ Emoji</button>`)
       return items.join("")
     }
@@ -3245,6 +3317,7 @@ Cliente B`)
     }
 
     async function logManualTimeForUser(ticketId, userKey, monthKey){
+      if(!(currentRole === 'admin' || currentRole === 'analista')) return alert('Solo admin o analista')
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
       const minutes = hs * 60 + mins
