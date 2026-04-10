@@ -458,6 +458,24 @@
       border-color: rgba(122,162,255,.65);
       color: #fff;
     }
+    .savedTableWrap { overflow: auto; }
+    .savedTable {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .savedTable col:nth-child(1) { width: 23%; }
+    .savedTable col:nth-child(2) { width: 31%; }
+    .savedTable col:nth-child(3) { width: 18%; }
+    .savedTable col:nth-child(4) { width: 18%; }
+    .savedTable col:nth-child(5) { width: 10%; }
+    .savedTable th, .savedTable td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid var(--stroke-2);
+      vertical-align: middle;
+      word-break: break-word;
+    }
     .mentionTag {
       display: inline-flex;
       align-items: center;
@@ -747,7 +765,7 @@
 
   <div id="ticketModal" class="modalBack hidden">
     <div class="card modal">
-      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+      <div class="inline" style="justify-content:space-between;align-items:center;flex-wrap:nowrap;margin-bottom:8px">
         <h3 style="margin:0">Nuevo ticket</h3>
         <button class="secondary" onclick="closeTicketModal()">Cerrar</button>
       </div>
@@ -773,9 +791,9 @@
 
   <div id="ticketDetailModal" class="modalBack hidden" onclick="if(event.target===this) closeTicketDetailModal()">
     <div class="card modal">
-      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+      <div class="inline" style="justify-content:space-between;align-items:center;flex-wrap:nowrap;margin-bottom:8px">
         <h3 id="ticketDetailTitle" style="margin:0">Detalle del ticket</h3>
-        <div class="inline" style="gap:8px;align-items:center">
+        <div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">
           <div id="ticketDetailHeaderControls"></div>
           <button class="secondary" onclick="closeTicketDetailModal()">Cerrar</button>
         </div>
@@ -2688,9 +2706,9 @@ Cliente B`)
       })
       wrap.innerHTML = `
         <h4 style="margin:0 0 8px">Tickets guardados</h4>
-        ${tickets.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha guardado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticket.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}
+        ${tickets.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td>${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td>${htmlEscape(item.ticket.client||"-")}</td><td>${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}
         <h4 style="margin:14px 0 8px">Comentarios guardados</h4>
-        ${comments.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha guardado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Autor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(c.author||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(c.message||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}
+        ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}
       `
     }
 
@@ -2933,8 +2951,8 @@ Cliente B`)
       if(headerControls){
         const saveBtn = `<button class="ghost saveToggle ${isTicketSaved(ticketWithRead.id) ? "active" : ""}" data-save-ticket="${htmlEscape(ticketWithRead.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${ticketWithRead.id}', event)">${isTicketSaved(ticketWithRead.id) ? "🔖" : "📑"}</button>`
         headerControls.innerHTML = canManageStatus
-          ? `<div class="inline" style="gap:8px;align-items:center"><select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select>${saveBtn}</div>`
-          : `<div class="inline" style="gap:8px;align-items:center"><span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span>${saveBtn}</div>`
+          ? `<div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">${saveBtn}<select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
+          : `<div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">${saveBtn}<span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span></div>`
       }
 
       document.getElementById("ticketDetailContent").innerHTML = `
