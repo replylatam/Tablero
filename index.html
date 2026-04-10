@@ -445,6 +445,19 @@
     .commentEditor:empty::before { content: attr(data-placeholder); color: var(--muted); }
     .commentBody.formatted p { margin: .25rem 0; }
     .commentBody.formatted ul { margin: .25rem 0 .25rem 1.25rem; }
+    .saveToggle {
+      background: rgba(31, 41, 73, 0.9);
+      border: 1px solid rgba(99,132,199,.35);
+      color: #c9d7ff;
+      box-shadow: none;
+      min-width: 34px;
+      padding: 6px 8px;
+    }
+    .saveToggle.active {
+      background: linear-gradient(160deg, #1e3a8a, #3d6ef5);
+      border-color: rgba(122,162,255,.65);
+      color: #fff;
+    }
     .mentionTag {
       display: inline-flex;
       align-items: center;
@@ -1091,11 +1104,7 @@
       const fromUsers = Object.values(usersMap || {})
         .filter(u => u && u.email && u.active !== false && (u.role === "consultor" || u.role === "admin"))
         .map(u => String(u.email || "").toLowerCase())
-      const fromTickets = (cachedTickets || [])
-        .map(t => String(t?.informer || t?.createdBy || "").toLowerCase())
-        .filter(Boolean)
-      const mine = String(currentUser?.email || "").toLowerCase()
-      return Array.from(new Set([...fromUsers, ...fromTickets, ...(mine ? [mine] : [])])).sort()
+      return Array.from(new Set(fromUsers)).sort()
     }
 
     function getSavedStorageKey(){
@@ -1133,16 +1142,20 @@
 
     function toggleSaveTicket(ticketId, ev){
       if(ev) ev.stopPropagation()
+      if(ev?.preventDefault) ev.preventDefault()
       const id = String(ticketId || "")
       if(!id) return
       const state = getSavedItemsState()
       state.tickets = state.tickets.includes(id) ? state.tickets.filter(t => t !== id) : [...state.tickets, id]
       setSavedItemsState(state)
-      renderApp()
+      refreshSaveButtonsState()
+      refreshSavedItemsViewIfOpen()
+      showToast(state.tickets.includes(id) ? "Ticket guardado" : "Ticket quitado de guardados", "ok", 1400)
     }
 
     function toggleSaveComment(ticketId, commentId, ev){
       if(ev) ev.stopPropagation()
+      if(ev?.preventDefault) ev.preventDefault()
       const tId = String(ticketId || "")
       const cId = String(commentId || "")
       if(!tId || !cId) return
@@ -1150,6 +1163,7 @@
       const ticket = (cachedTickets || []).find(t => t.id === tId)
       const comment = ticket?.comments?.[cId]
       const state = getSavedItemsState()
+      let savedNow = false
       if(state.comments.some(c => c && c.key === key)){
         state.comments = state.comments.filter(c => c && c.key !== key)
       }else{
@@ -1161,21 +1175,32 @@
           author: String(comment?.author || ""),
           createdAt: String(comment?.createdAt || "")
         })
+        savedNow = true
       }
       setSavedItemsState(state)
-      renderApp()
+      refreshSaveButtonsState()
+      refreshSavedItemsViewIfOpen()
+      showToast(savedNow ? "Comentario guardado" : "Comentario quitado de guardados", "ok", 1400)
     }
 
-    function analystHasTimeLogged(ticket){
-      const meKey = emailKey(currentUser?.email || "")
-      const entry = ticket?.timeTracking?.users?.[meKey]
-      return Number(entry?.totalMinutes || 0) > 0
+    function refreshSavedItemsViewIfOpen(){
+      if(mainViewTab === "saved") renderSavedItems()
     }
 
-    function warnAnalystMovementWithoutTime(ticket){
-      if(currentRole !== "analista") return
-      if(analystHasTimeLogged(ticket)) return
-      alert("Se detectó movimiento en el ticket sin registro de tiempo. Por favor, verificar.")
+    function refreshSaveButtonsState(){
+      document.querySelectorAll("[data-save-ticket]").forEach(btn => {
+        const id = String(btn.getAttribute("data-save-ticket") || "")
+        const active = isTicketSaved(id)
+        btn.textContent = active ? "🔖" : "📑"
+        btn.classList.toggle("active", active)
+      })
+      document.querySelectorAll("[data-save-comment]").forEach(btn => {
+        const key = String(btn.getAttribute("data-save-comment") || "")
+        const [ticketId, commentId] = key.split("::")
+        const active = isCommentSaved(ticketId || "", commentId || "")
+        btn.textContent = active ? "🔖" : "📑"
+        btn.classList.toggle("active", active)
+      })
     }
 
     function ticketMatchesActivityFilter(ticket, filter){
@@ -2834,7 +2859,7 @@ Cliente B`)
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
-                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><div class="inline" style="gap:6px"><button class="ghost" title="Guardar ticket" onclick="toggleSaveTicket('${t.id}', event)">${isTicketSaved(t.id) ? "★" : "☆"}</button><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div></div>
+                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><div class="inline" style="gap:6px"><button class="ghost saveToggle ${isTicketSaved(t.id) ? "active" : ""}" data-save-ticket="${htmlEscape(t.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${t.id}', event)">${isTicketSaved(t.id) ? "🔖" : "📑"}</button></div></div>
               </div>
             `
           }).join("")}
@@ -2856,7 +2881,7 @@ Cliente B`)
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? analystDisplayNameWithTeam(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px"><button class="ghost" title="Guardar ticket" onclick="toggleSaveTicket('${ticket.id}', event)">${isTicketSaved(ticket.id) ? "★" : "☆"}</button><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="inline" style="margin-top:8px"><button class="ghost saveToggle ${isTicketSaved(ticket.id) ? "active" : ""}" data-save-ticket="${htmlEscape(ticket.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${ticket.id}', event)">${isTicketSaved(ticket.id) ? "🔖" : "📑"}</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -3190,7 +3215,7 @@ Cliente B`)
           </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "★" : "☆"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
