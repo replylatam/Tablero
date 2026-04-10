@@ -939,6 +939,7 @@
     var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
     var analystAgendaFilters = { ticketId: "", title: "", status: ["done"], client: "", consultor: "" }
     var analystAgendaVisible = false
+    var cachedTicketCustomFieldsDefs = []
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -1118,6 +1119,27 @@
       return userDisplayNameByEmail(email)
     }
 
+    function resolveInformerEmail(ticket){
+      const informerRaw = String(ticket?.informer || "").trim().toLowerCase()
+      if(informerRaw && informerRaw !== "consultor") return informerRaw
+      return String(ticket?.createdBy || "").trim().toLowerCase()
+    }
+
+    function recurrenceDaysLabel(days){
+      const order = ["lunes", "martes", "miercoles", "jueves", "viernes"]
+      const labels = { lunes: "Lunes", martes: "Martes", miercoles: "Miércoles", jueves: "Jueves", viernes: "Viernes" }
+      const selected = Array.isArray(days) ? days.map(d => String(d||"").toLowerCase()).filter(Boolean) : []
+      const uniq = Array.from(new Set(selected)).filter(d => order.includes(d))
+      return uniq.length ? order.filter(d => uniq.includes(d)).map(d => labels[d]).join(", ") : "Sin recurrencia"
+    }
+
+    function recurrenceDaysFromTicket(ticket){
+      if(Array.isArray(ticket?.recurrenceDays)) return ticket.recurrenceDays
+      const legacy = String(ticket?.recurrence || "").trim()
+      if(!legacy) return []
+      return legacy.split(",").map(v => String(v||"").trim().toLowerCase()).filter(Boolean)
+    }
+
     function buildInformerEmailList(usersMap = {}){
       const fromUsers = Object.values(usersMap || {})
         .filter(u => {
@@ -1245,7 +1267,39 @@
       }
       if(key === "urgente") return !!ticket?.urgentRequested
       if(key === "problema") return !!ticket?.hasProblem
+      if(key.startsWith("tasktype:")){
+        const target = key.slice(9)
+        const custom = ticket?.customFields || {}
+        const matchedValue = Object.entries(custom).find(([fieldKey]) => String(fieldKey||"").toLowerCase() === "tipo_de_tarea" || String(fieldKey||"").toLowerCase().includes("tipo_tarea"))
+        return String(matchedValue?.[1] || "").toLowerCase() === target
+      }
+      if(key.startsWith("custom:")){
+        const customKey = key.slice(7)
+        return String(ticket?.customFields?.[customKey] || "").trim().length > 0
+      }
       return true
+    }
+
+    function activityFilterOptionsHtml(){
+      const defaults = [
+        { value: "comentario", label: "Comentarios" },
+        { value: "estado", label: "Cambios de estado" },
+        { value: "tiempo", label: "Registros de tiempo" },
+        { value: "urgente", label: "Urgente" },
+        { value: "problema", label: "Problemas" }
+      ]
+      const role = String(currentRole || "").toLowerCase()
+      const customs = (cachedTicketCustomFieldsDefs || [])
+        .filter(f => Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes(role))
+        .map(f => ({ value: `custom:${f.key}`, label: String(f.label || f.key) }))
+      const taskTypeField = (cachedTicketCustomFieldsDefs || []).find(f => {
+        const key = String(f?.key || "").toLowerCase()
+        const label = String(f?.label || "").toLowerCase()
+        return key === "tipo_de_tarea" || label.includes("tipo de tarea")
+      })
+      const taskTypeOptions = Array.isArray(taskTypeField?.options) ? taskTypeField.options : String(taskTypeField?.options || "").split(",").map(v=>v.trim()).filter(Boolean)
+      const taskType = taskTypeOptions.map(opt => ({ value: `tasktype:${String(opt||"").toLowerCase()}`, label: `Tipo de tarea: ${String(opt||"")}` }))
+      return [...defaults, ...taskType, ...customs].map(opt => `<option value="${htmlEscape(opt.value)}">${htmlEscape(opt.label)}</option>`).join("")
     }
 
     function getDriveFileIdFromUrl(url){
@@ -1776,13 +1830,25 @@ Cliente B`)
         renderTicketsFromData(cachedTickets)
       }
       await renderTicketCustomFields()
+      const activityFilterSelectRefresh = document.getElementById("filterActivityType")
+      if(activityFilterSelectRefresh){
+        activityFilterSelectRefresh.innerHTML = `<option value="">Todo tipo de tarea</option>${activityFilterOptionsHtml()}`
+        const hasCurrent = Array.from(activityFilterSelectRefresh.options || []).some(opt => String(opt.value||"") === String(ticketFilterActivity||""))
+        if(hasCurrent){
+          activityFilterSelectRefresh.value = ticketFilterActivity
+        }else{
+          ticketFilterActivity = ""
+          activityFilterSelectRefresh.value = ""
+        }
+      }
     }
 
     async function getTicketCustomFields(){
       const list = Object.values((await db.ref("ticket_custom_fields").once("value")).val() || {})
-      return list
+      cachedTicketCustomFieldsDefs = list
         .filter(f => f && f.key && f.label)
         .sort((a,b)=> Number(a.order||0) - Number(b.order||0))
+      return cachedTicketCustomFieldsDefs
     }
 
     async function renderTicketCustomFields(values = {}){
@@ -1808,7 +1874,7 @@ Cliente B`)
       if(!container) return
       const fields = await getTicketCustomFields()
       if(!fields.length){ container.innerHTML = "<p class='small'>No hay campos configurados.</p>"; return }
-      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option><option value="select" ${f.type==='select'?'selected':''}>Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfg-options-${f.key}" value="${htmlEscape(Array.isArray(f.options)?f.options.join(', '):String(f.options||''))}" placeholder="Alta, Media, Baja"></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
+      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option><option value="select" ${f.type==='select'?'selected':''}>Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfg-options-${f.key}" value="${htmlEscape(Array.isArray(f.options)?f.options.join(', '):String(f.options||''))}" placeholder="Alta, Media, Baja"></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div><label>Visible como filtro</label><select id="cfg-filter-${f.key}" multiple><option value="analista" ${(Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes("analista")) ? "selected" : ""}>Analista</option><option value="consultor" ${(Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes("consultor")) ? "selected" : ""}>Consultor</option></select></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
     }
 
     async function addTicketCustomField(){
@@ -1818,6 +1884,7 @@ Cliente B`)
       const optionsRaw = (document.getElementById("cfgFieldOptions")?.value || "").trim()
       const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
       const required = (document.getElementById("cfgFieldRequired")?.value || "false") === "true"
+      const filterVisibleFor = Array.from(document.getElementById("cfgFieldFilterVisibleFor")?.selectedOptions || []).map(opt => String(opt.value || "").toLowerCase()).filter(Boolean)
       if(!label) return alert("Ingresá nombre del campo")
       const key = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')
       if(!key) return alert("Nombre de campo inválido")
@@ -1825,7 +1892,7 @@ Cliente B`)
       if(exists) return alert("Ya existe un campo con ese nombre")
       const order = Date.now()
       if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
-      const payload = { key, label, type, required, options, order }
+      const payload = { key, label, type, required, options, filterVisibleFor, order }
       await db.ref("ticket_custom_fields").child(key).set(payload)
       await sheetWrite("appendTicketFieldColumn", { fieldKey: key, fieldLabel: label }).catch(()=>{})
       document.getElementById("cfgFieldLabel").value = ""
@@ -1842,9 +1909,10 @@ Cliente B`)
       const optionsRaw = (document.getElementById(`cfg-options-${key}`)?.value || "").trim()
       const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
       const required = (document.getElementById(`cfg-required-${key}`)?.value || "false") === "true"
+      const filterVisibleFor = Array.from(document.getElementById(`cfg-filter-${key}`)?.selectedOptions || []).map(opt => String(opt.value || "").toLowerCase()).filter(Boolean)
       if(!label) return alert("Nombre inválido")
       if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
-      await db.ref("ticket_custom_fields").child(key).update({ label, type, required, options })
+      await db.ref("ticket_custom_fields").child(key).update({ label, type, required, options, filterVisibleFor })
       showToast("Campo actualizado", "ok")
       renderTicketCustomFields()
     }
@@ -2556,7 +2624,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><select id="cfgFieldFilterVisibleFor" multiple><option value="analista">Analista</option><option value="consultor">Consultor</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2644,7 +2712,7 @@ Cliente B`)
 
           <div class="card">
             <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
-            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de tarea</option><option value="comentario">Comentarios</option><option value="estado">Cambios de estado</option><option value="tiempo">Registros de tiempo</option><option value="urgente">Urgente</option><option value="problema">Problemas</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
+            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de tarea</option>${activityFilterOptionsHtml()}</select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
@@ -2804,7 +2872,7 @@ Cliente B`)
 
     function getVisibleTicketsForCurrentView(data, includeSearch = true){
       return Object.values(data || {}).filter(t => {
-        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && ((t.informer||t.createdBy||"").toLowerCase() === (currentUser.email||"").toLowerCase()))
+        const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && (resolveInformerEmail(t) === (currentUser.email||"").toLowerCase()))
         if(!canSeeTicket) return false
         if(includeSearch){
           const haystack = `${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
@@ -2911,7 +2979,7 @@ Cliente B`)
         <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
-          <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(ticket.informer||ticket.createdBy||"-"))}</div>
+          <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(ticket)||"-"))}</div>
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? analystDisplayNameWithTeam(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
@@ -2935,15 +3003,30 @@ Cliente B`)
       }
       const informers = buildInformerEmailList(usersByEmail)
       const analystOptions = analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||"").toLowerCase()===a?'selected':''}>${htmlEscape(a)}</option>`).join("")
-      const currentInformer = String(ticketWithRead.informer || ticketWithRead.createdBy || "").toLowerCase()
+      const currentInformer = resolveInformerEmail(ticketWithRead)
       const informerOptions = `<option value="">Seleccionar informador</option>${informers.map(c => `<option value="${htmlEscape(c)}" ${currentInformer===c?"selected":""}>${htmlEscape(userDisplayNameByEmail(c))}</option>`).join("")}`
       const statusOptions = Object.entries(STATUS).map(([key,label]) => `<option value="${key}" ${ticketWithRead.status===key?"selected":""}>${label}</option>`).join("")
       const clientOptions = `<option value="">Seleccionar cliente</option>${(cachedClients||[]).map(c => `<option value="${htmlEscape(c)}" ${String(ticketWithRead.client||'')===String(c)?'selected':''}>${htmlEscape(c)}</option>`).join("")}`
       const customDefs = await getTicketCustomFields()
       const customValues = ticketWithRead.customFields || {}
       const customDetailHtml = customDefs.length
-        ? `<div class="row">${customDefs.map(f => `<div><label>${htmlEscape(f.label)}</label><input value="${htmlEscape(String(customValues[f.key] ?? ''))}" disabled></div>`).join("")}</div>`
+        ? `<div class="row">${customDefs.map(f => {
+          const value = String(customValues[f.key] ?? "")
+          if(f.type === "select"){
+            const options = Array.isArray(f.options) ? f.options : String(f.options||"").split(",").map(v=>v.trim()).filter(Boolean)
+            return `<div><label>${htmlEscape(f.label)}</label><select disabled><option value="">Seleccionar</option>${options.map(opt => `<option value="${htmlEscape(opt)}" ${value===String(opt)?'selected':''}>${htmlEscape(opt)}</option>`).join("")}</select></div>`
+          }
+          if(f.type === "date") return `<div><label>${htmlEscape(f.label)}</label><input type="date" value="${htmlEscape(value)}" disabled></div>`
+          if(f.type === "number") return `<div><label>${htmlEscape(f.label)}</label><input type="number" value="${htmlEscape(value)}" disabled></div>`
+          return `<div><label>${htmlEscape(f.label)}</label><input value="${htmlEscape(value)}" disabled></div>`
+        }).join("")}</div>`
         : ""
+      const recurrenceDays = recurrenceDaysFromTicket(ticketWithRead)
+      const recurrenceButtons = ["lunes","martes","miercoles","jueves","viernes"].map(day => {
+        const labels = { lunes: "Lunes", martes: "Martes", miercoles: "Miércoles", jueves: "Jueves", viernes: "Viernes" }
+        const active = recurrenceDays.includes(day)
+        return `<button class="${active ? "" : "ghost"}" onclick="toggleTicketRecurrenceDay('${ticketWithRead.id}','${day}', event)">${labels[day]}</button>`
+      }).join("")
 
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
@@ -2984,6 +3067,14 @@ Cliente B`)
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
             ${customDetailHtml}
+            <div style="margin:8px 0">
+              <label>Recurrencia de la tarea</label>
+              ${(currentRole === "admin" || currentRole === "analista")
+                ? `<div class="inline" style="gap:6px;flex-wrap:wrap">${recurrenceButtons}</div>`
+                : `<div class="small">Recurrencia de la tarea: <strong>${htmlEscape(recurrenceDaysLabel(recurrenceDays))}</strong></div>`
+              }
+              ${(currentRole === "admin" || currentRole === "analista") ? `<div class="small" style="margin-top:4px">Seleccionados: <strong>${htmlEscape(recurrenceDaysLabel(recurrenceDays))}</strong></div>` : ""}
+            </div>
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
 
@@ -3250,7 +3341,7 @@ Cliente B`)
           </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="ghost" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -3836,6 +3927,38 @@ Cliente B`)
 
 
 
+    async function editComment(ticketId, commentId){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || !commentId) return
+      const comments = { ...(ticket.comments || {}) }
+      const original = comments[commentId]
+      if(!original) return
+      const mine = String(original.author || "").toLowerCase() === String(currentUser.email || "").toLowerCase()
+      if(!mine) return alert("Solo podés editar tus propios comentarios.")
+      const baseText = String(original.message || commentPlainTextFromHtml(original.messageHtml || "") || "")
+      const next = prompt("Editar comentario:", baseText)
+      if(next === null) return
+      const trimmed = String(next || "").trim()
+      if(!trimmed) return alert("El comentario no puede quedar vacío.")
+      comments[commentId] = {
+        ...original,
+        message: trimmed,
+        messageHtml: htmlEscape(trimmed).replaceAll("\n", "<br>"),
+        editedAt: new Date().toISOString(),
+        editedBy: currentUser.email
+      }
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
+      if(detailOpen) openTicketDetailModal(ticketId)
+      loadDashboard()
+      showToast("Comentario actualizado.", "ok", 1200)
+    }
+
     async function deleteComment(ticketId, commentId){
       if(currentRole === "consultor") return alert("No tenés permisos para borrar comentarios")
       const ticket = cachedTickets.find(t => t.id === ticketId)
@@ -4117,7 +4240,7 @@ Cliente B`)
       if(ticketIdQ) scoped = scoped.filter(t => String(t.id||"").toLowerCase().includes(ticketIdQ))
       if(titleQ) scoped = scoped.filter(t => String(t.title||"").toLowerCase().includes(titleQ))
       if(clientQ) scoped = scoped.filter(t => String(t.client||"").toLowerCase().includes(clientQ))
-      if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ) || String(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ))
+      if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(resolveInformerEmail(t)||"").toLowerCase().includes(consultorQ) || resolveInformerEmail(t).includes(consultorQ))
       if(analystQ.length) scoped = scoped.filter(t => !analystQ.includes(String(t.assignedTo||"").toLowerCase()))
       if(statusQ.length) scoped = scoped.filter(t => !statusQ.includes(String(t.status||"").toLowerCase()))
       scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
@@ -4180,13 +4303,13 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar")}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(t.informer||t.createdBy||"-"))}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${lastComment ? htmlEscape(formatDateTime24(lastComment)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysSince === null ? "-" : `${daysSince} día(s)`}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.recurrence||"")}" onchange="updateTicketAgendaField('${t.id}', 'recurrence', this.value)" placeholder="Sin recurrencia"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" placeholder="Agregar observación"></td>
                 </tr>`
@@ -4223,6 +4346,46 @@ Cliente B`)
       showToast("Agenda actualizada.", "ok", 900)
       if(adminPanelTab === "agenda") loadAdminAgenda()
       if(analystPanelTab === "agenda") loadAnalystAgenda()
+    }
+
+    async function toggleTicketRecurrenceDay(ticketId, day, ev){
+      if(ev?.preventDefault) ev.preventDefault()
+      if(ev?.stopPropagation) ev.stopPropagation()
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const normalizedDay = String(day || "").toLowerCase()
+      const allowed = ["lunes", "martes", "miercoles", "jueves", "viernes"]
+      if(!allowed.includes(normalizedDay)) return
+      const ticket = (cachedTickets || []).find(t => t.id === ticketId)
+      if(!ticket) return
+      const current = recurrenceDaysFromTicket(ticket)
+      const next = current.includes(normalizedDay) ? current.filter(d => d !== normalizedDay) : [...current, normalizedDay]
+      const ordered = allowed.filter(d => next.includes(d))
+      const updated = {
+        ...ticket,
+        recurrenceDays: ordered,
+        recurrence: recurrenceDaysLabel(ordered),
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      openTicketDetailModal(ticketId)
+      if(adminPanelTab === "agenda") loadAdminAgenda()
+      if(analystPanelTab === "agenda") loadAnalystAgenda()
+    }
+
+    function warnAnalystMovementWithoutTime(ticket){
+      if(currentRole !== "analista") return
+      const id = String(ticket?.id || "")
+      if(!id) return
+      const tracking = ticket?.timeTracking || {}
+      const userKey = emailKey(currentUser?.email || "")
+      const myTrackedMinutes = Number(tracking?.users?.[userKey]?.totalMinutes || 0)
+      const hasEntries = Object.values(tracking?.monthlyFolders || {}).some(folder => Array.isArray(folder?.entries) && folder.entries.some(e => String(e?.analyst || "").toLowerCase() === String(currentUser?.email || "").toLowerCase()))
+      if(myTrackedMinutes > 0 || hasEntries) return
+      showToast("Recordatorio: moviste/comentaste sin registrar tiempo en este ticket.", "warn", 2600)
     }
 
     function updateAnalystAgendaFilter(field, value){
@@ -4284,7 +4447,7 @@ Cliente B`)
       if(ticketIdQ) scoped = scoped.filter(t => String(t.id||"").toLowerCase().includes(ticketIdQ))
       if(titleQ) scoped = scoped.filter(t => String(t.title||"").toLowerCase().includes(titleQ))
       if(clientQ) scoped = scoped.filter(t => String(t.client||"").toLowerCase().includes(clientQ))
-      if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ) || String(t.informer||t.createdBy||"").toLowerCase().includes(consultorQ))
+      if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(resolveInformerEmail(t)||"").toLowerCase().includes(consultorQ) || resolveInformerEmail(t).includes(consultorQ))
       if(statusQ.length) scoped = scoped.filter(t => !statusQ.includes(String(t.status||"").toLowerCase()))
       scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
 
@@ -4334,11 +4497,11 @@ Cliente B`)
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(t.informer||t.createdBy||"-"))}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.recurrence||"")}" onchange="updateTicketAgendaField('${t.id}', 'recurrence', this.value)" placeholder="Sin recurrencia"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" placeholder="Agregar observación"></td>
               </tr>`).join("")}
@@ -4675,7 +4838,7 @@ Cliente B`)
             const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0, "Sáb":0, "Dom":0 }
             monthTickets.forEach(t => {
               const analyst = String(t.assignedTo||"sin_asignar").toLowerCase()
-              const consultor = String(t.informer||t.createdBy||"sin_consultor").toLowerCase()
+              const consultor = resolveInformerEmail(t) || "sin_consultor"
               byAnalyst[analyst] = (byAnalyst[analyst] || 0) + 1
               byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
               const d = new Date(t.createdAt || Date.now())
