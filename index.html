@@ -1102,7 +1102,10 @@
 
     function buildInformerEmailList(usersMap = {}){
       const fromUsers = Object.values(usersMap || {})
-        .filter(u => u && u.email && u.active !== false && (u.role === "consultor" || u.role === "admin"))
+        .filter(u => {
+          const role = String(u?.role || "").toLowerCase()
+          return u && u.email && u.active !== false && (role === "consultor" || role === "admin")
+        })
         .map(u => String(u.email || "").toLowerCase())
       return Array.from(new Set(fromUsers)).sort()
     }
@@ -1115,8 +1118,12 @@
       try{
         const raw = localStorage.getItem(getSavedStorageKey()) || ""
         const parsed = raw ? JSON.parse(raw) : {}
+        const ticketsRaw = Array.isArray(parsed.tickets) ? parsed.tickets : []
+        const tickets = ticketsRaw
+          .map(t => typeof t === "string" ? { id: t, savedAt: new Date().toISOString() } : t)
+          .filter(t => t && t.id)
         return {
-          tickets: Array.isArray(parsed.tickets) ? parsed.tickets : [],
+          tickets,
           comments: Array.isArray(parsed.comments) ? parsed.comments : []
         }
       }catch(_){
@@ -1132,7 +1139,7 @@
     }
 
     function isTicketSaved(ticketId){
-      return getSavedItemsState().tickets.includes(String(ticketId || ""))
+      return getSavedItemsState().tickets.some(t => String(t?.id || "") === String(ticketId || ""))
     }
 
     function isCommentSaved(ticketId, commentId){
@@ -1146,11 +1153,14 @@
       const id = String(ticketId || "")
       if(!id) return
       const state = getSavedItemsState()
-      state.tickets = state.tickets.includes(id) ? state.tickets.filter(t => t !== id) : [...state.tickets, id]
+      const exists = state.tickets.some(t => String(t?.id || "") === id)
+      state.tickets = exists
+        ? state.tickets.filter(t => String(t?.id || "") !== id)
+        : [...state.tickets, { id, savedAt: new Date().toISOString() }]
       setSavedItemsState(state)
       refreshSaveButtonsState()
       refreshSavedItemsViewIfOpen()
-      showToast(state.tickets.includes(id) ? "Ticket guardado" : "Ticket quitado de guardados", "ok", 1400)
+      showToast(exists ? "Ticket quitado de guardados" : "Ticket guardado", "ok", 1400)
     }
 
     function toggleSaveComment(ticketId, commentId, ev){
@@ -1173,7 +1183,8 @@
           commentId: cId,
           message: String(comment?.message || commentPlainTextFromHtml(comment?.messageHtml || "")),
           author: String(comment?.author || ""),
-          createdAt: String(comment?.createdAt || "")
+          createdAt: String(comment?.createdAt || ""),
+          savedAt: new Date().toISOString()
         })
         savedNow = true
       }
@@ -2497,7 +2508,7 @@ Cliente B`)
                 <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
                 <div id="headerMenuDropdown" class="menuDropdown hidden">
                   <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
-                  <button class="ghost" onclick="setMainViewTab('saved')">Cosas guardadas</button>
+                  <button class="ghost" onclick="setMainViewTab('saved')">Mis cosas</button>
                   <button class="ghost" onclick="setMainViewTab('tickets')">Tickets</button>
                   ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
                   ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="setAnalystTab('agenda')">Mi agenda</button>` : ""}
@@ -2510,7 +2521,7 @@ Cliente B`)
 
         ${showSavedItems ? `
           <div class="card">
-            <h3 style="margin-top:0">Cosas guardadas</h3>
+            <h3 style="margin-top:0">Mis cosas</h3>
             <div id="savedItemsContainer" class="small"></div>
           </div>
         ` : showAdminPanel ? (adminPanelTab==='people' ? `
@@ -2615,7 +2626,7 @@ Cliente B`)
 
           <div class="card">
             <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
-            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de actividad</option><option value="comentario">Comentarios</option><option value="estado">Cambios de estado</option><option value="tiempo">Registros de tiempo</option><option value="urgente">Urgente</option><option value="problema">Problemas</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
+            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de tarea</option><option value="comentario">Comentarios</option><option value="estado">Cambios de estado</option><option value="tiempo">Registros de tiempo</option><option value="urgente">Urgente</option><option value="problema">Problemas</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
@@ -2657,7 +2668,11 @@ Cliente B`)
       if(!wrap) return
       const state = getSavedItemsState()
       const tickets = state.tickets
-        .map(id => (cachedTickets || []).find(t => String(t.id||"") === String(id)))
+        .map(item => {
+          const ticket = (cachedTickets || []).find(t => String(t.id||"") === String(item?.id||""))
+          if(!ticket) return null
+          return { ticket, savedAt: item?.savedAt || "" }
+        })
         .filter(Boolean)
       const comments = state.comments.map(sc => {
         const ticket = (cachedTickets || []).find(t => String(t.id||"") === String(sc.ticketId||""))
@@ -2667,14 +2682,15 @@ Cliente B`)
           ticketTitle: ticket?.title || "",
           message: String(liveComment?.message || commentPlainTextFromHtml(liveComment?.messageHtml || sc.message || "") || sc.message || ""),
           author: String(liveComment?.author || sc.author || ""),
-          createdAt: String(liveComment?.createdAt || sc.createdAt || "")
+          createdAt: String(liveComment?.createdAt || sc.createdAt || ""),
+          savedAt: String(sc?.savedAt || "")
         }
       })
       wrap.innerHTML = `
         <h4 style="margin:0 0 8px">Tickets guardados</h4>
-        ${tickets.length ? tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="inline" style="justify-content:space-between"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} · ${htmlEscape(STATUS[t.status] || t.status || "-")}</div></div><button class="ghost" onclick="toggleSaveTicket('${t.id}', event)">Quitar</button></div></div>`).join("") : `<div class="small">No tenés tickets guardados.</div>`}
+        ${tickets.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha guardado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticket.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}
         <h4 style="margin:14px 0 8px">Comentarios guardados</h4>
-        ${comments.length ? comments.map(c => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${c.ticketId}', 'comments')"><div class="inline" style="justify-content:space-between"><div><div class="feedType">${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</div><div class="feedMeta">${htmlEscape(c.author||"-")} · ${htmlEscape(c.message||"-")}</div></div><button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></div>`).join("") : `<div class="small">No tenés comentarios guardados.</div>`}
+        ${comments.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha guardado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Autor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(c.author||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(c.message||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}
       `
     }
 
@@ -2859,7 +2875,7 @@ Cliente B`)
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
-                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><div class="inline" style="gap:6px"><button class="ghost saveToggle ${isTicketSaved(t.id) ? "active" : ""}" data-save-ticket="${htmlEscape(t.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${t.id}', event)">${isTicketSaved(t.id) ? "🔖" : "📑"}</button></div></div>
+                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span></div>
               </div>
             `
           }).join("")}
@@ -2881,7 +2897,7 @@ Cliente B`)
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? analystDisplayNameWithTeam(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px"><button class="ghost saveToggle ${isTicketSaved(ticket.id) ? "active" : ""}" data-save-ticket="${htmlEscape(ticket.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${ticket.id}', event)">${isTicketSaved(ticket.id) ? "🔖" : "📑"}</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="inline" style="margin-top:8px">${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -2915,9 +2931,10 @@ Cliente B`)
       if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
       const headerControls = document.getElementById("ticketDetailHeaderControls")
       if(headerControls){
+        const saveBtn = `<button class="ghost saveToggle ${isTicketSaved(ticketWithRead.id) ? "active" : ""}" data-save-ticket="${htmlEscape(ticketWithRead.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${ticketWithRead.id}', event)">${isTicketSaved(ticketWithRead.id) ? "🔖" : "📑"}</button>`
         headerControls.innerHTML = canManageStatus
-          ? `<div class="inline" style="gap:8px;align-items:center"><select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
-          : `<span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span>`
+          ? `<div class="inline" style="gap:8px;align-items:center"><select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select>${saveBtn}</div>`
+          : `<div class="inline" style="gap:8px;align-items:center"><span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span>${saveBtn}</div>`
       }
 
       document.getElementById("ticketDetailContent").innerHTML = `
