@@ -887,6 +887,9 @@
     var analystActivityTab = "comments"
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = ""
+    var ticketFilterStatus = ""
+    var ticketFilterActivity = ""
+    var mainViewTab = "tickets"
     var commentSortOrderByTicket = {}
     var ticketActivityTabById = {}
     var timeMonthTabByTicket = {}
@@ -1001,12 +1004,20 @@
 
     function setAdminTab(tab){
       adminPanelTab = tab
+      mainViewTab = "tickets"
       closeHeaderMenu()
       renderApp()
     }
 
     function setAnalystTab(tab){
       analystPanelTab = tab
+      mainViewTab = "tickets"
+      closeHeaderMenu()
+      renderApp()
+    }
+
+    function setMainViewTab(tab){
+      mainViewTab = tab === "saved" ? "saved" : "tickets"
       closeHeaderMenu()
       renderApp()
     }
@@ -1078,13 +1089,109 @@
 
     function buildInformerEmailList(usersMap = {}){
       const fromUsers = Object.values(usersMap || {})
-        .filter(u => u && u.email && u.active !== false)
+        .filter(u => u && u.email && u.active !== false && (u.role === "consultor" || u.role === "admin"))
         .map(u => String(u.email || "").toLowerCase())
       const fromTickets = (cachedTickets || [])
         .map(t => String(t?.informer || t?.createdBy || "").toLowerCase())
         .filter(Boolean)
       const mine = String(currentUser?.email || "").toLowerCase()
       return Array.from(new Set([...fromUsers, ...fromTickets, ...(mine ? [mine] : [])])).sort()
+    }
+
+    function getSavedStorageKey(){
+      return `nova_saved_items_${String(currentUser?.email || "").toLowerCase()}`
+    }
+
+    function getSavedItemsState(){
+      try{
+        const raw = localStorage.getItem(getSavedStorageKey()) || ""
+        const parsed = raw ? JSON.parse(raw) : {}
+        return {
+          tickets: Array.isArray(parsed.tickets) ? parsed.tickets : [],
+          comments: Array.isArray(parsed.comments) ? parsed.comments : []
+        }
+      }catch(_){
+        return { tickets: [], comments: [] }
+      }
+    }
+
+    function setSavedItemsState(state){
+      localStorage.setItem(getSavedStorageKey(), JSON.stringify({
+        tickets: Array.isArray(state?.tickets) ? state.tickets : [],
+        comments: Array.isArray(state?.comments) ? state.comments : []
+      }))
+    }
+
+    function isTicketSaved(ticketId){
+      return getSavedItemsState().tickets.includes(String(ticketId || ""))
+    }
+
+    function isCommentSaved(ticketId, commentId){
+      const key = `${String(ticketId||"")}::${String(commentId||"")}`
+      return getSavedItemsState().comments.some(c => c && c.key === key)
+    }
+
+    function toggleSaveTicket(ticketId, ev){
+      if(ev) ev.stopPropagation()
+      const id = String(ticketId || "")
+      if(!id) return
+      const state = getSavedItemsState()
+      state.tickets = state.tickets.includes(id) ? state.tickets.filter(t => t !== id) : [...state.tickets, id]
+      setSavedItemsState(state)
+      renderApp()
+    }
+
+    function toggleSaveComment(ticketId, commentId, ev){
+      if(ev) ev.stopPropagation()
+      const tId = String(ticketId || "")
+      const cId = String(commentId || "")
+      if(!tId || !cId) return
+      const key = `${tId}::${cId}`
+      const ticket = (cachedTickets || []).find(t => t.id === tId)
+      const comment = ticket?.comments?.[cId]
+      const state = getSavedItemsState()
+      if(state.comments.some(c => c && c.key === key)){
+        state.comments = state.comments.filter(c => c && c.key !== key)
+      }else{
+        state.comments.push({
+          key,
+          ticketId: tId,
+          commentId: cId,
+          message: String(comment?.message || commentPlainTextFromHtml(comment?.messageHtml || "")),
+          author: String(comment?.author || ""),
+          createdAt: String(comment?.createdAt || "")
+        })
+      }
+      setSavedItemsState(state)
+      renderApp()
+    }
+
+    function analystHasTimeLogged(ticket){
+      const meKey = emailKey(currentUser?.email || "")
+      const entry = ticket?.timeTracking?.users?.[meKey]
+      return Number(entry?.totalMinutes || 0) > 0
+    }
+
+    function warnAnalystMovementWithoutTime(ticket){
+      if(currentRole !== "analista") return
+      if(analystHasTimeLogged(ticket)) return
+      alert("Se detectó movimiento en el ticket sin registro de tiempo. Por favor, verificar.")
+    }
+
+    function ticketMatchesActivityFilter(ticket, filter){
+      const key = String(filter || "").toLowerCase()
+      if(!key) return true
+      if(key === "comentario") return Object.keys(ticket?.comments || {}).length > 0
+      if(key === "tiempo"){
+        const folders = ticket?.timeTracking?.monthlyFolders || {}
+        return Object.values(folders).some(folder => Array.isArray(folder?.entries) && folder.entries.length > 0)
+      }
+      if(key === "estado"){
+        return (latestActivityLogs || []).some(l => l?.ticketId === ticket?.id && l?.eventType === "ticket_movido")
+      }
+      if(key === "urgente") return !!ticket?.urgentRequested
+      if(key === "problema") return !!ticket?.hasProblem
+      return true
     }
 
     function getDriveFileIdFromUrl(url){
@@ -1582,6 +1689,10 @@ Cliente B`)
         clientFilterSelect.innerHTML = `<option value="">Todos los clientes</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
         clientFilterSelect.value = ticketFilterClient
       }
+      const statusFilterSelect = document.getElementById("filterStatus")
+      if(statusFilterSelect) statusFilterSelect.value = ticketFilterStatus
+      const activityFilterSelect = document.getElementById("filterActivityType")
+      if(activityFilterSelect) activityFilterSelect.value = ticketFilterActivity
 
       const usersByEmailData = (await db.ref("users_by_email").once("value")).val() || {}
       cachedUsersByEmail = usersByEmailData
@@ -2343,7 +2454,8 @@ Cliente B`)
       const showAnalystProfile = isAnalyst && analystPanelTab === "profile"
       const showAnalystAgenda = isAnalyst && analystPanelTab === "agenda"
       const showAdminProfile = isAdmin && adminPanelTab === "profile"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda
+      const showSavedItems = mainViewTab === "saved"
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showSavedItems
 
       document.getElementById("app").innerHTML = `
         <div class="card topbarCard">
@@ -2354,11 +2466,14 @@ Cliente B`)
             </div>
             <div class="inline">
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}
+              ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
               <div class="menuWrap" onclick="event.stopPropagation()">
                 <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
                 <div id="headerMenuDropdown" class="menuDropdown hidden">
                   <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
+                  <button class="ghost" onclick="setMainViewTab('saved')">Cosas guardadas</button>
+                  <button class="ghost" onclick="setMainViewTab('tickets')">Tickets</button>
                   ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
                   ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="setAnalystTab('agenda')">Mi agenda</button>` : ""}
                 </div>
@@ -2368,7 +2483,12 @@ Cliente B`)
           </div>
         </div>
 
-        ${showAdminPanel ? (adminPanelTab==='people' ? `
+        ${showSavedItems ? `
+          <div class="card">
+            <h3 style="margin-top:0">Cosas guardadas</h3>
+            <div id="savedItemsContainer" class="small"></div>
+          </div>
+        ` : showAdminPanel ? (adminPanelTab==='people' ? `
           <div class="card"><h3 style="margin-top:0">Gestión de personas</h3>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
@@ -2470,7 +2590,7 @@ Cliente B`)
 
           <div class="card">
             <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
-            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
+            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de actividad</option><option value="comentario">Comentarios</option><option value="estado">Cambios de estado</option><option value="tiempo">Registros de tiempo</option><option value="urgente">Urgente</option><option value="problema">Problemas</option></select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
@@ -2492,6 +2612,9 @@ Cliente B`)
         setupRealtimeStreams()
         if(!showAdminPanel) loadDashboard()
         if(!showAdminPanel) loadTickets()
+      }else if(showSavedItems){
+        setupRealtimeStreams()
+        renderSavedItems()
       }else{
         loadMyProfileForm()
       }
@@ -2501,6 +2624,34 @@ Cliente B`)
     function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets(); loadDashboard() }
     function updateClientFilter(value){ ticketFilterClient = (value||"").trim().toLowerCase(); globalThis.ticketFilterClient = ticketFilterClient; loadTickets(); loadDashboard() }
     function updateAnalystFilter(value){ ticketFilterAnalyst = (value||"").trim().toLowerCase(); loadTickets(); loadDashboard() }
+    function updateStatusFilter(value){ ticketFilterStatus = (value||"").trim().toLowerCase(); loadTickets(); loadDashboard() }
+    function updateActivityFilter(value){ ticketFilterActivity = (value||"").trim().toLowerCase(); loadTickets(); loadDashboard() }
+
+    function renderSavedItems(){
+      const wrap = document.getElementById("savedItemsContainer")
+      if(!wrap) return
+      const state = getSavedItemsState()
+      const tickets = state.tickets
+        .map(id => (cachedTickets || []).find(t => String(t.id||"") === String(id)))
+        .filter(Boolean)
+      const comments = state.comments.map(sc => {
+        const ticket = (cachedTickets || []).find(t => String(t.id||"") === String(sc.ticketId||""))
+        const liveComment = ticket?.comments?.[sc.commentId]
+        return {
+          ...sc,
+          ticketTitle: ticket?.title || "",
+          message: String(liveComment?.message || commentPlainTextFromHtml(liveComment?.messageHtml || sc.message || "") || sc.message || ""),
+          author: String(liveComment?.author || sc.author || ""),
+          createdAt: String(liveComment?.createdAt || sc.createdAt || "")
+        }
+      })
+      wrap.innerHTML = `
+        <h4 style="margin:0 0 8px">Tickets guardados</h4>
+        ${tickets.length ? tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="inline" style="justify-content:space-between"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} · ${htmlEscape(STATUS[t.status] || t.status || "-")}</div></div><button class="ghost" onclick="toggleSaveTicket('${t.id}', event)">Quitar</button></div></div>`).join("") : `<div class="small">No tenés tickets guardados.</div>`}
+        <h4 style="margin:14px 0 8px">Comentarios guardados</h4>
+        ${comments.length ? comments.map(c => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${c.ticketId}', 'comments')"><div class="inline" style="justify-content:space-between"><div><div class="feedType">${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</div><div class="feedMeta">${htmlEscape(c.author||"-")} · ${htmlEscape(c.message||"-")}</div></div><button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></div>`).join("") : `<div class="small">No tenés comentarios guardados.</div>`}
+      `
+    }
 
     function openTicketModal(){
       document.getElementById("ticketModal").classList.remove("hidden")
@@ -2602,6 +2753,8 @@ Cliente B`)
         }
         if(ticketFilterClient && !(String(t.client||"").toLowerCase().includes(ticketFilterClient))) return false
         if(ticketFilterAnalyst && !(String(t.assignedTo||"").toLowerCase().includes(ticketFilterAnalyst))) return false
+        if(ticketFilterStatus && String(t.status||"").toLowerCase() !== ticketFilterStatus) return false
+        if(ticketFilterActivity && !ticketMatchesActivityFilter(t, ticketFilterActivity)) return false
         return true
       })
     }
@@ -2681,7 +2834,7 @@ Cliente B`)
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
-                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div>
+                <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span><div class="inline" style="gap:6px"><button class="ghost" title="Guardar ticket" onclick="toggleSaveTicket('${t.id}', event)">${isTicketSaved(t.id) ? "★" : "☆"}</button><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">Ver</button></div></div>
               </div>
             `
           }).join("")}
@@ -2703,7 +2856,7 @@ Cliente B`)
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? analystDisplayNameWithTeam(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px"><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="inline" style="margin-top:8px"><button class="ghost" title="Guardar ticket" onclick="toggleSaveTicket('${ticket.id}', event)">${isTicketSaved(ticket.id) ? "★" : "☆"}</button><button class="ghost" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">Ver detalle</button>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -2866,6 +3019,7 @@ Cliente B`)
       mirrorToSheet("updateTicket", { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id)
       if(ix >= 0) cachedTickets[ix] = updated
+      if(currentRole === "analista" && String(ticket.status||"") !== String(updated.status||"")) warnAnalystMovementWithoutTime(updated)
       renderTicketsFromData(cachedTickets)
       await loadDashboard()
       showToast("Ticket actualizado", "ok")
@@ -3000,7 +3154,10 @@ Cliente B`)
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
         return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
-      const entriesHtml = entries.length ? entries.map(e => `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div><strong>${Number(e.hours||0).toFixed(2)} h</strong></div></div></div>`).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
+      const entriesHtml = entries.length ? entries.map((e, ix) => {
+        const entryKey = String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${ix}`)
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
+      }).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
         ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
@@ -3033,7 +3190,7 @@ Cliente B`)
           </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "★" : "☆"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div>${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
 
             <div class="commentComposer">
               <div class="commentToolbar">
@@ -3199,6 +3356,7 @@ Cliente B`)
       await logActivity("ticket_movido", { ticketId, nextStatus: status, fromStatus: ticket.status, source: "drag_drop" })
       const ix = cachedTickets.findIndex(t => t.id === ticketId)
       if(ix >= 0) cachedTickets[ix] = updated
+      if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
       renderTicketsFromData(cachedTickets)
       await loadDashboard()
       showToast("Ticket movido correctamente", "ok")
@@ -3347,6 +3505,31 @@ Cliente B`)
         tracking.users[userKey] = u
       }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
       showToast('Tiempo manual cargado','ok')
+    }
+
+    async function removeTimeEntry(ticketId, monthKey, entryKey){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const folder = tracking.monthlyFolders?.[monthKey]
+      if(!folder || !Array.isArray(folder.entries)) return
+      const idx = folder.entries.findIndex((e, i) => String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${i}`) === String(entryKey))
+      if(idx < 0) return
+      const [removed] = folder.entries.splice(idx, 1)
+      const analystEmail = String(removed?.analyst || "").toLowerCase()
+      const analystKey = emailKey(analystEmail)
+      const mins = Math.max(0, Math.round(Number(removed?.hours || 0) * 60))
+      if(tracking.users?.[analystKey]){
+        tracking.users[analystKey].totalMinutes = Math.max(0, Number(tracking.users[analystKey].totalMinutes || 0) - mins)
+      }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      openTicketDetailModal(ticketId, "times")
     }
 
     async function deleteTicketByIdAdmin(){
@@ -3518,6 +3701,7 @@ Cliente B`)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status })
+      if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
       loadTickets()
       await loadDashboard()
       showToast("Ticket movido correctamente", "ok")
@@ -3568,6 +3752,7 @@ Cliente B`)
         mirrorToSheet("updateTicket", { id, ...updated })
         const ix = cachedTickets.findIndex(t => t.id === id)
         if(ix >= 0) cachedTickets[ix] = updated
+        if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
         renderTicketsFromData(cachedTickets)
         if(editor) editor.innerHTML = ""
         const fileInput = document.getElementById(`comment-file-${id}`)
