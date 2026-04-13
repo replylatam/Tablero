@@ -3495,6 +3495,7 @@ Cliente B`)
             <div>Estado</div>
             <div>Analista asignado</div>
             <div>Deadline</div>
+            <div>Planificación</div>
             <div>Sin leer</div>
           </div>
           ${sorted.map(t => {
@@ -3508,6 +3509,7 @@ Cliente B`)
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
+                <div>${t.plannedWorkDate ? formatDateDMY(t.plannedWorkDate) : "-"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span></div>
               </div>
             `
