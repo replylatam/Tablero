@@ -1281,17 +1281,6 @@
     }
 
     function activityFilterOptionsHtml(){
-      const defaults = [
-        { value: "comentario", label: "Comentarios" },
-        { value: "estado", label: "Cambios de estado" },
-        { value: "tiempo", label: "Registros de tiempo" },
-        { value: "urgente", label: "Urgente" },
-        { value: "problema", label: "Problemas" }
-      ]
-      const role = String(currentRole || "").toLowerCase()
-      const customs = (cachedTicketCustomFieldsDefs || [])
-        .filter(f => Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes(role))
-        .map(f => ({ value: `custom:${f.key}`, label: String(f.label || f.key) }))
       const taskTypeField = (cachedTicketCustomFieldsDefs || []).find(f => {
         const key = String(f?.key || "").toLowerCase()
         const label = String(f?.label || "").toLowerCase()
@@ -1299,7 +1288,7 @@
       })
       const taskTypeOptions = Array.isArray(taskTypeField?.options) ? taskTypeField.options : String(taskTypeField?.options || "").split(",").map(v=>v.trim()).filter(Boolean)
       const taskType = taskTypeOptions.map(opt => ({ value: `tasktype:${String(opt||"").toLowerCase()}`, label: `Tipo de tarea: ${String(opt||"")}` }))
-      return [...defaults, ...taskType, ...customs].map(opt => `<option value="${htmlEscape(opt.value)}">${htmlEscape(opt.label)}</option>`).join("")
+      return taskType.map(opt => `<option value="${htmlEscape(opt.value)}">${htmlEscape(opt.label)}</option>`).join("")
     }
 
     function getDriveFileIdFromUrl(url){
@@ -1854,7 +1843,11 @@ Cliente B`)
     async function renderTicketCustomFields(values = {}){
       const wrap = document.getElementById("ticketCustomFieldsWrap")
       if(!wrap) return
-      const fields = await getTicketCustomFields()
+      const role = String(currentRole || "").toLowerCase()
+      const fields = (await getTicketCustomFields()).filter(f => {
+        const visibleFor = Array.isArray(f.visibleFor) && f.visibleFor.length ? f.visibleFor : ["admin", "analista", "consultor"]
+        return visibleFor.includes(role)
+      })
       if(!fields.length){ wrap.innerHTML = ""; return }
       wrap.innerHTML = `<div class="row">${fields.map(f => {
         const val = values[f.key] ?? ""
@@ -1874,7 +1867,22 @@ Cliente B`)
       if(!container) return
       const fields = await getTicketCustomFields()
       if(!fields.length){ container.innerHTML = "<p class='small'>No hay campos configurados.</p>"; return }
-      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option><option value="select" ${f.type==='select'?'selected':''}>Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfg-options-${f.key}" value="${htmlEscape(Array.isArray(f.options)?f.options.join(', '):String(f.options||''))}" placeholder="Alta, Media, Baja"></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div><label>Visible como filtro</label><select id="cfg-filter-${f.key}" multiple><option value="analista" ${(Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes("analista")) ? "selected" : ""}>Analista</option><option value="consultor" ${(Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes("consultor")) ? "selected" : ""}>Consultor</option></select></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
+      container.innerHTML = fields.map(f => `<div class="feedItem"><div class="row"><div><label>Nombre</label><input id="cfg-name-${f.key}" value="${htmlEscape(f.label)}"></div><div><label>Tipo</label><select id="cfg-type-${f.key}"><option value="text" ${f.type==='text'?'selected':''}>Texto</option><option value="number" ${f.type==='number'?'selected':''}>Número</option><option value="date" ${f.type==='date'?'selected':''}>Fecha</option><option value="select" ${f.type==='select'?'selected':''}>Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfg-options-${f.key}" value="${htmlEscape(Array.isArray(f.options)?f.options.join(', '):String(f.options||''))}" placeholder="Alta, Media, Baja"></div><div><label>Obligatorio</label><select id="cfg-required-${f.key}"><option value="false" ${!f.required?'selected':''}>No</option><option value="true" ${f.required?'selected':''}>Sí</option></select></div><div><label>Mostrar en ticket para</label><div class="agendaChecks">${renderRoleVisibilityChecks(`cfg-visible-${f.key}`, f.visibleFor)}</div></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="updateTicketCustomField('${f.key}')">Guardar</button><button class="danger" onclick="deleteTicketCustomField('${f.key}')">Eliminar</button></div></div></div>`).join("")
+    }
+
+    function renderRoleVisibilityChecks(name, selectedRoles = []){
+      const selected = Array.isArray(selectedRoles) && selectedRoles.length ? selectedRoles : ["admin", "analista", "consultor"]
+      return [
+        { value: "admin", label: "Admin" },
+        { value: "analista", label: "Analista" },
+        { value: "consultor", label: "Consultor" }
+      ].map(role => `<label class="checkOption"><input type="checkbox" name="${htmlEscape(name)}" value="${htmlEscape(role.value)}" ${selected.includes(role.value) ? "checked" : ""}><span>${htmlEscape(role.label)}</span></label>`).join("")
+    }
+
+    function getCheckedRoles(name){
+      return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`) || [])
+        .map(input => String(input?.value || "").toLowerCase())
+        .filter(Boolean)
     }
 
     async function addTicketCustomField(){
@@ -1884,7 +1892,8 @@ Cliente B`)
       const optionsRaw = (document.getElementById("cfgFieldOptions")?.value || "").trim()
       const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
       const required = (document.getElementById("cfgFieldRequired")?.value || "false") === "true"
-      const filterVisibleFor = Array.from(document.getElementById("cfgFieldFilterVisibleFor")?.selectedOptions || []).map(opt => String(opt.value || "").toLowerCase()).filter(Boolean)
+      const filterVisibleFor = getCheckedRoles("cfgFieldFilterVisibleFor")
+      const visibleFor = getCheckedRoles("cfgFieldVisibleFor")
       if(!label) return alert("Ingresá nombre del campo")
       const key = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')
       if(!key) return alert("Nombre de campo inválido")
@@ -1892,7 +1901,8 @@ Cliente B`)
       if(exists) return alert("Ya existe un campo con ese nombre")
       const order = Date.now()
       if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
-      const payload = { key, label, type, required, options, filterVisibleFor, order }
+      if(!visibleFor.length) return alert("Seleccioná al menos un rol para mostrar el campo en el ticket.")
+      const payload = { key, label, type, required, options, filterVisibleFor, visibleFor, order }
       await db.ref("ticket_custom_fields").child(key).set(payload)
       await sheetWrite("appendTicketFieldColumn", { fieldKey: key, fieldLabel: label }).catch(()=>{})
       document.getElementById("cfgFieldLabel").value = ""
@@ -1909,10 +1919,11 @@ Cliente B`)
       const optionsRaw = (document.getElementById(`cfg-options-${key}`)?.value || "").trim()
       const options = optionsRaw.split(",").map(v=>v.trim()).filter(Boolean)
       const required = (document.getElementById(`cfg-required-${key}`)?.value || "false") === "true"
-      const filterVisibleFor = Array.from(document.getElementById(`cfg-filter-${key}`)?.selectedOptions || []).map(opt => String(opt.value || "").toLowerCase()).filter(Boolean)
+      const visibleFor = getCheckedRoles(`cfg-visible-${key}`)
       if(!label) return alert("Nombre inválido")
       if(type === "select" && !options.length) return alert("El desplegable debe tener opciones.")
-      await db.ref("ticket_custom_fields").child(key).update({ label, type, required, options, filterVisibleFor })
+      if(!visibleFor.length) return alert("Seleccioná al menos un rol para mostrar el campo en el ticket.")
+      await db.ref("ticket_custom_fields").child(key).update({ label, type, required, options, visibleFor })
       showToast("Campo actualizado", "ok")
       renderTicketCustomFields()
     }
@@ -2624,7 +2635,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><select id="cfgFieldFilterVisibleFor" multiple><option value="analista">Analista</option><option value="consultor">Consultor</option></select></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="row"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
