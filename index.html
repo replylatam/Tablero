@@ -471,8 +471,8 @@
       border-collapse: collapse;
       table-layout: fixed;
     }
-    .savedTable col:nth-child(1) { width: 23%; }
-    .savedTable col:nth-child(2) { width: 31%; }
+    .savedTable col:nth-child(1) { width: 17%; }
+    .savedTable col:nth-child(2) { width: 27%; }
     .savedTable col:nth-child(3) { width: 18%; }
     .savedTable col:nth-child(4) { width: 18%; }
     .savedTable col:nth-child(5) { width: 10%; }
@@ -486,6 +486,8 @@
     .settingsGrid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 10px; align-items: start; }
     @media (max-width: 1100px){ .settingsGrid { grid-template-columns: repeat(2, minmax(220px, 1fr)); } .kpiGrid.adminRow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .portfolioItem { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,.15); }
+    .portfolioItem .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .savedActionBtns { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; }
     .mentionTag {
       display: inline-flex;
       align-items: center;
@@ -897,12 +899,12 @@
     <div class="modal card" style="max-width:680px">
       <h3 style="margin-top:0">Crear lineamiento</h3>
       <div class="small" style="margin-bottom:8px">Los lineamientos que crees deben pasar por la aprobación del administrador antes de ser visible para el resto del equipo.</div>
-      <div class="settingsGrid">
+      <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
         <div><label>Cliente</label><select id="analystGuidelineModalClient"></select></div>
         <div><label>Título</label><input id="analystGuidelineModalTitle" placeholder="Título"></div>
         <div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="analystGuidelineModalImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar</span></div></div>
         <div><label>General</label><div class="inline" style="margin-top:10px"><input id="analystGuidelineModalGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div>
-        <div style="grid-column:1/-1"><label>Resumen</label><textarea id="analystGuidelineModalSummary"></textarea></div>
+        <div style="grid-column:1/-1"><label>Resumen</label><textarea id="analystGuidelineModalSummary" style="max-width:100%;width:100%"></textarea></div>
       </div>
       <div class="inline" style="justify-content:flex-end;margin-top:10px">
         <button class="secondary" onclick="closeAnalystGuidelineModal()">Cancelar</button>
@@ -1483,7 +1485,7 @@
         const authorRole = String(usersByEmail?.[emailKey(authorEmail)]?.role || '').toLowerCase()
 
         const shouldMark = (currentRole === 'consultor' && (authorRole === 'admin' || authorRole === 'analista'))
-          || ((currentRole === 'admin' || currentRole === 'analista') && authorRole === 'consultor')
+          || (currentRole === 'analista' && authorRole === 'consultor')
         if(!shouldMark) return
 
         const readBy = { ...(item.readBy || {}) }
@@ -2061,7 +2063,7 @@ Cliente B`)
       const user = await getUserFromDb(String(currentUser?.email || ""))
       const portfolio = user?.clientPortfolio || {}
       const items = Object.entries(clientsObj)
-      wrap.innerHTML = items.length ? items.map(([key, c]) => `<label class="portfolioItem"><span>${htmlEscape(String(c?.name || key))}</span><input type="checkbox" ${portfolio[key] ? "checked" : ""} onchange="toggleConsultorPortfolioClient('${key}', this.checked)"></label>`).join("") : `<div class="small">No hay clientes cargados.</div>`
+      wrap.innerHTML = items.length ? items.map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span><label class="switch"><input type="checkbox" ${portfolio[key] ? "checked" : ""} onchange="toggleConsultorPortfolioClient('${key}', this.checked)"><span class="slider"></span></label></div>`).join("") : `<div class="small">No hay clientes cargados.</div>`
     }
 
     async function fetchTicketsFromSheet(){
@@ -2884,10 +2886,12 @@ Cliente B`)
         return {
           ...sc,
           ticketTitle: ticket?.title || "",
+          ticketClient: ticket?.client || "",
           message: String(liveComment?.message || commentPlainTextFromHtml(liveComment?.messageHtml || sc.message || "") || sc.message || ""),
           author: String(liveComment?.author || sc.author || ""),
           createdAt: String(liveComment?.createdAt || sc.createdAt || ""),
-          savedAt: String(sc?.savedAt || "")
+          savedAt: String(sc?.savedAt || ""),
+          guidelineRequestStatus: String(sc?.guidelineRequestStatus || "")
         }
       })
       const memos = Array.isArray(state.memos) ? state.memos : []
@@ -2896,7 +2900,7 @@ Cliente B`)
         <div class="savedBlock tickets"><h4 style="margin:0 0 8px">Tickets guardados</h4>
         ${tickets.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td>${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td>${htmlEscape(item.ticket.client||"-")}</td><td>${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}</div>
         <div class="savedBlock comments"><h4 style="margin:0 0 8px">Comentarios guardados</h4>
-        ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><div class="inline" style="flex-wrap:nowrap;gap:6px"><button class="ghost" onclick="elevateSavedCommentAsGuideline('${c.ticketId}','${c.commentId}', event)">Elevar como lineamiento</button><button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}</div>
+        ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><div class="savedActionBtns">${c.guidelineRequestStatus === "pending" ? `<button class="ghost" disabled>Pendiente de aprobación</button>` : `<button class="ghost" onclick="elevateSavedCommentAsGuideline('${c.ticketId}','${c.commentId}', event)">Elevar como lineamiento</button>`}<button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}</div>
         ${currentRole === "analista" ? `<div class="savedBlock"><h4 style="margin:0 0 8px">Mis memos</h4><div class="row"><div><label>Título</label><input id="memoTitle" placeholder="Título del memo"></div><div><label>Detalle</label><input id="memoDetail" placeholder="Detalle"></div><div style="display:flex;align-items:flex-end"><button onclick="addMyMemo()">Guardar memo</button></div></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.createdAt||"")}</div></div><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
       `
     }
@@ -2963,15 +2967,21 @@ Cliente B`)
       const state = getSavedItemsState()
       const comment = (state.comments || []).find(c => String(c.ticketId||"")===String(ticketId||"") && String(c.commentId||"")===String(commentId||""))
       if(!comment) return
+      if(String(comment.guidelineRequestStatus || "") === "pending") return
       await submitGuidelineForApproval({
         sourceType: "saved_comment",
-        client: String((cachedTickets || []).find(t => String(t.id||"") === String(ticketId||""))?.client || "Lineamientos generales"),
+        client: String(comment.ticketClient || (cachedTickets || []).find(t => String(t.id||"") === String(ticketId||""))?.client || "Lineamientos generales"),
         title: "comentario sugerido",
         summary: String(comment.message || ""),
         important: false,
         isGeneral: false,
         meta: { ticketId, commentId, author: comment.author || "", ticketTitle: comment.ticketTitle || "" }
       })
+      state.comments = (state.comments || []).map(c => (String(c.ticketId||"")===String(ticketId||"") && String(c.commentId||"")===String(commentId||""))
+        ? { ...c, guidelineRequestStatus: "pending" }
+        : c)
+      setSavedItemsState(state)
+      renderSavedItems()
     }
 
     async function voteGuideline(id, value){
@@ -3000,9 +3010,28 @@ Cliente B`)
       const pendingHtml = requests.length ? `<h4 style="margin:0 0 8px">Solicitudes pendientes</h4>${requests.map(r => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(r.title||"-")}</div><div class="feedMeta">Solicita: ${htmlEscape(userDisplayNameByEmail(r.requestedBy||"-"))} · ${htmlEscape(r.client||"Sin cliente")} ${r.sourceType==="saved_comment" ? "· desde comentario guardado" : ""}</div></div><div class="inline"><button class="ghost" onclick="reviewGuidelineRequest('${r.id}', true)">Aprobar</button><button class="danger" onclick="reviewGuidelineRequest('${r.id}', false)">Rechazar</button></div></div><div style="margin-top:8px">${htmlEscape(r.summary||"-")}</div></div>`).join("")}` : `<div class="small">Sin solicitudes pendientes.</div>`
       const approvedHtml = guidelines.length ? guidelines.map(g => {
         const votes = guidelineVoteTotals(g)
-        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${g.important ? "⚠️ " : ""}${htmlEscape(g.title)}</div><div class="feedMeta">${htmlEscape(g.client)} · ${formatDateTime24(g.createdAt||"")}</div></div><div class="small">👍 ${votes.likes} · 👎 ${votes.dislikes}</div></div><div style="margin-top:8px">${htmlEscape(g.summary)}</div></div>`
+        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${g.important ? "⚠️ " : ""}${htmlEscape(g.title)}</div><div class="feedMeta">${htmlEscape(g.client)} · ${formatDateTime24(g.createdAt||"")}</div></div><div class="small">👍 ${votes.likes} · 👎 ${votes.dislikes}</div></div><div style="margin-top:8px"><label>Título</label><input id="guideline-edit-title-${g.id}" value="${htmlEscape(g.title||"")}"><label>Resumen</label><textarea id="guideline-edit-summary-${g.id}">${htmlEscape(g.summary||"")}</textarea><div class="inline"><label class="checkOption"><input id="guideline-edit-important-${g.id}" type="checkbox" ${g.important ? "checked" : ""}><span>Importante</span></label><button class="ghost" onclick="updateGuideline('${g.id}')">Guardar</button><button class="danger" onclick="deleteGuideline('${g.id}')">Eliminar</button></div></div></div>`
       }).join("") : `<p class="small">No hay lineamientos cargados.</p>`
       wrap.innerHTML = `${pendingHtml}<h4 style="margin:12px 0 8px">Lineamientos aprobados</h4>${approvedHtml}`
+    }
+
+    async function updateGuideline(id){
+      if(currentRole !== "admin") return
+      const title = String(document.getElementById(`guideline-edit-title-${id}`)?.value || "").trim()
+      const summary = String(document.getElementById(`guideline-edit-summary-${id}`)?.value || "").trim()
+      const important = !!document.getElementById(`guideline-edit-important-${id}`)?.checked
+      if(!title || !summary) return alert("Completá título y resumen.")
+      await db.ref("guidelines").child(id).update({ title, summary, important, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Lineamiento actualizado", "ok")
+      loadGuidelinesAdmin()
+    }
+
+    async function deleteGuideline(id){
+      if(currentRole !== "admin") return
+      if(!confirm("¿Eliminar lineamiento?")) return
+      await db.ref("guidelines").child(id).remove()
+      showToast("Lineamiento eliminado", "ok")
+      loadGuidelinesAdmin()
     }
 
     async function reviewGuidelineRequest(requestId, approve){
@@ -3294,6 +3323,7 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return alert("No se encontró el ticket")
       const canEdit = currentRole === "admin"
+      const canEditDeadline = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const canEditInformer = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const canManageStatus = currentRole === "admin" || currentRole === "analista"
       const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
@@ -3357,9 +3387,9 @@ Cliente B`)
               <div>
                 <label>Deadline</label>
                 <div class="deadlineControl">
-                  <input id="detail-deadline-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEdit?"":"disabled"}>
+                  <input id="detail-deadline-${ticketWithRead.id}" ${canEditDeadline?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEditDeadline?"":"disabled"}>
                   <div class="deadlineActions">
-                    <button class="ghost deadlineTodayBtn" ${canEdit ? "" : "disabled"} title="Usar fecha actual" onclick="setDeadlineToTodayFromDetail('${ticketWithRead.id}')">Fecha actual</button>
+                    <button class="ghost deadlineTodayBtn" ${canEditDeadline ? "" : "disabled"} title="Usar fecha actual" onclick="setDeadlineToTodayFromDetail('${ticketWithRead.id}')">Fecha actual</button>
                     ${currentRole === "analista" ? `<button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar cambio de deadline</button>` : ""}
                   </div>
                 </div>
@@ -3378,7 +3408,7 @@ Cliente B`)
               ${(currentRole === "admin" || currentRole === "analista") ? `<div class="small" style="margin-top:4px">Seleccionados: <strong>${htmlEscape(recurrenceDaysLabel(recurrenceDays))}</strong></div>` : ""}
             </div>
 
-            ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
+            ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button></div>${ticketWithRead.deadlineChangeStatus === "pending" ? `<div class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}<div class="inline" style="margin-top:6px"><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button></div></div>` : ""}` : "" }
 
             ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
           </div>
@@ -3442,6 +3472,7 @@ Cliente B`)
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
       const canEditFields = currentRole === "admin"
+      const canEditDeadline = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const canEditInformer = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase()
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
@@ -3459,7 +3490,7 @@ Cliente B`)
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
         assignedTo: nextAssignedTo,
-        deadline: canEditFields ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
+        deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
         status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
         timeTracking: tracking,
         updatedAt: new Date().toISOString(),
@@ -4843,10 +4874,12 @@ Cliente B`)
       const currentValue = ticket.deadline || toLocalDateOnly(new Date())
       const requestedDeadline = await pickDateFromCalendar(currentValue, triggerEl)
       if(!requestedDeadline) return
-      const confirmSend = confirm(`¿Enviar solicitud de cambio de deadline para ${ticketId}?\nNueva fecha propuesta: ${requestedDeadline}`)
+      const reason = String(prompt("Motivo corto del cambio de deadline:", ticket.deadlineChangeReason || "") || "").trim()
+      if(!reason) return alert("Ingresá un motivo corto para enviar la solicitud.")
+      const confirmSend = confirm(`¿Enviar solicitud de cambio de deadline para ${ticketId}?\nNueva fecha propuesta: ${requestedDeadline}\nMotivo: ${reason}`)
       if(!confirmSend) return
       const comments = { ...(ticket.comments || {}) }
-      const autoMessage = `Solicitud automática: ${currentUser.email} solicita cambio de deadline a ${requestedDeadline} para revisión del consultor.`
+      const autoMessage = `Solicitud automática: ${currentUser.email} solicita cambio de deadline a ${requestedDeadline}. Motivo: ${reason}`
       const duplicated = Object.values(comments).some(c => String(c?.message||'').trim() === autoMessage && String(c?.author||'').toLowerCase() === String(currentUser.email||'').toLowerCase())
       if(!duplicated) comments[generateId()] = { message: autoMessage, author: currentUser.email, createdAt: new Date().toISOString(), internal: false, maximumAttention: true }
       const updated = {
@@ -4856,6 +4889,7 @@ Cliente B`)
         deadlineChangeRequestedBy: currentUser.email,
         deadlineChangeRequestedAt: new Date().toISOString(),
         deadlineChangeReviewedBy: "",
+        deadlineChangeReason: reason,
         comments,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
@@ -5096,7 +5130,7 @@ Cliente B`)
           if(reqContainer){
             const pending = onlyMine.filter(t => t.deadlineChangeStatus === 'pending')
             reqContainer.innerHTML = pending.length
-              ? pending.map(t => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Nueva fecha solicitada: ${htmlEscape(t.requestedDeadline||"-")}</div></div><div class="inline" style="gap:6px"><button class="ghost" onclick="applyDeadlineDecision('${t.id}', true)">Aprobar</button><button class="danger" onclick="applyDeadlineDecision('${t.id}', false)">Rechazar</button></div></div></div>`).join("")
+              ? pending.map(t => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Nueva fecha solicitada: ${htmlEscape(t.requestedDeadline||"-")} · Motivo: ${htmlEscape(t.deadlineChangeReason||"Sin motivo")}</div></div><div class="inline" style="gap:6px"><button class="ghost" onclick="applyDeadlineDecision('${t.id}', true)">Aprobar</button><button class="danger" onclick="applyDeadlineDecision('${t.id}', false)">Rechazar</button></div></div></div>`).join("")
               : `<p class="small">Sin solicitudes pendientes.</p>`
           }
 
