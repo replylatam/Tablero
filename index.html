@@ -455,6 +455,22 @@
     .commentEditor { min-height: 90px; border: 1px solid var(--stroke); border-radius: var(--radius-sm); padding: 10px 12px; background: rgba(8,12,22,.4); outline: none; font-family: var(--font); font-size: 14px; color: var(--text); transition: border-color .2s, box-shadow .2s; }
     .commentEditor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
     .commentEditor:empty::before { content: attr(data-placeholder); color: var(--muted); }
+    .mentionSuggest {
+      margin-top: 6px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-sm);
+      background: rgba(10,18,34,.96);
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .mentionSuggestItem {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--stroke-2);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .mentionSuggestItem:last-child { border-bottom: none; }
+    .mentionSuggestItem:hover { background: rgba(61,110,245,.16); }
     .commentBody.formatted p { margin: .25rem 0; }
     .commentBody.formatted ul { margin: .25rem 0 .25rem 1.25rem; }
     .saveToggle {
@@ -990,7 +1006,7 @@
     var adminAgendaTeam = "equipo_1"
     var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
     var analystAgendaFilters = { ticketId: "", title: "", status: ["done"], client: "", consultor: "" }
-    var analystAgendaVisible = false
+    var analystAgendaVisible = true
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
     var adminGuidelinesClient = ""
@@ -1106,7 +1122,7 @@
     }
 
     function setMainViewTab(tab){
-      mainViewTab = ["saved","portfolio","quality_results"].includes(tab) ? tab : "tickets"
+      mainViewTab = ["saved","portfolio","quality_results","my_ticket_status"].includes(tab) ? tab : "tickets"
       closeHeaderMenu()
       renderApp()
     }
@@ -1551,6 +1567,23 @@
       const n = Number(score || 0)
       if(n <= 0) return 0
       return n <= 5 ? n * 2 : Math.min(10, n)
+    }
+
+    function normalizeQualityReceptionToTen(value){
+      const v = String(value || "").toLowerCase()
+      if(v === "completo") return 10
+      if(v === "a_la_mitad") return 6
+      if(v === "incompleto") return 2
+      return Math.max(0, Math.min(10, Number(value || 0)))
+    }
+
+    function normalizeQualityCommunicationToTen(value){
+      const v = String(value || "").toLowerCase()
+      if(v === "excelente") return 10
+      if(v === "normal") return 7
+      if(v === "deficiente") return 4
+      if(v === "muy_deficiente") return 1
+      return Math.max(0, Math.min(10, Number(value || 0)))
     }
 
     function qualityColor(score10){
@@ -3188,10 +3221,11 @@ Cliente B`)
       const mine = surveys.filter(s => String(s?.ratedEmail || "").toLowerCase() === myEmail)
       if(!mine.length){ wrap.innerHTML = "<p class='small'>Sin resultados todavía.</p>"; return }
       const avg = (arr, fn) => arr.reduce((a,b)=>a+fn(b),0) / arr.length
-      const rec = avg(mine, s => Number(s.reception || 0))
-      const com = avg(mine, s => Number(s.communication || 0))
       const over = avg(mine, s => normalizeQualityToTen(s.overall || 0))
-      wrap.innerHTML = `<div class="inline"><div class="kpi"><div class="label">Promedio recepción</div><div class="value">${rec.toFixed(2)}</div></div><div class="kpi"><div class="label">Promedio comunicación</div><div class="value">${com.toFixed(2)}</div></div><div class="kpi"><div class="label">Promedio general</div><div class="value">${over.toFixed(2)}</div></div></div>`
+      const recNorm = avg(mine, s => normalizeQualityReceptionToTen(s.reception || 0))
+      const comNorm = avg(mine, s => normalizeQualityCommunicationToTen(s.communication || 0))
+      const overall3 = (recNorm + comNorm + over) / 3
+      wrap.innerHTML = `<div class="inline"><div class="kpi"><div class="label">Promedio recepción</div><div class="value">${recNorm.toFixed(2)}</div></div><div class="kpi"><div class="label">Promedio comunicación</div><div class="value">${comNorm.toFixed(2)}</div></div><div class="kpi"><div class="label">Promedio general</div><div class="value">${over.toFixed(2)}</div></div><div class="kpi"><div class="label">Promedio (3 criterios)</div><div class="value">${overall3.toFixed(2)}</div></div></div>`
     }
 
     async function loadMyTicketStatus(){
@@ -3868,7 +3902,8 @@ Cliente B`)
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertUnorderedList')">• Lista</button>
                 <label class="colorBtn" title="Color de letra"><span>A</span><input type="color" onchange="formatCommentEditor('${id}','foreColor', this.value)"></label>
               </div>
-              <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario (podés mencionar con @usuario)" onkeydown="handleCommentKeydown(event,'${id}')"></div>
+              <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario (podés mencionar con @usuario)" onkeydown="handleCommentKeydown(event,'${id}')" oninput="handleCommentMentionInput('${id}')" onclick="handleCommentMentionInput('${id}')"></div>
+              <div id="mention-suggest-${id}" class="mentionSuggest hidden"></div>
               <div class="inline" style="align-items:center;margin-top:8px">
                 ${currentRole !== "consultor" ? `<div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-internal-${id}"><span class="slider"></span></label><span>Interno</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-max-attention-${id}"><span class="slider"></span></label><span>Atención máxima</span></div>` : ""}
                 <label class="ghost attachBtn" for="comment-file-${id}" title="Adjuntar archivo">📎</label>
@@ -3978,6 +4013,16 @@ Cliente B`)
 
 
     function handleCommentKeydown(ev, id){
+      if(ev.key === "Escape"){ hideMentionSuggestions(id); return }
+      if(ev.key === "Enter"){
+        const box = document.getElementById(`mention-suggest-${id}`)
+        const first = box?.querySelector?.(".mentionSuggestItem")
+        if(first && box && !box.classList.contains("hidden")){
+          ev.preventDefault()
+          first.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+          return
+        }
+      }
       if(ev.key !== "Enter" || ev.shiftKey) return
       const node = ev.target || document.activeElement
       const inList = !!(node && node.closest && node.closest('li'))
@@ -4424,6 +4469,7 @@ Cliente B`)
         if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
         renderTicketsFromData(cachedTickets)
         if(editor) editor.innerHTML = ""
+        hideMentionSuggestions(id)
         const fileInput = document.getElementById(`comment-file-${id}`)
         if(fileInput) fileInput.value = ""
         const internalInput = document.getElementById(`comment-internal-${id}`)
@@ -4439,6 +4485,59 @@ Cliente B`)
         console.error("Error comentando:", err)
         showToast(err?.message || "No se pudo subir el archivo/comentario", "error", 3500)
       }
+    }
+
+    function getCommentEditorMentionQuery(ticketId){
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor) return ""
+      const sel = window.getSelection()
+      if(!sel || !sel.rangeCount) return ""
+      const range = sel.getRangeAt(0)
+      if(!editor.contains(range.endContainer)) return ""
+      const probe = range.cloneRange()
+      probe.selectNodeContents(editor)
+      probe.setEnd(range.endContainer, range.endOffset)
+      const textBefore = probe.toString()
+      const match = textBefore.match(/(?:^|\s)@([a-zA-Z0-9._-]{0,})$/)
+      return match ? (match[1] || "").toLowerCase() : ""
+    }
+
+    function hideMentionSuggestions(ticketId){
+      const box = document.getElementById(`mention-suggest-${ticketId}`)
+      if(box){
+        box.classList.add("hidden")
+        box.innerHTML = ""
+      }
+    }
+
+    function handleCommentMentionInput(ticketId){
+      const box = document.getElementById(`mention-suggest-${ticketId}`)
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!box || !editor) return
+      const query = getCommentEditorMentionQuery(ticketId)
+      if(query === "" && !String(editor.textContent || "").endsWith("@")){ hideMentionSuggestions(ticketId); return }
+      const users = mentionableUsers()
+      const scoped = users
+        .filter(email => {
+          if(!query) return true
+          const local = email.split("@")[0] || ""
+          return email.includes(query) || local.includes(query)
+        })
+        .slice(0, 8)
+      if(!scoped.length){ hideMentionSuggestions(ticketId); return }
+      box.innerHTML = scoped.map(email => `<div class="mentionSuggestItem" onmousedown="pickMentionSuggestion(event,'${ticketId}','${encodeURIComponent(email)}')">@${htmlEscape(email.split('@')[0])} <span class="small">(${htmlEscape(userDisplayNameByEmail(email))})</span></div>`).join("")
+      box.classList.remove("hidden")
+    }
+
+    function pickMentionSuggestion(ev, ticketId, encodedEmail){
+      ev?.preventDefault?.()
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor) return
+      editor.focus()
+      const email = decodeURIComponent(String(encodedEmail || ""))
+      const handle = String(email || "").split("@")[0] || String(email || "")
+      document.execCommand("insertText", false, `@${handle} `)
+      hideMentionSuggestions(ticketId)
     }
 
 
