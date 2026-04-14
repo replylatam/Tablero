@@ -573,7 +573,7 @@
       letter-spacing: .03em;
     }
     @media (min-width: 980px) {
-      .detailLayout.withSidebar { grid-template-columns: 1fr 1fr; }
+      .detailLayout.withSidebar { grid-template-columns: 1.65fr .55fr; }
       .detailSidebar { border-left: 1px solid var(--stroke); padding-left: 14px; }
     }
 
@@ -3646,10 +3646,7 @@ Cliente B`)
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
-            <div class="row">
-              <div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}" ${canManageStatus?"":"disabled"}></div>
-              <div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.workSheet||"")}" ${canManageStatus?"":"disabled"} placeholder="URL o referencia"></div>
-            </div>
+            ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}" ${canManageStatus?"":"disabled"}></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.workSheet||"")}" ${canManageStatus?"":"disabled"} placeholder="URL o referencia"></div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
             ${customDetailHtml}
             <div style="margin:8px 0">
               <label>Recurrencia de la tarea</label>
@@ -3663,23 +3660,11 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="detailSidebarCard" style="margin-bottom:10px"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}" ${canManageStatus?"":"disabled"}></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.workSheet||"")}" ${canManageStatus?"":"disabled"} placeholder="URL o referencia"></div></div>` : ""}
             <div class="detailSidebarCard">
-              <div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>
-              ${hasGuidelineFolder
-                ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}`
-                : `<div class="small">No tiene lineamientos cargados</div>`
-              }
-            </div>
-          </div>
-          <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="detailSidebarCard" style="margin-bottom:10px"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketWithRead.id}" style="margin:0;max-width:260px;min-width:220px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketWithRead.id}')">Asignar como responsable</button></div></div>` : ""}
-            <div class="detailSidebarCard">
-              <div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>
-              ${hasGuidelineFolder
-                ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}`
-                : `<div class="small">No tiene lineamientos cargados</div>`
-              }
+              <div class="small" style="margin-bottom:6px">RESUMEN RÁPIDO</div>
+              <div class="small">Ticket: <strong>${htmlEscape(ticketWithRead.id || "-")}</strong></div>
+              <div class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></div>
+              <div class="small">Cliente: <strong>${htmlEscape(ticketWithRead.client || "-")}</strong></div>
             </div>
           </div>
         </div>
