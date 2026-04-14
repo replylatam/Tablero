@@ -2849,7 +2849,7 @@ Cliente B`)
             <div id="clientsList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda</h3><div class="small"><p><strong>Tickets:</strong> registran tareas por cliente, con responsables, comentarios y deadlines.</p><p><strong>Dashboard:</strong> muestra indicadores de urgencia, problemas y vencimientos.</p><p><strong>Mis cosas:</strong> cada usuario guarda tickets/comentarios/memos de forma privada.</p><p><strong>Lineamientos:</strong> el admin publica guías por cliente; analistas pueden proponer para aprobación.</p><p><strong>Agenda:</strong> organiza planificación y seguimiento diario de tickets.</p><p><strong>Encuesta de calidad:</strong> resumen de evaluaciones entre analista y consultor.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3><div class="small"><h4 style="margin:10px 0 6px">1) Flujo general de tickets</h4><p>El ticket nace desde Admin/Analista/Consultor. Se define cliente, informador, deadline y campos de negocio (incluye tipo de actividad si está configurado). Luego se gestiona por estados (pendiente, en curso, recurrente, finalizada), con comentarios y tiempos.</p><p><strong>Consecuencia:</strong> toda modificación impacta dashboard, agenda, actividad reciente, notificaciones y trazabilidad histórica.</p><h4 style="margin:10px 0 6px">2) Roles y consecuencias por usuario</h4><p><strong>Admin:</strong> configura usuarios, clientes, campos, lineamientos, comunicados, agenda por equipo y permisos de edición por rol. Puede apagar/encender comunicados y decidir qué ve cada rol.</p><p><strong>Analista:</strong> gestiona tickets asignados, solicita cambios de deadline, registra tiempos, colabora con ayudantes y completa encuesta al cerrar. Si el admin desactiva su switch de edición, no puede modificar detalle/estado/asignaciones.</p><p><strong>Consultor:</strong> crea tickets, comenta, marca urgentes, aprueba/rechaza solicitudes de deadline y responde encuesta pendiente al cierre. Si su switch de edición está apagado, ve detalle sin editar.</p><h4 style="margin:10px 0 6px">3) Comentarios, lectura y notificaciones</h4><p>Cada comentario actualiza actividad. El sistema diferencia internos y visibles, calcula pendientes de lectura y muestra alertas en paneles. Los íconos de lectura y badges dependen del autor, rol y marca de leído por usuario.</p><p><strong>Consecuencia:</strong> comentar o mover tickets impacta indicadores y puede disparar recordatorios, alertas de urgencia y pendientes.</p><h4 style="margin:10px 0 6px">4) Tiempos y ayudantes</h4><p>El ticket guarda tiempo consolidado y por usuario (analista/ayudantes). Esto afecta reportes, vista "Estado de mis tickets" y control operativo del equipo.</p><p><strong>Consecuencia:</strong> si no se carga tiempo, el analista puede quedar con advertencias de gestión incompleta.</p><h4 style="margin:10px 0 6px">5) Lineamientos y calidad</h4><p>Lineamientos: el admin publica por cliente; analista puede proponer para aprobación. Calidad: analista evalúa consultor al cierre y luego consultor evalúa analista; cada uno ve resultados propios con recomendaciones.</p><p><strong>Consecuencia:</strong> las encuestas alimentan puntaje visible y sirven para detectar brechas de recepción, comunicación y satisfacción.</p><h4 style="margin:10px 0 6px">6) Comunicados</h4><p>El admin puede publicar, programar fecha/hora y apagar comunicados. Los usuarios reciben únicamente comunicados activos y ya vigentes por horario.</p><p><strong>Consecuencia:</strong> permite coordinar anuncios operativos sin saturar ni mostrar mensajes fuera de ventana.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
@@ -2978,9 +2978,12 @@ Cliente B`)
       }else if(showConsultorPortfolio){
         loadConsultorPortfolio()
       }else if(showQualityResults){
+        setupRealtimeStreams()
+        loadTickets()
         loadQualityResultsView()
       }else if(currentRole === "analista" && mainViewTab === "my_ticket_status"){
-        loadMyTicketStatus()
+        setupRealtimeStreams()
+        loadTickets().then(()=>loadMyTicketStatus())
       }else{
         loadMyProfileForm()
       }
@@ -3289,10 +3292,28 @@ Cliente B`)
       ]
       const roleLabel = currentRole === "analista" ? "analista" : "consultor"
       const buildAdvice = (label, score) => {
-        if(score >= 8.5) return `Excelente ${label.toLowerCase()}. Mantené este estándar y compartí buenas prácticas con tu equipo.`
-        if(score >= 7) return `Buen resultado en ${label.toLowerCase()}. Para subir el puntaje, confirmá expectativas y próximos pasos en cada ticket.`
-        if(score >= 5.5) return `Resultado intermedio en ${label.toLowerCase()}. Recomendación para ${roleLabel}: alineá tiempos de respuesta y cerrá cada entrega con validación explícita.`
-        return `Puntaje bajo en ${label.toLowerCase()}. Acción sugerida: documentar mejor el pedido, actualizar avances frecuentes y pedir feedback antes del cierre.`
+        const isReception = label.includes("recibiste")
+        const isCommunication = label.toLowerCase().includes("comunicación")
+        const isSatisfaction = label.toLowerCase().includes("satisfacción")
+        if(isReception){
+          if(score >= 8.5) return "La recepción de entregables es sobresaliente. Mantené checklist de cierre y criterio de calidad uniforme."
+          if(score >= 7) return "La recepción es buena. Para mejorar, entregá siempre con resumen de alcance, pendientes y evidencias."
+          if(score >= 5.5) return `Recepción media para ${roleLabel}. Recomendado: validar requerimientos al inicio y acordar definición de 'completo'.`
+          return "Recepción baja. Acción urgente: implementar plantilla de entrega (qué se hizo, qué falta, riesgos y próximos pasos)."
+        }
+        if(isCommunication){
+          if(score >= 8.5) return "Comunicación muy efectiva. Conservá frecuencia de actualización y lenguaje claro con contexto de negocio."
+          if(score >= 7) return "Comunicación correcta. Subí nivel con actualizaciones proactivas y ETA concreta ante bloqueos."
+          if(score >= 5.5) return `Comunicación irregular para ${roleLabel}. Definí puntos de contacto fijos y confirmación de entendimiento en cada cambio.`
+          return "Comunicación crítica. Prioridad: responder en ventanas acordadas, dejar trazabilidad escrita y evitar cambios sin aviso."
+        }
+        if(isSatisfaction){
+          if(score >= 8.5) return "Satisfacción general alta. Buscá repetir este estándar y detectar qué prácticas generan mayor valor."
+          if(score >= 7) return "Satisfacción positiva. Para escalar, reducí retrabajos y cerrá tickets con validación final explícita."
+          if(score >= 5.5) return `Satisfacción media para ${roleLabel}. Recomendado: acordar expectativas de tiempo y calidad desde el inicio.`
+          return "Satisfacción baja. Plan de mejora: priorización semanal, seguimiento de compromisos y revisión post-mortem de tickets críticos."
+        }
+        return "Revisá consistencia de ejecución, tiempos de respuesta y calidad de cierre."
       }
       wrap.innerHTML = rows.map(row => {
         const byAnswer = {}
@@ -3356,11 +3377,32 @@ Cliente B`)
       if(currentRole !== "admin") return
       const title = String(document.getElementById("announcementTitle")?.value || "").trim()
       const body = String(document.getElementById("announcementBody")?.value || "").trim()
+      const scheduleRaw = String(document.getElementById("announcementScheduleAt")?.value || "").trim()
+      const enabled = !!document.getElementById("announcementEnabled")?.checked
       if(!title || !body) return alert("Completá título y mensaje.")
+      const scheduledAt = scheduleRaw ? new Date(scheduleRaw).toISOString() : new Date().toISOString()
       const id = db.ref("announcements").push().key
-      await db.ref("announcements").child(id).set({ id, title, body, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email||"").toLowerCase() })
+      await db.ref("announcements").child(id).set({
+        id, title, body,
+        createdAt: new Date().toISOString(),
+        createdBy: String(currentUser?.email||"").toLowerCase(),
+        scheduledAt,
+        active: enabled
+      })
       document.getElementById("announcementTitle").value = ""
       document.getElementById("announcementBody").value = ""
+      if(document.getElementById("announcementScheduleAt")) document.getElementById("announcementScheduleAt").value = ""
+      if(document.getElementById("announcementEnabled")) document.getElementById("announcementEnabled").checked = true
+      loadAnnouncementsAdmin()
+    }
+
+    async function toggleAnnouncementActive(id, nextActive){
+      if(currentRole !== "admin") return
+      await db.ref("announcements").child(id).update({
+        active: !!nextActive,
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(currentUser?.email||"").toLowerCase()
+      })
       loadAnnouncementsAdmin()
     }
 
@@ -3368,24 +3410,29 @@ Cliente B`)
       const wrap = document.getElementById("announcementsList")
       if(!wrap) return
       const list = Object.values((await db.ref("announcements").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
-      wrap.innerHTML = list.length ? list.map(a => `<div class="feedItem"><div class="feedType">${htmlEscape(a.title||"-")}</div><div class="feedMeta">${formatDateTime24(a.createdAt||"")}</div><div>${htmlEscape(a.body||"")}</div></div>`).join("") : `<div class="small">Sin comunicados.</div>`
+      wrap.innerHTML = list.length ? list.map(a => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(a.title||"-")}</div><div class="feedMeta">Creado: ${formatDateTime24(a.createdAt||"")} · Programado: ${formatDateTime24(a.scheduledAt || a.createdAt || "")} · Estado: ${a.active === false ? "apagado" : "activo"}</div></div><div class="inline"><button class="ghost" onclick="toggleAnnouncementActive('${a.id}', ${a.active === false ? "true" : "false"})">${a.active === false ? "Encender" : "Apagar"}</button></div></div><div>${htmlEscape(a.body||"")}</div></div>`).join("") : `<div class="small">Sin comunicados.</div>`
     }
 
     async function showLatestAnnouncementIfNeeded(){
       if(!(currentRole === "analista" || currentRole === "consultor")) return
-      const list = Object.values((await db.ref("announcements").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      const nowIso = new Date().toISOString()
+      const list = Object.values((await db.ref("announcements").once("value")).val() || {})
+        .filter(a => a && a.active !== false)
+        .filter(a => String(a.scheduledAt || a.createdAt || "") <= nowIso)
+        .sort((a,b)=>new Date(b.scheduledAt || b.createdAt || 0)-new Date(a.scheduledAt || a.createdAt || 0))
       const latest = list[0]
       if(!latest) return
       const key = `announcement_seen_${String(currentUser?.email||"").toLowerCase()}`
       const localSeen = localStorage.getItem(key) || ""
       const seenDb = (await db.ref(`announcements_seen/${emailKey(String(currentUser?.email||"").toLowerCase())}`).once("value")).val() || {}
-      const seenCreatedAt = String(seenDb?.lastSeenCreatedAt || "")
-      if(String(latest.createdAt||"") <= localSeen || String(latest.createdAt||"") <= seenCreatedAt) return
+      const latestStamp = String(latest.scheduledAt || latest.createdAt || "")
+      const seenCreatedAt = String(seenDb?.lastSeenAt || seenDb?.lastSeenCreatedAt || "")
+      if(latestStamp <= localSeen || latestStamp <= seenCreatedAt) return
       alert(`📢 ${latest.title}\n\n${latest.body}`)
-      localStorage.setItem(key, String(latest.createdAt||""))
+      localStorage.setItem(key, latestStamp)
       await db.ref(`announcements_seen/${emailKey(String(currentUser?.email||"").toLowerCase())}`).set({
         announcementId: String(latest.id || ""),
-        lastSeenCreatedAt: String(latest.createdAt || ""),
+        lastSeenAt: latestStamp,
         seenAt: new Date().toISOString(),
         email: String(currentUser?.email || "").toLowerCase()
       })
@@ -3393,9 +3440,10 @@ Cliente B`)
 
     async function fetchAnalystNotifications(){
       const myEmail = String(currentUser?.email || "").toLowerCase()
-      const assigned = (cachedTickets || [])
-        .filter(t => String(t.assignedTo||"").toLowerCase() === myEmail)
-        .map(t => ({ text: `📌 Ticket asignado: ${t.id}`, ts: String(t.updatedAt || t.createdAt || ""), ticketId: t.id }))
+      const logs = Object.values((await db.ref("activity_logs").limitToLast(400).once("value")).val() || {})
+      const assigned = logs
+        .filter(l => String(l?.eventType||"") === "ticket_asignado" && String(l?.assignedTo||"").toLowerCase() === myEmail)
+        .map(l => ({ text: `📌 Ticket asignado: ${l.ticketId || "-"}`, ts: String(l?.timestampIso || ""), ticketId: l.ticketId }))
       const fromConsultor = (cachedTickets || []).flatMap(t => Object.values(parseCommentsValue(t.comments||{})).map(c => ({ticket:t,c})))
         .filter(x => String(cachedUsersByEmail?.[emailKey(String(x.c.author||"").toLowerCase())]?.role || "") === "consultor")
         .map(x => ({ text: `💬 Comentario de consultor en ${x.ticket.id}`, ts: String(x.c?.createdAt || ""), ticketId: x.ticket.id }))
@@ -3406,8 +3454,15 @@ Cliente B`)
       const reqs = Object.values((await db.ref("guideline_requests").once("value")).val() || {})
         .filter(r => String(r?.requestedBy||"").toLowerCase()===myEmail && String(r?.status||"")==="approved")
         .map(r => ({ text: r.sourceType === "saved_comment" ? "✅ Comentario aprobado como lineamiento" : "✅ Lineamiento aprobado", ts: String(r?.reviewedAt || r?.createdAt || "") }))
+      const dedup = new Set()
       return [...assigned, ...fromConsultor, ...mentions, ...reqs]
         .filter(n => n.ts)
+        .filter(n => {
+          const key = `${n.text}::${n.ticketId||""}::${n.ts}`
+          if(dedup.has(key)) return false
+          dedup.add(key)
+          return true
+        })
         .sort((a,b)=>new Date(b.ts||0)-new Date(a.ts||0))
     }
 
