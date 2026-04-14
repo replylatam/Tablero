@@ -1066,6 +1066,7 @@
     var adminAnalystDetailView = "tickets"
     var adminCapacityClientFilter = ""
     var adminCapacityExpandedClients = {}
+    var adminCapacityViewMode = "cards"
     var adminAnalystDetailSelection = ""
     var qualitySurveyForms = null
     var adminGuidelinesClient = ""
@@ -2316,6 +2317,11 @@ Cliente B`)
       loadInstalledCapacityByClient()
     }
 
+    function setAdminCapacityViewMode(mode){
+      adminCapacityViewMode = mode === "chart" ? "chart" : "cards"
+      loadAdminHoursTable()
+    }
+
     function setAdminBusinessDaysOverride(monthKey, value){
       const numeric = Math.max(0, Number(value || 0))
       adminHoursBusinessDaysOverride[monthKey] = numeric
@@ -2459,6 +2465,38 @@ Cliente B`)
         .map(h => ({ date: `${year}-${h.mmdd}`, label: h.label }))
     }
 
+    function buildCapacityLineChart(labels, theoreticalSeries, executedSeries){
+      const points = Array.isArray(labels) ? labels : []
+      if(!points.length) return `<div class="small">Sin días transcurridos en el período para graficar.</div>`
+      const width = 920
+      const height = 280
+      const padX = 46
+      const padY = 24
+      const innerW = width - padX * 2
+      const innerH = height - padY * 2
+      const maxValue = Math.max(1, ...theoreticalSeries, ...executedSeries)
+      const toPoint = (arr, idx) => {
+        const x = points.length === 1 ? (padX + innerW / 2) : (padX + (idx / (points.length - 1)) * innerW)
+        const y = padY + innerH - ((Number(arr[idx] || 0) / maxValue) * innerH)
+        return `${x.toFixed(2)},${y.toFixed(2)}`
+      }
+      const theoreticalPolyline = points.map((_, idx) => toPoint(theoreticalSeries, idx)).join(" ")
+      const executedPolyline = points.map((_, idx) => toPoint(executedSeries, idx)).join(" ")
+      const yTicks = [0, 0.25, 0.5, 0.75, 1]
+      const yGuides = yTicks.map(t => {
+        const y = padY + innerH - (t * innerH)
+        const val = (maxValue * t).toFixed(1)
+        return `<line x1="${padX}" y1="${y}" x2="${width - padX}" y2="${y}" stroke="rgba(148,163,184,.2)"/><text x="${padX - 8}" y="${y + 4}" text-anchor="end" fill="var(--muted)" font-size="11">${val}</text>`
+      }).join("")
+      const xStep = Math.max(1, Math.floor(points.length / 8))
+      const xLabels = points.map((label, idx) => {
+        if(idx % xStep !== 0 && idx !== points.length - 1) return ""
+        const x = points.length === 1 ? (padX + innerW / 2) : (padX + (idx / (points.length - 1)) * innerW)
+        return `<text x="${x}" y="${height - 6}" text-anchor="middle" fill="var(--muted)" font-size="11">${htmlEscape(label)}</text>`
+      }).join("")
+      return `<div class="small" style="margin-top:6px">Comparación diaria (hs) · Teórico vs Ejecutado</div><div style="overflow:auto"><svg viewBox="0 0 ${width} ${height}" style="width:100%;min-width:620px;height:auto"><rect x="${padX}" y="${padY}" width="${innerW}" height="${innerH}" fill="rgba(8,12,22,.25)" stroke="var(--stroke)" rx="8"/>${yGuides}<polyline fill="none" stroke="var(--accent-2)" stroke-width="3" points="${theoreticalPolyline}"/><polyline fill="none" stroke="var(--accent)" stroke-width="3" points="${executedPolyline}"/>${xLabels}</svg></div><div class="small" style="margin-top:6px"><span style="display:inline-flex;align-items:center;gap:6px;margin-right:12px"><span style="width:12px;height:2px;background:var(--accent-2);display:inline-block"></span>Tiempo teórico diario</span><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:2px;background:var(--accent);display:inline-block"></span>Tiempo ejecutado diario</span></div>`
+    }
+
     function removeAnalystFromHoursTable(analystEmail){
       adminHoursHiddenAnalysts[String(analystEmail || "").toLowerCase()] = true
       loadAdminHoursTable()
@@ -2558,15 +2596,50 @@ Cliente B`)
           : `<option value="">Sin analistas</option>`
         hiddenSelect.disabled = !hiddenAnalysts.length
       }
+      const today = toLocalDateOnly(new Date())
+      const totalExecutedHours = visibleAnalysts.reduce((acc, u) => {
+        const email = String(u?.email || "").toLowerCase()
+        return acc + Number((executedByAnalyst[email] || 0) / 60)
+      }, 0)
+      const daysElapsed = businessDates.filter(d => d <= today).length
+      const avgAdjusted = visibleAnalysts.length ? visibleAnalysts.reduce((acc,u)=>acc + getAdminHoursRowValues(String(u.email||"").toLowerCase()).adjustedHours, 0) / visibleAnalysts.length : 0
+      const avgFactor = visibleAnalysts.length ? visibleAnalysts.reduce((acc,u)=>acc + getAdminHoursRowValues(String(u.email||"").toLowerCase()).factor, 0) / visibleAnalysts.length : 0
+      const hhEffective = daysElapsed > 0 ? (totalExecutedHours / daysElapsed) : 0
+      const totalMonthlyTheoretical = visibleAnalysts.reduce((acc, u) => {
+        const email = String(u?.email || "").toLowerCase()
+        const row = getAdminHoursRowValues(email)
+        return acc + (Math.max(0, row.monthDays - row.holidays) * row.adjustedHours)
+      }, 0)
+      const totalDailyTheoreticalToday = visibleAnalysts.reduce((acc, u) => {
+        const email = String(u?.email || "").toLowerCase()
+        const row = getAdminHoursRowValues(email)
+        return acc + ((attendanceMonth[email] || {})[today] ? row.adjustedHours : 0)
+      }, 0)
+      const gapMonthlyPct = totalMonthlyTheoretical > 0 ? (totalExecutedHours / totalMonthlyTheoretical) * 100 : 0
+      const executedToday = visibleAnalysts.reduce((acc, u) => {
+        const email = String(u?.email || "").toLowerCase()
+        const rows = entriesByAnalyst[email] || []
+        const todayHours = rows.filter(r => String(r.date || "").slice(0,10) === today).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
+        return acc + todayHours
+      }, 0)
+      const gapTodayPct = totalDailyTheoreticalToday > 0 ? (executedToday / totalDailyTheoreticalToday) * 100 : 0
+      const elapsedBusinessDates = businessDates.filter(d => d <= today)
+      const theoreticalSeries = elapsedBusinessDates.map(date => visibleAnalysts.reduce((acc, u) => {
+        const email = String(u?.email || "").toLowerCase()
+        const row = getAdminHoursRowValues(email)
+        return acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0)
+      }, 0))
+      const executedSeries = elapsedBusinessDates.map(date => visibleAnalysts.reduce((acc, u) => {
+        const email = String(u?.email || "").toLowerCase()
+        const rows = entriesByAnalyst[email] || []
+        const dateHours = rows.filter(r => String(r.date || "").slice(0,10) === date).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
+        return acc + dateHours
+      }, 0))
       const miniDash = document.getElementById("adminCapacityMiniDash")
       if(miniDash){
-        const avgAdjusted = visibleAnalysts.length ? visibleAnalysts.reduce((acc,u)=>acc + getAdminHoursRowValues(String(u.email||"").toLowerCase()).adjustedHours, 0) / visibleAnalysts.length : 0
-        const avgFactor = visibleAnalysts.length ? visibleAnalysts.reduce((acc,u)=>acc + getAdminHoursRowValues(String(u.email||"").toLowerCase()).factor, 0) / visibleAnalysts.length : 0
-        const totalExecutedHours = Object.values(executedByAnalyst).reduce((acc, mins)=>acc + (Number(mins||0)/60), 0)
-        const today = toLocalDateOnly(new Date())
-        const daysElapsed = businessDates.filter(d => d <= today).length
-        const hhEffective = daysElapsed > 0 ? (totalExecutedHours / daysElapsed) : 0
-        miniDash.innerHTML = `<div class="kpi"><div class="label">Horas diarias teóricas (ajuste)</div><div class="value">${avgAdjusted.toFixed(2)} h</div><div class="small">Ajuste promedio: ${avgFactor.toFixed(2)}%</div></div><div class="kpi"><div class="label">Hs hombre efectivas mensuales por analista</div><div class="value">${hhEffective.toFixed(2)} h</div><div class="small">Consolidado / días hábiles transcurridos</div></div><div class="kpi"><div class="label">Días hábiles transcurridos</div><div class="value">${daysElapsed}</div><div class="small">Período ${htmlEscape(monthKey)}</div></div>`
+        const cardsHtml = `<div class="kpi"><div class="label">Horas diarias teóricas (ajuste)</div><div class="value">${avgAdjusted.toFixed(2)} h</div><div class="small">Ajuste promedio: ${avgFactor.toFixed(2)}%</div></div><div class="kpi"><div class="label">Hs hombre efectivas mensuales por analista</div><div class="value">${hhEffective.toFixed(2)} h</div><div class="small">Consolidado / días hábiles transcurridos</div></div><div class="kpi"><div class="label">Días hábiles transcurridos</div><div class="value">${daysElapsed}</div><div class="small">Período ${htmlEscape(monthKey)}</div></div><div class="kpi"><div class="label">Tiempo total teórico mensual</div><div class="value">${totalMonthlyTheoretical.toFixed(2)} h</div><div class="small">Suma mensual teórica del área</div></div><div class="kpi"><div class="label">Tiempo total ejecutado</div><div class="value">${totalExecutedHours.toFixed(2)} h</div><div class="small">Suma mensual ejecutada del área</div></div><div class="kpi"><div class="label">% GAP mensual</div><div class="value">${gapMonthlyPct.toFixed(2)}%</div><div class="small">Ejecutado / Teórico mensual</div></div><div class="kpi"><div class="label">% GAP hoy</div><div class="value">${gapTodayPct.toFixed(2)}%</div><div class="small">Ejecutado hoy / Teórico hoy</div></div>`
+        const chartHtml = buildCapacityLineChart(elapsedBusinessDates.map(d => d.slice(-2)), theoreticalSeries, executedSeries)
+        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}</div>` : cardsHtml}`
       }
       wrap.innerHTML = analysts.length ? `
         <h4 style="margin:0 0 8px">Asistencia</h4>
@@ -2616,6 +2689,7 @@ Cliente B`)
                 const gapHoy = autoMonthly > 0 ? (todayHours / autoMonthly) * 100 : 0
                 return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapHoy.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
               }).join("")}
+              ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); return acc }, { theoretical: 0, executed: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
             </tbody>
           </table>
         </div>
@@ -2632,7 +2706,7 @@ Cliente B`)
           <button class="${adminAnalystDetailView==='daily'?'':'ghost'}" onclick="setAdminAnalystDetailView('daily')">Detalle diario</button>
         </div>
         <div style="overflow:auto">
-          ${adminAnalystDetailView === 'daily' ? `<table style="width:100%;border-collapse:collapse"><thead><tr><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Fecha</th><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Tiempo ejecutado en hs</th><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Referencia (50% horas ajustadas)</th></tr></thead><tbody>${businessDates.map(date => { const dayHours = selectedAnalystRows.filter(r => String(r.date||'').slice(0,10)===date).reduce((acc,r)=>acc + (Number(r.minutes||0)/60),0); const low = dayHours < (selectedAdjustedHours * 0.5); return `<tr style=\"${low?'background:rgba(224,64,64,.18);':''}\"><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${htmlEscape(formatDateDMY(date))}</td><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${dayHours.toFixed(2)}</td><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${(selectedAdjustedHours*0.5).toFixed(2)} h</td></tr>` }).join('')}</tbody></table>` : `
+          ${adminAnalystDetailView === 'daily' ? `<table style="width:100%;border-collapse:collapse"><thead><tr><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Fecha</th><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Tiempo ejecutado en hs</th><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Diferencia vs horas diarias ajustadas</th></tr></thead><tbody>${businessDates.map(date => { const dayHours = selectedAnalystRows.filter(r => String(r.date||'').slice(0,10)===date).reduce((acc,r)=>acc + (Number(r.minutes||0)/60),0); const diffPct = selectedAdjustedHours > 0 ? ((dayHours - selectedAdjustedHours) / selectedAdjustedHours) * 100 : 0; const low = diffPct < 0; return `<tr style=\"${low?'background:rgba(224,64,64,.18);':''}\"><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${htmlEscape(formatDateDMY(date))}</td><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${dayHours.toFixed(2)}</td><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%</td></tr>` }).join('')}</tbody></table>` : `
           <table style="width:100%;border-collapse:collapse">
             <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tarea</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Prioridad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rol</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo ejecutado en hs</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo teorico a ejecutar</th></tr></thead>
             <tbody>${selectedAnalystRows.length ? selectedAnalystRows.map(row => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.title)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.priority)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.relation)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(Number(row.minutes || 0) / 60).toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${selectedAnalystTheoretical.toFixed(2)}</td></tr>`).join("") : `<tr><td colspan="6" class="small" style="padding:8px">Sin tiempos cargados para este analista en el período.</td></tr>`}</tbody>
@@ -4499,7 +4573,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${currentRole === "admin" ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${currentRole === "admin" ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${currentRole === "admin" ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia"></div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia"></div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -4568,7 +4642,7 @@ Cliente B`)
       const canEditFields = canCurrentRoleEditTickets()
       const canEditDeadline = canCurrentRoleEditTickets()
       const canEditInformer = canCurrentRoleEditTickets()
-      const canEditAnalystFields = currentRole === "admin"
+      const canEditAnalystFields = currentRole === "admin" || currentRole === "analista"
       const nextCustomFields = { ...(ticket.customFields || {}) }
       if(canEditFields){
         for(const def of (cachedTicketCustomFieldsDefs || [])){
