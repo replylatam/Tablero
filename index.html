@@ -360,7 +360,7 @@
       font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
     }
     .qualityOrb {
-      position: fixed; left: 24px; top: 32px; z-index: 135;
+      position: fixed; left: 24px; top: 104px; z-index: 135;
       width: 92px; height: 92px; border-radius: 50%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       color: var(--text); font-weight: 700;
@@ -382,7 +382,7 @@
     .qualityOrb #qualityOrbValue { font-size: 20px; line-height: 1; }
     .qualityOrb .smallLabel { font-size: 9px; opacity: .92; letter-spacing: .03em; text-transform: uppercase; }
     @media (max-width: 1100px){
-      .qualityOrb{ left: 10px; top: 10px; width: 78px; height: 78px; }
+      .qualityOrb{ left: 10px; top: 84px; width: 78px; height: 78px; }
     }
 
     /* ── Comments ──────────────────────────────────────────────────── */
@@ -3330,15 +3330,35 @@ Cliente B`)
       const wrap = document.getElementById("myTicketStatusContainer")
       if(!wrap || currentRole !== "analista") return
       const myEmail = String(currentUser?.email || "").toLowerCase()
-      const mine = (cachedTickets || []).filter(t => String(t.assignedTo||"").toLowerCase() === myEmail)
+      let ticketsSource = cachedTickets || []
+      if(!ticketsSource.length){
+        try{ ticketsSource = await fetchTicketsFromDb() }catch(_){ ticketsSource = [] }
+      }
+      const mine = ticketsSource
+        .map(t => ({ ...t, comments: parseCommentsValue(t.comments) }))
+        .filter(t => String(t.assignedTo||"").toLowerCase() === myEmail)
+        .sort((a,b)=>new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
       const today = toLocalDateOnly(new Date())
       const withExpiredDeadline = mine.filter(t => !!String(t.deadline||"") && String(t.deadline) < today)
-      const unreadComments = mine.reduce((acc, t) => acc + unreadCommentsCount(t), 0)
-      const requiredFields = (cachedTicketCustomFieldsDefs || []).filter(f => !!f?.required)
+      let usersByEmail = cachedUsersByEmail || {}
+      if(!Object.keys(usersByEmail).length){
+        try{ usersByEmail = (await db.ref("users_by_email").once("value")).val() || {} }catch(_){ usersByEmail = {} }
+      }
+      const myReadKey = emailKey(myEmail)
+      const unreadComments = mine.filter(t => {
+        const lastConsultorComment = Object.values(t.comments || {})
+          .sort((a,b)=>new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
+          .find(c => String(usersByEmail?.[emailKey(String(c?.author || "").toLowerCase())]?.role || "").toLowerCase() === "consultor")
+        if(!lastConsultorComment) return false
+        const readBy = lastConsultorComment.readBy || {}
+        return !readBy[myReadKey]
+      }).length
       const incompleteTickets = mine.filter(t => {
-        if(!String(t.client || "").trim()) return true
-        if(!String(resolveInformerEmail(t) || "").trim()) return true
-        return requiredFields.some(f => !String(t?.customFields?.[f.key] || "").trim())
+        const publicationCount = Number(t?.publicationCount)
+        const worksheet = String(t?.workSheet || "").trim()
+        const tracking = t?.timeTracking || {}
+        const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
+        return !Number.isFinite(publicationCount) || publicationCount <= 0 || !worksheet || consolidated <= 0
       })
       wrap.innerHTML = `
         <div class="inline" style="gap:10px;flex-wrap:wrap">
@@ -3366,7 +3386,7 @@ Cliente B`)
                 const myMinutes = Number(tracking?.users?.[emailKey(myEmail)]?.totalMinutes || 0)
                 const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
                 return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpers.join(", ") || "Sin ayudantes")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(consolidated))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(myMinutes))}</td></tr>`
-              }).join("")}
+              }).join("") || `<tr><td colspan="4" style="padding:10px;border-bottom:1px solid var(--stroke-2);text-align:center" class="small">Sin tickets asignados.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -5572,6 +5592,9 @@ Cliente B`)
         if(kpiUrgent) kpiUrgent.innerText = urgentTickets.length
         if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
         if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
+        if(currentRole === "analista" && mainViewTab === "my_ticket_status"){
+          loadMyTicketStatus()
+        }
         try{
           const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
           let surveys = Object.values(surveyMap)
