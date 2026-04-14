@@ -3661,8 +3661,16 @@ Cliente B`)
             </div>
 
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
-
-            ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
+          </div>
+          <div class="detailSidebar">
+            ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="detailSidebarCard" style="margin-bottom:10px"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}" ${canManageStatus?"":"disabled"}></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.workSheet||"")}" ${canManageStatus?"":"disabled"} placeholder="URL o referencia"></div></div>` : ""}
+            <div class="detailSidebarCard">
+              <div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>
+              ${hasGuidelineFolder
+                ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}`
+                : `<div class="small">No tiene lineamientos cargados</div>`
+              }
+            </div>
           </div>
           <div class="detailSidebar">
             ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="detailSidebarCard" style="margin-bottom:10px"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketWithRead.id}" style="margin:0;max-width:260px;min-width:220px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketWithRead.id}')">Asignar como responsable</button></div></div>` : ""}
@@ -3675,6 +3683,7 @@ Cliente B`)
             </div>
           </div>
         </div>
+        ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
       `
       document.getElementById("ticketDetailModal").classList.remove("hidden")
       setupLiveTimer(id)
@@ -4581,7 +4590,14 @@ Cliente B`)
       editor.focus()
       const email = decodeURIComponent(String(encodedEmail || ""))
       const handle = String(email || "").split("@")[0] || String(email || "")
-      document.execCommand("insertText", false, `@${handle} `)
+      const query = getCommentEditorMentionQuery(ticketId)
+      const normalizedHandle = String(handle || "").toLowerCase()
+      let insertValue = `@${handle} `
+      if(query || String(editor.textContent || "").endsWith("@")){
+        const remainder = normalizedHandle.startsWith(query) ? handle.slice(query.length) : handle
+        insertValue = `${remainder} `
+      }
+      document.execCommand("insertText", false, insertValue)
       hideMentionSuggestions(ticketId)
     }
 
