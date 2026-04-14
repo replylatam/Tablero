@@ -938,11 +938,7 @@
     <div class="card modal">
       <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
       <p class="small">Al cerrar el ticket, el analista califica al consultor en base a cómo llegó la solicitud y cómo fue la comunicación.</p>
-      <div class="row">
-        <div><label>¿Cómo recibiste el ticket?</label><select id="closeSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
-        <div><label>Comunicación</label><select id="closeSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
-        <div><label>Satisfacción general (1-10)</label><select id="closeSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
-      </div>
+      <div id="closeSurveyFields" class="row"></div>
       <div class="inline" style="justify-content:flex-end">
         <button class="secondary" onclick="closeCloseSurveyModal()">Cancelar</button>
         <button onclick="submitCloseSurveyAndCloseTicket()">Cerrar ticket</button>
@@ -955,11 +951,7 @@
       <h3 style="margin-top:0">Encuesta pendiente del consultor</h3>
       <p class="small">Completá la evaluación del analista para este ticket cerrado. Esta calificación alimenta el puntaje que verá el analista al iniciar sesión.</p>
       <div class="small" id="consultorSurveyTicketInfo" style="margin-bottom:10px"></div>
-      <div class="row">
-        <div><label>¿Cómo recibiste la solución?</label><select id="consultorSurveyReception"><option value="">Seleccionar</option><option value="incompleto">Incompleto</option><option value="a_la_mitad">A la mitad</option><option value="completo">Completo</option></select></div>
-        <div><label>Comunicación del analista</label><select id="consultorSurveyCommunication"><option value="">Seleccionar</option><option value="muy_deficiente">Muy deficiente</option><option value="deficiente">Deficiente</option><option value="normal">Normal</option><option value="excelente">Excelente</option></select></div>
-        <div><label>Satisfacción general (1-10)</label><select id="consultorSurveyOverall"><option value="">Seleccionar</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
-      </div>
+      <div id="consultorSurveyFields" class="row"></div>
       <div class="inline" style="justify-content:flex-end">
         <button class="secondary" onclick="closeConsultorSurveyModal()">Cancelar</button>
         <button onclick="submitConsultorPendingSurvey()">Guardar encuesta</button>
@@ -1063,9 +1055,13 @@
     var adminHoursHolidaysByAnalyst = {}
     var adminHoursHiddenAnalysts = {}
     var adminHoursOverrides = {}
+    var adminHoursBusinessDaysOverride = {}
+    var adminMonthHolidayExclusions = {}
+    var adminAttendanceByMonth = {}
     var adminCapacityClientFilter = ""
     var adminCapacityExpandedClients = {}
     var adminAnalystDetailSelection = ""
+    var qualitySurveyForms = null
     var adminGuidelinesClient = ""
     var analystNotificationsOpen = false
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
@@ -1077,6 +1073,19 @@
       doing: "En curso",
       recurrent: "Recurrente",
       done: "Finalizadas"
+    }
+
+    const DEFAULT_QUALITY_FORMS = {
+      analista: [
+        { id: "reception", label: "¿Cómo recibiste el ticket?", options: ["incompleto","a_la_mitad","completo"] },
+        { id: "communication", label: "Comunicación", options: ["muy_deficiente","deficiente","normal","excelente"] },
+        { id: "overall", label: "Satisfacción general (1-10)", options: ["1","2","3","4","5","6","7","8","9","10"] }
+      ],
+      consultor: [
+        { id: "reception", label: "¿Cómo recibiste la solución?", options: ["incompleto","a_la_mitad","completo"] },
+        { id: "communication", label: "Comunicación del analista", options: ["muy_deficiente","deficiente","normal","excelente"] },
+        { id: "overall", label: "Satisfacción general (1-10)", options: ["1","2","3","4","5","6","7","8","9","10"] }
+      ]
     }
 
     const SHEET_ID = "1tNNtG2Asr1ds1_-3P6PmVgsHbdlhhfrV7GhWJDiTO1Q"
@@ -2301,6 +2310,18 @@ Cliente B`)
       loadInstalledCapacityByClient()
     }
 
+    function setAdminBusinessDaysOverride(monthKey, value){
+      const numeric = Math.max(0, Number(value || 0))
+      adminHoursBusinessDaysOverride[monthKey] = numeric
+      loadAdminHoursTable()
+    }
+
+    function toggleMonthHolidayInclusion(monthKey, date, checked){
+      adminMonthHolidayExclusions[monthKey] = adminMonthHolidayExclusions[monthKey] || {}
+      adminMonthHolidayExclusions[monthKey][date] = !checked
+      loadAdminHoursTable()
+    }
+
     function toggleAdminCapacityClientTasks(encodedClient){
       const key = decodeURIComponent(String(encodedClient || ""))
       adminCapacityExpandedClients[key] = !adminCapacityExpandedClients[key]
@@ -2319,7 +2340,12 @@ Cliente B`)
         if(dow !== 0 && dow !== 6) count++
         day.setDate(day.getDate() + 1)
       }
-      return count
+      const fixed = getArgFixedHolidayDates(yyyyMm)
+      const exclusions = adminMonthHolidayExclusions[yyyyMm] || {}
+      const activeFixed = fixed.filter(h => !exclusions[h.date]).length
+      const adjusted = Math.max(0, count - activeFixed)
+      const manual = Number(adminHoursBusinessDaysOverride[yyyyMm])
+      return Number.isFinite(manual) && manual > 0 ? manual : adjusted
     }
 
     function updateAdminHoursHoliday(analystEmail, value){
@@ -2431,6 +2457,14 @@ Cliente B`)
       loadAdminHoursTable()
     }
 
+    function setAdminAttendanceDay(monthKey, analystEmail, date, checked){
+      adminAttendanceByMonth[monthKey] = adminAttendanceByMonth[monthKey] || {}
+      const analystKey = String(analystEmail || "").toLowerCase()
+      adminAttendanceByMonth[monthKey][analystKey] = adminAttendanceByMonth[monthKey][analystKey] || {}
+      adminAttendanceByMonth[monthKey][analystKey][date] = !!checked
+      loadAdminHoursTable()
+    }
+
     async function addAnalystToHoursTable(){
       let users = Object.values(cachedUsersByEmail || {})
       if(!users.length) users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
@@ -2467,12 +2501,48 @@ Cliente B`)
       const selectedAnalystRows = entriesByAnalyst[adminAnalystDetailSelection] || []
       const selectedAnalystTotalHours = selectedAnalystRows.reduce((acc, row) => acc + (Number(row.minutes || 0) / 60), 0)
       const selectedMonthHolidays = getArgFixedHolidayDates(monthKey)
+      const holidayExclusions = adminMonthHolidayExclusions[monthKey] || {}
+      const activeHolidays = selectedMonthHolidays.filter(h => !holidayExclusions[h.date])
+      const attendanceMonth = adminAttendanceByMonth[monthKey] || {}
+      const businessDates = (() => {
+        const [yRaw, mRaw] = monthKey.split("-")
+        const y = Number(yRaw), m = Number(mRaw)
+        const dates = []
+        const d = new Date(y, (m || 1) - 1, 1)
+        while(d.getMonth() === (m || 1) - 1){
+          const dow = d.getDay()
+          const date = `${y}-${String((m || 1)).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
+          if(dow !== 0 && dow !== 6 && !holidayExclusions[date]) dates.push(date)
+          d.setDate(d.getDate() + 1)
+        }
+        return dates
+      })()
       const [yy, mm] = monthKey.split("-").map(Number)
       const nextMonthDate = new Date(yy, (mm || 1), 1)
       const nextMonthKey = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`
       const nextMonthHolidays = getArgFixedHolidayDates(nextMonthKey)
       const nextBusinessDays = monthBusinessDaysARG(nextMonthKey)
       wrap.innerHTML = analysts.length ? `
+        <h4 style="margin:0 0 8px">Asistencia</h4>
+        <div class="small" style="margin-bottom:8px">Marcá por analista los días trabajados del período para calcular el avance diario.</div>
+        <div class="inline" style="margin-bottom:8px;align-items:flex-end">
+          <div><label style="margin:0">Días hábiles del mes (editable)</label><input type="number" min="0" value="${monthBusinessDaysARG(monthKey)}" onchange="setAdminBusinessDaysOverride('${monthKey}', this.value)" style="max-width:180px;margin:0"></div>
+          <div><label style="margin:0">Feriados fijos del mes</label><div class="small">${selectedMonthHolidays.length ? selectedMonthHolidays.map(h => `<label style="display:block;text-transform:none;letter-spacing:0"><input type="checkbox" ${holidayExclusions[h.date] ? "" : "checked"} onchange="toggleMonthHolidayInclusion('${monthKey}','${h.date}', this.checked)" style="width:auto;margin-right:6px">${formatDateDMY(h.date)} (${htmlEscape(h.label)})</label>`).join("") : "Sin feriados fijos."}</div></div>
+        </div>
+        <div style="overflow:auto;margin-bottom:12px">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${String(date).slice(-2)}</th>`).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado hasta ahora</th></tr></thead>
+            <tbody>${visibleAnalysts.map(u => {
+              const email = String(u.email || "").toLowerCase()
+              const row = getAdminHoursRowValues(email)
+              const analystAttendance = attendanceMonth[email] || {}
+              const workedDays = businessDates.filter(date => !!analystAttendance[date]).length
+              const totalHoursToday = workedDays * row.adjustedHours
+              return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td>${businessDates.map(date => `<td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${analystAttendance[date] ? "checked" : ""} onchange="setAdminAttendanceDay('${monthKey}','${email}','${date}', this.checked)" style="width:auto;margin:0"></td>`).join("")}<td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${totalHoursToday.toFixed(2)} h</strong></td></tr>`
+            }).join("")}</tbody>
+          </table>
+        </div>
+        <h4 style="margin:0 0 8px">Gestión de horas</h4>
         <div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
             <thead><tr>
@@ -2482,9 +2552,10 @@ Cliente B`)
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas diarias ajustadas</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad de días hábiles del mes</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días ausentes <span class="tinyHelpIcon" title="Este campo abarca feriados, licencias y días no trabajados por motivos personales por el analista.">?</span></th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo mensual</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">TIempo mensual teorico</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado (h)</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% GAP</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% GAP mensual</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% GAP HOY</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th>
             </tr></thead>
             <tbody>
@@ -2493,14 +2564,17 @@ Cliente B`)
                 const row = getAdminHoursRowValues(email)
                 const autoMonthly = Math.max(0, row.monthDays - row.holidays) * row.adjustedHours
                 const executedHours = Number((executedByAnalyst[email] || 0) / 60)
+                const workedDays = businessDates.filter(date => !!(attendanceMonth[email] || {})[date]).length
+                const todayHours = workedDays * row.adjustedHours
                 const gapPct = autoMonthly > 0 ? (executedHours / autoMonthly) * 100 : 0
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
+                const gapHoy = autoMonthly > 0 ? (todayHours / autoMonthly) * 100 : 0
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapHoy.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
               }).join("")}
             </tbody>
           </table>
         </div>
         <div class="small" style="margin-top:8px">
-          <div><strong>Feriados fijos considerados en ${htmlEscape(monthKey)}:</strong> ${selectedMonthHolidays.length ? selectedMonthHolidays.map(h => `${formatDateDMY(h.date)} (${htmlEscape(h.label)})`).join(", ") : "Sin feriados fijos en este período."}</div>
+          <div><strong>Feriados fijos considerados en ${htmlEscape(monthKey)}:</strong> ${activeHolidays.length ? activeHolidays.map(h => `${formatDateDMY(h.date)} (${htmlEscape(h.label)})`).join(", ") : "Sin feriados fijos en este período."}</div>
           <div style="margin-top:4px"><strong>Próximo mes (${htmlEscape(nextMonthKey)}):</strong> ${nextMonthHolidays.length ? nextMonthHolidays.map(h => `${formatDateDMY(h.date)} (${htmlEscape(h.label)})`).join(", ") : "Sin feriados fijos"} · Días hábiles: <strong>${nextBusinessDays}</strong>.</div>
         </div>
         <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
@@ -2556,7 +2630,7 @@ Cliente B`)
             <thead><tr>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total consolidado (${htmlEscape(monthKey)})</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th>
             </tr></thead>
             <tbody>
               ${rows.map(([client, mins]) => {
@@ -2565,7 +2639,7 @@ Cliente B`)
                 const tasksHtml = expanded
                   ? `<div style="margin-top:6px">${tasks.length ? tasks.map(task => `<div class="small">• ${htmlEscape(task.id)} · ${htmlEscape(task.title)} · Prioridad: ${htmlEscape(task.priority)} · ${fmtMinutes(task.mins)}</div>`).join("") : `<div class="small">Sin tareas con tiempo en este período.</div>`}</div>`
                   : ""
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(client)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(mins))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleAdminCapacityClientTasks('${encodeURIComponent(client)}')">${expanded ? "Ocultar tareas" : "Mostrar tareas"}</button>${tasksHtml}</td></tr>`
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div>${htmlEscape(client)}</div>${tasksHtml}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(mins))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleAdminCapacityClientTasks('${encodeURIComponent(client)}')">${expanded ? "Ocultar tareas" : "Mostrar tareas"}</button></td></tr>`
               }).join("")}
             </tbody>
           </table>
@@ -2800,11 +2874,85 @@ Cliente B`)
         : `<p class="small">Sin reportes de soporte.</p>`
     }
 
+    async function ensureQualityFormsLoaded(){
+      if(qualitySurveyForms) return qualitySurveyForms
+      const fromDb = (await db.ref("quality_forms").once("value")).val() || {}
+      qualitySurveyForms = {
+        analista: Array.isArray(fromDb.analista) && fromDb.analista.length ? fromDb.analista : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.analista)),
+        consultor: Array.isArray(fromDb.consultor) && fromDb.consultor.length ? fromDb.consultor : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.consultor))
+      }
+      return qualitySurveyForms
+    }
+
+    function renderQualityQuestions(containerId, role){
+      const wrap = document.getElementById(containerId)
+      const forms = qualitySurveyForms || DEFAULT_QUALITY_FORMS
+      const items = Array.isArray(forms?.[role]) ? forms[role] : []
+      if(!wrap) return
+      wrap.innerHTML = items.map((q, idx) => `
+        <div>
+          <label>${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</label>
+          <select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}"><option value="">Seleccionar</option>${(Array.isArray(q.options) ? q.options : []).map(opt => `<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select>
+        </div>
+      `).join("")
+    }
+
+    function collectQualityAnswers(containerId){
+      const wrap = document.getElementById(containerId)
+      const inputs = Array.from(wrap?.querySelectorAll("[data-quality-input]") || [])
+      const answers = {}
+      for(const input of inputs){
+        const key = String(input.getAttribute("data-quality-input") || "")
+        const value = String(input.value || "").trim()
+        if(!value) return null
+        answers[key] = value
+      }
+      return answers
+    }
+
+    function buildQualityLegacyFields(answers){
+      const reception = answers.reception || Object.values(answers)[0] || ""
+      const communication = answers.communication || Object.values(answers)[1] || ""
+      const overallRaw = Number(answers.overall || 0)
+      const fallbackOverall = Object.values(answers).find(v => Number(v) >= 1 && Number(v) <= 10)
+      const overall = overallRaw || Number(fallbackOverall || 0)
+      return { reception, communication, overall }
+    }
+
+    function addQualityQuestion(role){
+      qualitySurveyForms = qualitySurveyForms || JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS))
+      qualitySurveyForms[role] = qualitySurveyForms[role] || []
+      qualitySurveyForms[role].push({ id: `q_${Date.now()}`, label: "Nueva pregunta", options: ["Sí","No"] })
+      loadQualitySurveyAdmin()
+    }
+
+    function removeQualityQuestion(role, idx){
+      qualitySurveyForms = qualitySurveyForms || JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS))
+      qualitySurveyForms[role] = (qualitySurveyForms[role] || []).filter((_,i)=>i!==idx)
+      loadQualitySurveyAdmin()
+    }
+
+    function updateQualityQuestion(role, idx, field, value){
+      qualitySurveyForms = qualitySurveyForms || JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS))
+      qualitySurveyForms[role] = qualitySurveyForms[role] || []
+      if(!qualitySurveyForms[role][idx]) return
+      if(field === "options") qualitySurveyForms[role][idx][field] = String(value || "").split(",").map(s=>s.trim()).filter(Boolean)
+      else qualitySurveyForms[role][idx][field] = String(value || "")
+    }
+
+    async function saveQualityForms(){
+      await ensureQualityFormsLoaded()
+      await db.ref("quality_forms").set(qualitySurveyForms)
+      showToast("Encuestas de calidad guardadas.", "ok")
+      loadQualitySurveyAdmin()
+    }
+
     async function loadQualitySurveyAdmin(){
       const container = document.getElementById("adminQualityList")
       if(!container) return
+      await ensureQualityFormsLoaded()
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {}).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
-      if(!surveys.length){ container.innerHTML = `<p class="small">Sin encuestas todavía.</p>`; return }
+      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p>`; return }
       const byAnalyst = {}
       const byConsultor = {}
       surveys.forEach(s => {
@@ -2827,6 +2975,7 @@ Cliente B`)
       }).join("")
       const details = surveys.map(s => `<div class="feedItem"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Evalúa: <strong>${htmlEscape(userDisplayNameByEmail(s.raterEmail || "-"))}</strong> (${htmlEscape(s.raterRole || "-")}) → <strong>${htmlEscape(userDisplayNameByEmail(s.ratedEmail || "-"))}</strong> (${htmlEscape(s.ratedRole || "-")}).<br>Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(normalizeQualityToTen(s.overall||0)))} / 10).<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
       container.innerHTML = `
+        ${renderQualityBuilderAdminHtml()}
         <div class="feedItem">
           <div class="feedType">Cómo funciona la encuesta de calidad</div>
           <div class="feedMeta">
@@ -2842,11 +2991,18 @@ Cliente B`)
       `
     }
 
-    function openCloseSurveyModal(ticketId, nextTicketData){
+    function renderQualityBuilderAdminHtml(){
+      const renderRole = (role, title) => {
+        const items = qualitySurveyForms?.[role] || []
+        return `<div class="card" style="padding:10px;margin:0 0 8px"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">${title}</h4><button class="ghost" onclick="addQualityQuestion('${role}')">+ Pregunta</button></div>${items.length ? items.map((q, idx) => `<div class="row"><div><label>ID</label><input value="${htmlEscape(q.id || '')}" onchange="updateQualityQuestion('${role}',${idx},'id',this.value)"></div><div><label>Pregunta</label><input value="${htmlEscape(q.label || '')}" onchange="updateQualityQuestion('${role}',${idx},'label',this.value)"></div><div><label>Opciones (coma)</label><input value="${htmlEscape((q.options||[]).join(', '))}" onchange="updateQualityQuestion('${role}',${idx},'options',this.value)"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="removeQualityQuestion('${role}',${idx})">Quitar</button></div></div>`).join("") : `<p class="small">Sin preguntas.</p>`}</div>`
+      }
+      return `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Admin puede modificar, agregar y quitar preguntas; y definir formularios diferentes para analista y consultor.</div><div style="margin-top:8px">${renderRole("analista","Encuesta que completa el consultor (evalúa analista)")}${renderRole("consultor","Encuesta que completa el analista (evalúa consultor)")}<div class="inline" style="justify-content:flex-end"><button onclick="saveQualityForms()">Guardar formularios</button></div></div></div>`
+    }
+
+    async function openCloseSurveyModal(ticketId, nextTicketData){
       pendingCloseSurvey = { ticketId, nextTicketData }
-      document.getElementById("closeSurveyReception").value = ""
-      document.getElementById("closeSurveyCommunication").value = ""
-      document.getElementById("closeSurveyOverall").value = ""
+      await ensureQualityFormsLoaded()
+      renderQualityQuestions("closeSurveyFields", "consultor")
       document.getElementById("closeSurveyModal")?.classList.remove("hidden")
     }
 
@@ -2857,9 +3013,9 @@ Cliente B`)
 
     async function submitCloseSurveyAndCloseTicket(){
       if(!pendingCloseSurvey) return
-      const reception = document.getElementById("closeSurveyReception")?.value || ""
-      const communication = document.getElementById("closeSurveyCommunication")?.value || ""
-      const overall = Number(document.getElementById("closeSurveyOverall")?.value || 0)
+      const answers = collectQualityAnswers("closeSurveyFields")
+      if(!answers) return alert("Completá todos los campos de la encuesta.")
+      const { reception, communication, overall } = buildQualityLegacyFields(answers)
       if(!reception || !communication || !overall) return alert("Completá todos los campos de la encuesta.")
       const { ticketId, nextTicketData } = pendingCloseSurvey
       const survey = {
@@ -2873,6 +3029,7 @@ Cliente B`)
         reception,
         communication,
         overall,
+        answers,
         createdAt: new Date().toISOString()
       }
       const updated = { ...nextTicketData, status: "done", closeSurvey: survey, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -2887,17 +3044,16 @@ Cliente B`)
       loadDashboard()
     }
 
-    function openConsultorSurveyModal(ticketId){
+    async function openConsultorSurveyModal(ticketId){
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
       pendingConsultorSurveyTicket = ticket
+      await ensureQualityFormsLoaded()
       const info = document.getElementById("consultorSurveyTicketInfo")
       if(info){
         info.innerHTML = `<strong>${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</strong><br>Analista: ${htmlEscape(userDisplayNameByEmail(ticket.assignedTo||"-"))}`
       }
-      document.getElementById("consultorSurveyReception").value = ""
-      document.getElementById("consultorSurveyCommunication").value = ""
-      document.getElementById("consultorSurveyOverall").value = ""
+      renderQualityQuestions("consultorSurveyFields", "analista")
       document.getElementById("consultorSurveyModal")?.classList.remove("hidden")
     }
 
@@ -2908,9 +3064,9 @@ Cliente B`)
 
     async function submitConsultorPendingSurvey(){
       if(currentRole !== "consultor" || !pendingConsultorSurveyTicket) return
-      const reception = document.getElementById("consultorSurveyReception")?.value || ""
-      const communication = document.getElementById("consultorSurveyCommunication")?.value || ""
-      const overall = Number(document.getElementById("consultorSurveyOverall")?.value || 0)
+      const answers = collectQualityAnswers("consultorSurveyFields")
+      if(!answers) return alert("Completá todos los campos de la encuesta.")
+      const { reception, communication, overall } = buildQualityLegacyFields(answers)
       if(!reception || !communication || !overall) return alert("Completá todos los campos de la encuesta.")
       const ticket = pendingConsultorSurveyTicket
       const survey = {
@@ -2924,6 +3080,7 @@ Cliente B`)
         reception,
         communication,
         overall,
+        answers,
         createdAt: new Date().toISOString()
       }
       if(!survey.analystEmail) return alert("Este ticket no tiene analista asignado para evaluar.")
