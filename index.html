@@ -194,6 +194,20 @@
       border-radius: 999px; background: #ef4444; color: #fff;
       font-size: 10px; display: none; align-items: center; justify-content: center;
     }
+    .topbarLayout {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
+      align-items: center;
+      gap: 12px;
+    }
+    .topbarUserInfo { min-width: 0; }
+    .topbarAvatar { width: 42px; height: 42px; margin-right: 0; }
+    .topbarCenter { text-align: center; }
+    .topbarActions { justify-self: end; }
+    @media (max-width: 1080px) {
+      .topbarLayout { grid-template-columns: 1fr; }
+      .topbarCenter, .topbarActions { justify-self: start; text-align: left; }
+    }
 
     /* ── Forms ─────────────────────────────────────────────────────── */
     label {
@@ -360,7 +374,7 @@
       font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
     }
     .qualityOrb {
-      position: fixed; left: 24px; top: 104px; z-index: 135;
+      position: fixed; left: 14px; top: 14px; z-index: 90;
       width: 92px; height: 92px; border-radius: 50%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       color: var(--text); font-weight: 700;
@@ -382,7 +396,7 @@
     .qualityOrb #qualityOrbValue { font-size: 20px; line-height: 1; }
     .qualityOrb .smallLabel { font-size: 9px; opacity: .92; letter-spacing: .03em; text-transform: uppercase; }
     @media (max-width: 1100px){
-      .qualityOrb{ left: 10px; top: 84px; width: 78px; height: 78px; }
+      .qualityOrb{ left: 8px; top: 8px; width: 72px; height: 72px; }
     }
 
     /* ── Comments ──────────────────────────────────────────────────── */
@@ -1020,6 +1034,9 @@
     var analystAgendaVisible = true
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
+    var portfolioViewerConsultor = ""
+    var adminHoursMonth = toLocalDateOnly(new Date()).slice(0, 7)
+    var adminHoursHolidaysByAnalyst = {}
     var adminGuidelinesClient = ""
     var analystNotificationsOpen = false
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
@@ -1154,7 +1171,7 @@
     }
 
     function setMainViewTab(tab){
-      mainViewTab = ["saved","portfolio","quality_results","my_ticket_status"].includes(tab) ? tab : "tickets"
+      mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status"].includes(tab) ? tab : "tickets"
       closeHeaderMenu()
       renderApp()
     }
@@ -1225,6 +1242,19 @@
 
     function commentDisplayName(email){
       return userDisplayNameByEmail(email)
+    }
+
+    function roleLabel(role){
+      const normalized = String(role || "").toLowerCase()
+      if(normalized === "admin") return "Admin"
+      if(normalized === "analista") return "Analista"
+      if(normalized === "consultor") return "Consultor"
+      return role || "-"
+    }
+
+    function welcomeBySex(user){
+      const sex = String(user?.sex || "").toLowerCase()
+      return sex === "mujer" ? "Bienvenida" : "Bienvenido"
     }
 
     function resolveInformerEmail(ticket){
@@ -2178,6 +2208,111 @@ Cliente B`)
       wrap.innerHTML = items.length ? items.map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span><label class="switch"><input type="checkbox" ${portfolio[key] ? "checked" : ""} onchange="toggleConsultorPortfolioClient('${key}', this.checked)"><span class="slider"></span></label></div>`).join("") : `<div class="small">No hay clientes cargados.</div>`
     }
 
+    function setPortfolioViewerConsultor(email){
+      portfolioViewerConsultor = String(email || "").toLowerCase()
+      loadPortfolioOverview()
+    }
+
+    async function toggleConsultorPortfolioClientAsAdmin(consultorEmail, clientKey, enabled){
+      if(currentRole !== "admin") return
+      const userKey = emailKey(String(consultorEmail || ""))
+      await db.ref("users_by_email").child(userKey).child("clientPortfolio").child(clientKey).set(!!enabled)
+      loadPortfolioOverview()
+    }
+
+    async function loadPortfolioOverview(){
+      if(!(mainViewTab === "portfolio_overview" && (currentRole === "admin" || currentRole === "analista"))) return
+      const wrap = document.getElementById("portfolioOverviewContainer")
+      if(!wrap) return
+      const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
+      const consultors = users.filter(u => String(u?.role || "").toLowerCase() === "consultor" && String(u?.active) !== "false")
+      if(!consultors.length){ wrap.innerHTML = `<p class="small">No hay consultores activos.</p>`; return }
+      if(!portfolioViewerConsultor || !consultors.some(c => String(c.email||"").toLowerCase() === portfolioViewerConsultor)){
+        portfolioViewerConsultor = String(consultors[0].email || "").toLowerCase()
+      }
+      const selected = consultors.find(c => String(c.email||"").toLowerCase() === portfolioViewerConsultor) || consultors[0]
+      const clientsObj = (await db.ref("clients").once("value")).val() || {}
+      const portfolio = selected?.clientPortfolio || {}
+      const selectedKeys = Object.keys(portfolio).filter(k => !!portfolio[k])
+      const selectedClients = selectedKeys.map(k => String(clientsObj?.[k]?.name || k))
+      const tickets = (cachedTickets || []).filter(t => selectedClients.includes(String(t.client || "")))
+      wrap.innerHTML = `
+        <div class="row">
+          <div><label>Consultor</label><select onchange="setPortfolioViewerConsultor(this.value)">${consultors.map(c => `<option value="${htmlEscape(String(c.email||"").toLowerCase())}" ${String(c.email||"").toLowerCase()===portfolioViewerConsultor?"selected":""}>${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</option>`).join("")}</select></div>
+        </div>
+        <div style="margin-top:8px">
+          <h4 style="margin:0 0 8px">Clientes asignados</h4>
+          ${Object.entries(clientsObj).map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span>${currentRole === "admin" ? `<label class="switch"><input type="checkbox" ${portfolio[key] ? "checked" : ""} onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label>` : `<span class="small">${portfolio[key] ? "Asignado" : "No asignado"}</span>`}</div>`).join("")}
+        </div>
+        <div style="margin-top:12px">
+          <h4 style="margin:0 0 8px">Tickets según cartera (${tickets.length})</h4>
+          ${tickets.length ? tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Cliente: ${htmlEscape(t.client||"-")} · Estado: ${htmlEscape(STATUS[t.status] || t.status || "-")}</div></div>`).join("") : `<p class="small">No hay tickets para la cartera seleccionada.</p>`}
+        </div>
+      `
+    }
+
+    function setAdminHoursMonth(value){
+      adminHoursMonth = String(value || "").trim() || toLocalDateOnly(new Date()).slice(0, 7)
+      loadAdminHoursTable()
+    }
+
+    function monthBusinessDaysARG(yyyyMm){
+      const [yearRaw, monthRaw] = String(yyyyMm || "").split("-")
+      const year = Number(yearRaw)
+      const month = Number(monthRaw)
+      if(!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return 0
+      const day = new Date(year, month - 1, 1)
+      let count = 0
+      while(day.getMonth() === month - 1){
+        const dow = day.getDay()
+        if(dow !== 0 && dow !== 6) count++
+        day.setDate(day.getDate() + 1)
+      }
+      return count
+    }
+
+    function updateAdminHoursHoliday(analystEmail, value){
+      adminHoursHolidaysByAnalyst[String(analystEmail || "").toLowerCase()] = Math.max(0, Number(value || 0))
+      loadAdminHoursTable()
+    }
+
+    async function loadAdminHoursTable(){
+      if(!(currentRole === "admin" && adminPanelTab === "people")) return
+      const wrap = document.getElementById("adminHoursTable")
+      if(!wrap) return
+      let users = Object.values(cachedUsersByEmail || {})
+      if(!users.length) users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
+      const analysts = users.filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const factor = 0.10
+      const hours = 9
+      const adjusted = hours * (1 - factor)
+      const businessDays = monthBusinessDaysARG(adminHoursMonth)
+      wrap.innerHTML = analysts.length ? `
+        <div style="overflow:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Factor de ajuste</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas trabajadas</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas diarias ajustadas</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad de días hábiles del mes</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Feriados</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo mensual</th>
+            </tr></thead>
+            <tbody>
+              ${analysts.map(u => {
+                const email = String(u.email || "").toLowerCase()
+                const feriados = Math.max(0, Number(adminHoursHolidaysByAnalyst[email] || 0))
+                const daysNet = Math.max(0, businessDays - feriados)
+                const monthly = daysNet * adjusted
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">10%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">9</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${adjusted.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${businessDays}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${feriados}" onchange="updateAdminHoursHoliday('${email}', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${monthly.toFixed(2)}</td></tr>`
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="small">No hay analistas disponibles.</div>`
+    }
+
     async function fetchTicketsFromSheet(){
       const query = encodeURIComponent("select A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T")
       const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(SHEET_TICKETS_NAME)}&tq=${query}`
@@ -2674,6 +2809,7 @@ Cliente B`)
       const nickname = document.getElementById("profileNickname")
       const useNickname = document.getElementById("profileUseNickname")
       const avatar = document.getElementById("profileCurrentAvatar")
+      const sex = document.getElementById("profileSex")
       const secureToggle = document.getElementById("profileSecureLogin")
       const secretInput = document.getElementById("profileTotpSecret")
       const otpapp = document.getElementById("profileOtpAuthUrl")
@@ -2681,6 +2817,7 @@ Cliente B`)
       if(nickname) nickname.value = String(user.nickname || "")
       if(useNickname) useNickname.checked = String(user.useNicknameInTickets || "").toLowerCase() === "true" || user.useNicknameInTickets === true
       if(avatar) avatar.src = buildAvatarUrl(user, user.email || currentUser.email)
+      if(sex) sex.value = String(user.sex || "")
       if(secureToggle) secureToggle.checked = String(user.twoFactorEnabled || "").toLowerCase() === "true" || user.twoFactorEnabled === true
       if(secretInput) secretInput.value = String(user.twoFactorSecret || "")
       const otpValue = String(user.twoFactorOtpAuthUrl || "")
@@ -2694,6 +2831,7 @@ Cliente B`)
       const profileName = (document.getElementById("profileName")?.value || "").trim()
       const nickname = (document.getElementById("profileNickname")?.value || "").trim()
       const useNickname = !!document.getElementById("profileUseNickname")?.checked
+      const sex = String(document.getElementById("profileSex")?.value || "").toLowerCase()
       const file = document.getElementById("profilePhoto")?.files?.[0] || null
       let photoFields = {}
       if(file){
@@ -2710,6 +2848,7 @@ Cliente B`)
         profileName,
         nickname,
         useNicknameInTickets: useNickname,
+        sex,
         ...photoFields
       }
       await db.ref("users_by_email").child(payload.key).update(payload)
@@ -2785,6 +2924,9 @@ Cliente B`)
     function renderApp(){
       const isAdmin = currentRole === "admin"
       const isAnalyst = currentRole === "analista"
+      const currentProfile = cachedUsersByEmail[emailKey(currentUser?.email || "")] || {}
+      const currentDisplayName = userDisplayNameByEmail(currentUser?.email || "")
+      const currentWelcome = `${welcomeBySex(currentProfile)} ${currentDisplayName}`
       const canCreateTicket = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const showAdminPanel = isAdmin && adminPanelTab !== "panel"
       const showAnalystProfile = isAnalyst && analystPanelTab === "profile"
@@ -2794,17 +2936,24 @@ Cliente B`)
       const showAdminGuidelines = isAdmin && adminPanelTab === "guidelines"
       const showSavedItems = mainViewTab === "saved"
       const showConsultorPortfolio = currentRole === "consultor" && mainViewTab === "portfolio"
+      const showPortfolioOverview = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "portfolio_overview"
       const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAdminGuidelines || showSavedItems || showConsultorPortfolio || showQualityResults
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAdminGuidelines || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults
 
       document.getElementById("app").innerHTML = `
         <div class="card topbarCard">
-          <div class="inline" style="justify-content:space-between">
-            <div>
-              <h2 style="margin:0">NOVA</h2>
-              <p class="small" style="margin:6px 0 0">Panel ${htmlEscape(currentRole)} · ${htmlEscape(currentUser.email)}</p>
+          <div class="topbarLayout">
+            <div class="inline topbarUserInfo" style="gap:10px;flex-wrap:nowrap">
+              <img class="commentAvatar topbarAvatar" src="${htmlEscape(buildAvatarUrl(currentProfile, currentUser.email || ''))}" data-fallback="${htmlEscape(buildInitialAvatar(currentDisplayName || 'U'))}" onerror="handleAvatarError(this)" alt="avatar">
+              <div style="min-width:0">
+                <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${htmlEscape(currentWelcome)}</div>
+                <div class="small">${htmlEscape(roleLabel(currentRole))}</div>
+              </div>
             </div>
-            <div class="inline">
+            <div class="topbarCenter">
+              <h2 style="margin:0">NOVA</h2>
+            </div>
+            <div class="inline topbarActions">
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${isAnalyst ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystGuidelines)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
@@ -2814,8 +2963,8 @@ Cliente B`)
                   <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
                   <button class="ghost" onclick="setMainViewTab('saved')">Mis cosas</button>
                   <button class="ghost" onclick="setMainViewTab('tickets')">Tickets</button>
-                  ${currentRole === "consultor" ? `<button class="ghost" onclick="setMainViewTab('portfolio')">Cartera de clientes</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button>` : ""}${isAnalyst ? `<button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button><button class="ghost" onclick="setMainViewTab('my_ticket_status')">Estado de mis tickets</button>` : ""}
-                  ${isAdmin ? `<button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('help')">Ayuda</button><button class="ghost" onclick="setAdminTab('announcements')">Comunicados</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
+                  ${currentRole === "consultor" ? `<button class="ghost" onclick="setMainViewTab('portfolio')">Cartera de clientes</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button>` : ""}${isAnalyst ? `<button class="ghost" onclick="setMainViewTab('portfolio_overview')">Cartera de consultores</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button><button class="ghost" onclick="setMainViewTab('my_ticket_status')">Estado de mis tickets</button>` : ""}
+                  ${isAdmin ? `<button class="ghost" onclick="setMainViewTab('portfolio_overview')">Cartera de consultores</button><button class="ghost" onclick="setAdminTab('people')">Gestión de personas</button><button class="ghost" onclick="setAdminTab('user_management')">Gestión de usuarios</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('settings')">Configuraciones</button><button class="ghost" onclick="setAdminTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('help')">Ayuda</button><button class="ghost" onclick="setAdminTab('announcements')">Comunicados</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
                   ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="setAnalystTab('agenda')">Mi agenda</button>` : ""}
                 </div>
               </div>
@@ -2835,31 +2984,29 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná cuáles clientes pertenecen a tu cartera y agregá nuevos si hace falta.</div><div class="row"><div><label>Nuevo cliente</label><input id="consultorClientName" placeholder="Nombre del cliente"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Agregar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
         ` : (currentRole==='analista' && mainViewTab==='my_ticket_status') ? `
           <div class="card"><h3 style="margin-top:0">Estado de mis tickets</h3><div id="myTicketStatusContainer" class="small"></div></div>
+        ` : showPortfolioOverview ? `
+          <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
         ` : showAdminPanel ? (adminPanelTab==='people' ? `
           <div class="card"><h3 style="margin-top:0">Gestión de personas</h3>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
             <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Equipo (si es analista)</label><select id="uTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
             <div class="row" style="align-items:end"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button><button class="ghost helpIcon" onclick="showImportFormatHelp('users')">?</button></div></div>
-            <div id="usersList" class="small"></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
-            <h4 style="margin:0 0 8px">Clientes</h4>
-            <div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient(this)">Agregar cliente</button></div></div>
-            <div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div>
-            <div id="clientsList" class="small"></div>
-            <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
-            <h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div>
+            <h4 style="margin:0 0 8px">Gestión de horas</h4>
+            <div class="inline" style="margin-bottom:8px"><label style="margin:0">Mes</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"></div>
+            <div id="adminHoursTable" class="small"></div>
           </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><h3 style="margin-top:0">Configuraciones</h3><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3><div class="small"><h4 style="margin:10px 0 6px">1) Flujo general de tickets</h4><p>El ticket nace desde Admin/Analista/Consultor. Se define cliente, informador, deadline y campos de negocio (incluye tipo de actividad si está configurado). Luego se gestiona por estados (pendiente, en curso, recurrente, finalizada), con comentarios y tiempos.</p><p><strong>Consecuencia:</strong> toda modificación impacta dashboard, agenda, actividad reciente, notificaciones y trazabilidad histórica.</p><h4 style="margin:10px 0 6px">2) Roles y consecuencias por usuario</h4><p><strong>Admin:</strong> configura usuarios, clientes, campos, lineamientos, comunicados, agenda por equipo y permisos de edición por rol. Puede apagar/encender comunicados y decidir qué ve cada rol.</p><p><strong>Analista:</strong> gestiona tickets asignados, solicita cambios de deadline, registra tiempos, colabora con ayudantes y completa encuesta al cerrar. Si el admin desactiva su switch de edición, no puede modificar detalle/estado/asignaciones.</p><p><strong>Consultor:</strong> crea tickets, comenta, marca urgentes, aprueba/rechaza solicitudes de deadline y responde encuesta pendiente al cierre. Si su switch de edición está apagado, ve detalle sin editar.</p><h4 style="margin:10px 0 6px">3) Comentarios, lectura y notificaciones</h4><p>Cada comentario actualiza actividad. El sistema diferencia internos y visibles, calcula pendientes de lectura y muestra alertas en paneles. Los íconos de lectura y badges dependen del autor, rol y marca de leído por usuario.</p><p><strong>Consecuencia:</strong> comentar o mover tickets impacta indicadores y puede disparar recordatorios, alertas de urgencia y pendientes.</p><h4 style="margin:10px 0 6px">4) Tiempos y ayudantes</h4><p>El ticket guarda tiempo consolidado y por usuario (analista/ayudantes). Esto afecta reportes, vista "Estado de mis tickets" y control operativo del equipo.</p><p><strong>Consecuencia:</strong> si no se carga tiempo, el analista puede quedar con advertencias de gestión incompleta.</p><h4 style="margin:10px 0 6px">5) Lineamientos y calidad</h4><p>Lineamientos: el admin publica por cliente; analista puede proponer para aprobación. Calidad: analista evalúa consultor al cierre y luego consultor evalúa analista; cada uno ve resultados propios con recomendaciones.</p><p><strong>Consecuencia:</strong> las encuestas alimentan puntaje visible y sirven para detectar brechas de recepción, comunicación y satisfacción.</p><h4 style="margin:10px 0 6px">6) Comunicados</h4><p>El admin puede publicar, programar fecha/hora y apagar comunicados. Los usuarios reciben únicamente comunicados activos y ya vigentes por horario.</p><p><strong>Consecuencia:</strong> permite coordinar anuncios operativos sin saturar ni mostrar mensajes fuera de ventana.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
-            <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div></div>
+            <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
             <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo en tickets</span></div>
             <div class="row" style="margin-top:8px"><div><label>Foto de perfil</label><input id="profilePhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveMyProfile()">Guardar perfil</button></div></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
             <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
           </div>
-          ` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
+          ` : adminPanelTab==='user_management' ? `<div class="card"><h3 style="margin-top:0">Gestión de usuarios</h3><div id="usersList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Clientes</h4><div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Analista)</h3>
             <div class="row">
@@ -2873,6 +3020,8 @@ Cliente B`)
                 <input id="profileName" type="text" placeholder="Nombre visible en tickets">
                 <label>Apodo</label>
                 <input id="profileNickname" type="text" placeholder="Ej: Naty, Nico, etc.">
+                <label>Sexo</label>
+                <select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select>
                 <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo como nombre visible en tickets</span></div>
                 <div style="margin-top:10px"><button onclick="saveMyProfile()">Guardar perfil</button></div>
               </div>
@@ -2945,7 +3094,7 @@ Cliente B`)
 
           <div class="card">
             <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
-            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de tarea</option>${activityFilterOptionsHtml()}</select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
+            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div><div><select id="filterClient" onchange="updateClientFilter(this.value)"><option value="">Todos los clientes</option></select></div><div><select id="filterStatus" onchange="updateStatusFilter(this.value)"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" onchange="updateActivityFilter(this.value)"><option value="">Todo tipo de tarea</option>${activityFilterOptionsHtml()}</select></div>${isAnalyst?`<div><select id="filterAnalyst" onchange="updateAnalystFilter(this.value)"><option value="">Todos los analistas</option></select></div>`:""}</div>
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
@@ -2955,7 +3104,8 @@ Cliente B`)
 
       applyTheme()
       closeHeaderMenu()
-      if(isAdmin && adminPanelTab === 'people'){ loadUsersAdmin(); loadClientsAdmin() }
+      if(isAdmin && adminPanelTab === 'people'){ loadAdminHoursTable() }
+      if(isAdmin && adminPanelTab === 'user_management'){ loadUsersAdmin(); loadClientsAdmin() }
       if(isAdmin && adminPanelTab === 'support'){ loadSupportAdmin() }
       if(isAdmin && adminPanelTab === 'settings'){ loadRoleTicketEditSettings(); loadTicketFieldSettings() }
       if(isAdmin && adminPanelTab === 'guidelines'){ loadGuidelinesAdmin() }
@@ -2977,6 +3127,8 @@ Cliente B`)
         renderSavedItems()
       }else if(showConsultorPortfolio){
         loadConsultorPortfolio()
+      }else if(showPortfolioOverview){
+        loadPortfolioOverview()
       }else if(showQualityResults){
         setupRealtimeStreams()
         loadTickets()
@@ -3354,11 +3506,8 @@ Cliente B`)
         return !readBy[myReadKey]
       }).length
       const incompleteTickets = mine.filter(t => {
-        const publicationCount = Number(t?.publicationCount)
-        const worksheet = String(t?.workSheet || "").trim()
-        const tracking = t?.timeTracking || {}
-        const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
-        return !Number.isFinite(publicationCount) || publicationCount <= 0 || !worksheet || consolidated <= 0
+        const missing = getTicketMissingFields(t)
+        return missing.length > 0
       })
       wrap.innerHTML = `
         <div class="inline" style="gap:10px;flex-wrap:wrap">
@@ -3371,10 +3520,15 @@ Cliente B`)
           <table style="width:100%;border-collapse:collapse">
             <thead>
               <tr>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Antigüedad</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha de creación</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. actualización</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Número de ticket</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ayudantes de la tarea</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo cargado consolidado</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo cargado por mí</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Campos por completar</th>
               </tr>
             </thead>
             <tbody>
@@ -3385,12 +3539,37 @@ Cliente B`)
                 const tracking = t.timeTracking || {}
                 const myMinutes = Number(tracking?.users?.[emailKey(myEmail)]?.totalMinutes || 0)
                 const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpers.join(", ") || "Sin ayudantes")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(consolidated))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(myMinutes))}</td></tr>`
-              }).join("") || `<tr><td colspan="4" style="padding:10px;border-bottom:1px solid var(--stroke-2);text-align:center" class="small">Sin tickets asignados.</td></tr>`}
+                const missing = getTicketMissingFields(t)
+                const missingLabel = missing.length ? missing.join(" · ") : "Sin campos pendientes"
+                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(ticketAgeLabel(t))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt || "" ) || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.updatedAt || t.createdAt || "") || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpers.join(", ") || "Sin ayudantes")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(consolidated))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(myMinutes))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(missingLabel)}">${missing.length}</td></tr>`
+              }).join("") || `<tr><td colspan="9" style="padding:10px;border-bottom:1px solid var(--stroke-2);text-align:center" class="small">Sin tickets asignados.</td></tr>`}
             </tbody>
           </table>
         </div>
       `
+    }
+
+    function ticketAgeLabel(ticket){
+      const created = new Date(ticket?.createdAt || "")
+      if(Number.isNaN(created.getTime())) return "-"
+      const start = new Date(created.getFullYear(), created.getMonth(), created.getDate())
+      const now = new Date()
+      const current = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const diffMs = current.getTime() - start.getTime()
+      const days = Math.max(0, Math.floor(diffMs / 86400000))
+      return `${days} día(s)`
+    }
+
+    function getTicketMissingFields(ticket){
+      const publicationCount = Number(ticket?.publicationCount)
+      const worksheet = String(ticket?.workSheet || "").trim()
+      const tracking = ticket?.timeTracking || {}
+      const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
+      const missing = []
+      if(!Number.isFinite(publicationCount) || publicationCount <= 0) missing.push("Cantidad de publicaciones")
+      if(!worksheet) missing.push("Worksheet")
+      if(consolidated <= 0) missing.push("Tiempo consolidado")
+      return missing
     }
 
     async function publishAnnouncement(){
@@ -3621,7 +3800,7 @@ Cliente B`)
         const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && (resolveInformerEmail(t) === (currentUser.email||"").toLowerCase()))
         if(!canSeeTicket) return false
         if(includeSearch){
-          const haystack = `${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
+          const haystack = `${t.id||""} ${t.title||""} ${t.description||""} ${t.client||""} ${t.createdBy||""}`.toLowerCase()
           if(ticketSearchTerm && !haystack.includes(ticketSearchTerm)) return false
         }
         if(ticketFilterClient && !(String(t.client||"").toLowerCase().includes(ticketFilterClient))) return false
@@ -3798,7 +3977,7 @@ Cliente B`)
             ${ticketWithRead.hasProblem ? `<span class="urgentTopFlag">🛑 CON PROBLEMAS</span>` : ''}
             ${ticketWithRead.plannedWorkDate && String(ticketWithRead.plannedWorkDate) >= toLocalDateOnly(new Date()) ? `<span class="badge ok">Planificado para trabajar: ${htmlEscape(plannedWorkLabel(ticketWithRead.plannedWorkDate))}</span>` : ""}
           </div>
-          <div class="inline" style="gap:8px">${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
+          <div class="inline" style="gap:8px">${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}</div>
         </div>
         <div class="detailLayout withSidebar">
           <div class="detailMainInfo">
@@ -3810,8 +3989,7 @@ Cliente B`)
                 <div class="deadlineControl">
                   <input id="detail-deadline-${ticketWithRead.id}" ${canEditDeadline?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} type="date" value="${htmlEscape(ticketWithRead.deadline||"")}" ${canEditDeadline?"":"disabled"}>
                   <div class="deadlineActions">
-                    <button class="ghost deadlineTodayBtn" ${canEditDeadline ? "" : "disabled"} title="Usar fecha actual" onclick="setDeadlineToTodayFromDetail('${ticketWithRead.id}')">Fecha actual</button>
-                    ${(currentRole === "analista" && canEditDeadline) ? `<button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar cambio de deadline</button>` : ""}
+                    ${(currentRole !== "analista") ? `<button class="ghost deadlineTodayBtn" ${canEditDeadline ? "" : "disabled"} title="Usar fecha actual" onclick="setDeadlineToTodayFromDetail('${ticketWithRead.id}')">Fecha actual</button>` : ""}
                   </div>
                 </div>
               </div>
@@ -3832,7 +4010,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${currentRole === "admin" ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${currentRole === "admin" ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${currentRole === "admin" ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia"></div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${currentRole === "admin" ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${currentRole === "admin" ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${currentRole === "admin" ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia"></div>${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar cambio de deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar cambio de deadline</button></div>` : ""}${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -4112,8 +4290,6 @@ Cliente B`)
           </div>` : ""}
 
           <div id="ticket-comments-tab-${id}" class="${(ticketActivityTabById[id] || "comments") === "comments" ? "" : "hidden"}">
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
-
             <div class="commentComposer">
               <div class="commentToolbar">
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','bold')"><b>B</b></button>
@@ -4130,6 +4306,7 @@ Cliente B`)
                 <button class="ghost" onclick="addComment('${id}')">Comentar</button>
               </div>
             </div>
+            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
           </div>
 
           <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">${currentRole !== "consultor" ? "Cargando..." : ""}</div>
