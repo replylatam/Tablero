@@ -553,6 +553,13 @@
 
     /* ── Ticket Detail Layout ──────────────────────────────────────── */
     .detailLayout { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .detailMainInfo { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .detailSidebarCard {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      background: var(--surface-2);
+    }
     .codeBadge {
       display: inline-block;
       background: rgba(61,110,245,.18);
@@ -566,7 +573,7 @@
       letter-spacing: .03em;
     }
     @media (min-width: 980px) {
-      .detailLayout.withSidebar { grid-template-columns: 1.55fr .55fr; }
+      .detailLayout.withSidebar { grid-template-columns: 1fr 1fr; }
       .detailSidebar { border-left: 1px solid var(--stroke); padding-left: 14px; }
     }
 
@@ -815,6 +822,10 @@
         <div><label>Cliente</label><select id="tClient"></select></div>
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
         <div><label>Informador</label><select id="tInformer"></select></div>
+      </div>
+      <div class="row">
+        <div><label>Cantidad de publicaciones</label><input id="tPublicationCount" type="number" min="0" placeholder="Ej: 4"></div>
+        <div><label>Planilla de trabajo</label><input id="tWorkSheet" placeholder="URL o referencia"></div>
       </div>
       <div id="ticketCustomFieldsWrap"></div>
 
@@ -3195,6 +3206,16 @@ Cliente B`)
       loadAnalystGuidelines()
     }
 
+    function openAnalystGuidelinesFromTicket(encodedClient){
+      if(currentRole !== "analista") return
+      const client = decodeURIComponent(String(encodedClient || ""))
+      setMainViewTab("panel")
+      setAnalystTab("guidelines")
+      analystGuidelinesClient = client
+      loadDashboard()
+      closeTicketDetailModal()
+    }
+
     async function openAnalystGuidelineModal(){
       if(currentRole !== "analista") return
       const select = document.getElementById("analystGuidelineModalClient")
@@ -3342,6 +3363,8 @@ Cliente B`)
       document.getElementById("tPriority").value = "Media"
       document.getElementById("tClient").value = ""
       document.getElementById("tDeadline").value = ""
+      document.getElementById("tPublicationCount").value = ""
+      document.getElementById("tWorkSheet").value = ""
       renderTicketCustomFields({})
       document.getElementById("ticketModal").classList.add("hidden")
     }
@@ -3353,6 +3376,8 @@ Cliente B`)
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
       const informer = (document.getElementById("tInformer")?.value || currentUser.email || "").trim().toLowerCase()
+      const publicationCount = Math.max(0, Number(document.getElementById("tPublicationCount")?.value || 0) || 0)
+      const workSheet = (document.getElementById("tWorkSheet")?.value || "").trim()
       const customFieldsDefs = await getTicketCustomFields()
       const customFields = {}
       for(const field of customFieldsDefs){
@@ -3371,6 +3396,8 @@ Cliente B`)
       const ticket = {
         id: code,
         title, description, priority, client, deadline,
+        publicationCount,
+        workSheet,
         status: "unassigned",
         assignedTo: "",
         comments: {},
@@ -3495,7 +3522,6 @@ Cliente B`)
             <div>Estado</div>
             <div>Analista asignado</div>
             <div>Deadline</div>
-            <div>Planificación</div>
             <div>Sin leer</div>
           </div>
           ${sorted.map(t => {
@@ -3509,7 +3535,6 @@ Cliente B`)
                 <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
-                <div>${t.plannedWorkDate ? formatDateDMY(t.plannedWorkDate) : "-"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span></div>
               </div>
             `
@@ -3578,6 +3603,10 @@ Cliente B`)
         const active = recurrenceDays.includes(day)
         return `<button class="${active ? "" : "ghost"}" onclick="toggleTicketRecurrenceDay('${ticketWithRead.id}','${day}', event)">${labels[day]}</button>`
       }).join("")
+      const guidelines = await getGuidelines()
+      const ticketClient = String(ticketWithRead.client || "").trim().toLowerCase()
+      const clientGuidelines = guidelines.filter(g => String(g?.client || "").trim().toLowerCase() === ticketClient)
+      const hasGuidelineFolder = !!ticketClient && clientGuidelines.length > 0
 
       const titleEl = document.getElementById("ticketDetailTitle")
       if(titleEl) titleEl.textContent = `Detalle del ticket · ${ticketWithRead.id||"-"}`
@@ -3598,8 +3627,8 @@ Cliente B`)
           </div>
           <div class="inline" style="gap:8px">${(currentRole === "admin" || currentRole === "analista") ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button>` : `${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}`}</div>
         </div>
-        <div class="detailLayout">
-          <div>
+        <div class="detailLayout withSidebar">
+          <div class="detailMainInfo">
             <div class="row">
               <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
               <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
@@ -3617,6 +3646,10 @@ Cliente B`)
             <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
+            <div class="row">
+              <div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}" ${canManageStatus?"":"disabled"}></div>
+              <div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${canManageStatus?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.workSheet||"")}" ${canManageStatus?"":"disabled"} placeholder="URL o referencia"></div>
+            </div>
             ${customDetailHtml}
             <div style="margin:8px 0">
               <label>Recurrencia de la tarea</label>
@@ -3630,6 +3663,16 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
 
             ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
+          </div>
+          <div class="detailSidebar">
+            ${(currentRole === 'admin' || currentRole === 'analista') ? `<div class="detailSidebarCard" style="margin-bottom:10px"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketWithRead.id}" style="margin:0;max-width:260px;min-width:220px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketWithRead.id}')">Asignar como responsable</button></div></div>` : ""}
+            <div class="detailSidebarCard">
+              <div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>
+              ${hasGuidelineFolder
+                ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}`
+                : `<div class="small">No tiene lineamientos cargados</div>`
+              }
+            </div>
           </div>
         </div>
       `
@@ -3693,6 +3736,7 @@ Cliente B`)
       const canEditFields = currentRole === "admin"
       const canEditDeadline = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const canEditInformer = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
+      const canEditAnalystFields = currentRole === "admin" || currentRole === "analista"
       const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase()
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       if(nextAssignedTo){
@@ -3708,6 +3752,8 @@ Cliente B`)
         priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
+        publicationCount: canEditAnalystFields ? Math.max(0, Number(document.getElementById(`detail-publication-count-${id}`)?.value || 0) || 0) : Number(ticket.publicationCount || 0),
+        workSheet: canEditAnalystFields ? String(document.getElementById(`detail-work-sheet-${id}`)?.value || "").trim() : String(ticket.workSheet || ""),
         assignedTo: nextAssignedTo,
         deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
         status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
@@ -3863,7 +3909,6 @@ Cliente B`)
       }).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
-        ${(currentRole === 'admin' || currentRole === 'analista') ? `<div style="margin-bottom:8px"><div class="small" style="margin-bottom:4px">OWNER DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap"><select id="detail-owner-${ticketId}" style="margin:0;max-width:260px;min-width:260px"><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticket.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select><button class="ghost" style="margin:0" onclick="assignTicketOwner('${ticketId}')">Asignar como responsable</button></div></div>` : ''}
         <div class="inline" style="margin-bottom:8px;gap:8px;align-items:center"><select id="helper-analyst-${ticketId}" style="margin:0;max-width:260px">${options}</select><button class="ghost" onclick="assignHelperFromDropdown('${ticketId}')">Sumar ayudante</button></div>
         <div class="small" style="margin-bottom:6px">Carpetas por mes:</div>
         <div class="inline" style="margin-bottom:10px">${monthKeys.map(mk => `<button class="${selectedMonth===mk?'':'ghost'}" onclick="setTimeMonthTab('${ticketId}','${mk}')">${htmlEscape(monthFolderLabel(mk))}</button>`).join('')}</div>
