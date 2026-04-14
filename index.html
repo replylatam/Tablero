@@ -239,6 +239,9 @@
       color: var(--text);
       border-color: var(--stroke);
     }
+    body:not(.light) input[type="month"]::-webkit-calendar-picker-indicator,
+    body:not(.light) input[type="date"]::-webkit-calendar-picker-indicator,
+    body:not(.light) input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .95; }
 
     input:focus, select:focus, textarea:focus {
       border-color: var(--accent);
@@ -1047,6 +1050,7 @@
     var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
     var analystAgendaFilters = { ticketId: "", title: "", status: ["done"], client: "", consultor: "" }
     var analystAgendaVisible = true
+    var analystPendingRequestsExpanded = false
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
     var portfolioViewerConsultor = ""
@@ -2294,7 +2298,7 @@ Cliente B`)
         </div>
         <div style="margin-top:12px">
           <h4 style="margin:0 0 8px">Tickets según cartera (${tickets.length})</h4>
-          ${tickets.length ? tickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">Cliente: ${htmlEscape(t.client||"-")} · Estado: ${htmlEscape(STATUS[t.status] || t.status || "-")}</div></div>`).join("") : `<p class="small">No hay tickets para la cartera seleccionada.</p>`}
+          ${tickets.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">ID</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${tickets.map(t => `<tr style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small">No hay tickets para la cartera seleccionada.</p>`}
         </div>
       `
     }
@@ -2319,6 +2323,7 @@ Cliente B`)
     function toggleMonthHolidayInclusion(monthKey, date, checked){
       adminMonthHolidayExclusions[monthKey] = adminMonthHolidayExclusions[monthKey] || {}
       adminMonthHolidayExclusions[monthKey][date] = !checked
+      adminHoursBusinessDaysOverride[monthKey] = computeMonthBusinessDaysAuto(monthKey)
       loadAdminHoursTable()
     }
 
@@ -2328,7 +2333,7 @@ Cliente B`)
       loadInstalledCapacityByClient()
     }
 
-    function monthBusinessDaysARG(yyyyMm){
+    function computeMonthBusinessDaysAuto(yyyyMm){
       const [yearRaw, monthRaw] = String(yyyyMm || "").split("-")
       const year = Number(yearRaw)
       const month = Number(monthRaw)
@@ -2343,7 +2348,11 @@ Cliente B`)
       const fixed = getArgFixedHolidayDates(yyyyMm)
       const exclusions = adminMonthHolidayExclusions[yyyyMm] || {}
       const activeFixed = fixed.filter(h => !exclusions[h.date]).length
-      const adjusted = Math.max(0, count - activeFixed)
+      return Math.max(0, count - activeFixed)
+    }
+
+    function monthBusinessDaysARG(yyyyMm){
+      const adjusted = computeMonthBusinessDaysAuto(yyyyMm)
       const manual = Number(adminHoursBusinessDaysOverride[yyyyMm])
       return Number.isFinite(manual) && manual > 0 ? manual : adjusted
     }
@@ -2518,20 +2527,24 @@ Cliente B`)
         return dates
       })()
       const [yy, mm] = monthKey.split("-").map(Number)
+      const selectedAttendance = attendanceMonth[adminAnalystDetailSelection] || {}
+      const selectedWorkedDays = businessDates.filter(date => !!selectedAttendance[date]).length
+      const selectedAdjustedHours = getAdminHoursRowValues(adminAnalystDetailSelection).adjustedHours
+      const selectedAnalystTheoretical = selectedWorkedDays * selectedAdjustedHours
       const nextMonthDate = new Date(yy, (mm || 1), 1)
       const nextMonthKey = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`
       const nextMonthHolidays = getArgFixedHolidayDates(nextMonthKey)
       const nextBusinessDays = monthBusinessDaysARG(nextMonthKey)
       wrap.innerHTML = analysts.length ? `
         <h4 style="margin:0 0 8px">Asistencia</h4>
-        <div class="small" style="margin-bottom:8px">Marcá por analista los días trabajados del período para calcular el avance diario.</div>
+        <div class="small" style="margin-bottom:8px">Marcá por analista los días trabajados del período para calcular el avance diario. <strong>Abreviaturas:</strong> Lu=Lunes, Ma=Martes, Mi=Miércoles, Ju=Jueves, Vi=Viernes.</div>
         <div class="inline" style="margin-bottom:8px;align-items:flex-end">
           <div><label style="margin:0">Días hábiles del mes (editable)</label><input type="number" min="0" value="${monthBusinessDaysARG(monthKey)}" onchange="setAdminBusinessDaysOverride('${monthKey}', this.value)" style="max-width:180px;margin:0"></div>
           <div><label style="margin:0">Feriados fijos del mes</label><div class="small">${selectedMonthHolidays.length ? selectedMonthHolidays.map(h => `<label style="display:block;text-transform:none;letter-spacing:0"><input type="checkbox" ${holidayExclusions[h.date] ? "" : "checked"} onchange="toggleMonthHolidayInclusion('${monthKey}','${h.date}', this.checked)" style="width:auto;margin-right:6px">${formatDateDMY(h.date)} (${htmlEscape(h.label)})</label>`).join("") : "Sin feriados fijos."}</div></div>
         </div>
         <div style="overflow:auto;margin-bottom:12px">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${String(date).slice(-2)}</th>`).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado hasta ahora</th></tr></thead>
+            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => { const d = new Date(`${date}T00:00:00`); const lbl = ["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()] || ""; return `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${lbl}<br>${String(date).slice(-2)}</th>` }).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado hasta ahora</th></tr></thead>
             <tbody>${visibleAnalysts.map(u => {
               const email = String(u.email || "").toLowerCase()
               const row = getAdminHoursRowValues(email)
@@ -2585,8 +2598,8 @@ Cliente B`)
         </div>
         <div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tarea</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Prioridad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rol</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo (h)</th></tr></thead>
-            <tbody>${selectedAnalystRows.length ? selectedAnalystRows.map(row => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.title)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.priority)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.relation)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(Number(row.minutes || 0) / 60).toFixed(2)}</td></tr>`).join("") : `<tr><td colspan="5" class="small" style="padding:8px">Sin tiempos cargados para este analista en el período.</td></tr>`}</tbody>
+            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tarea</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Prioridad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rol</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo ejecutado en hs</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo teorico a ejecutar</th></tr></thead>
+            <tbody>${selectedAnalystRows.length ? selectedAnalystRows.map(row => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.title)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.priority)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.relation)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(Number(row.minutes || 0) / 60).toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${selectedAnalystTheoretical.toFixed(2)}</td></tr>`).join("") : `<tr><td colspan="6" class="small" style="padding:8px">Sin tiempos cargados para este analista en el período.</td></tr>`}</tbody>
           </table>
         </div>
         <div class="small" style="margin-top:6px">Total horas del analista en el período: <strong>${selectedAnalystTotalHours.toFixed(2)} h</strong></div>
@@ -2940,8 +2953,23 @@ Cliente B`)
       else qualitySurveyForms[role][idx][field] = String(value || "")
     }
 
+    function slugifyQuestion(value){
+      return String(value || "")
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "") || `q_${Date.now()}`
+    }
+
     async function saveQualityForms(){
       await ensureQualityFormsLoaded()
+      ;["analista","consultor"].forEach(role => {
+        qualitySurveyForms[role] = (qualitySurveyForms[role] || []).map((q, idx) => ({
+          id: q.id || `${slugifyQuestion(q.label)}_${idx+1}`,
+          label: String(q.label || `Pregunta ${idx+1}`),
+          options: Array.isArray(q.options) && q.options.length ? q.options : ["Sí","No"]
+        }))
+      })
       await db.ref("quality_forms").set(qualitySurveyForms)
       showToast("Encuestas de calidad guardadas.", "ok")
       loadQualitySurveyAdmin()
@@ -2994,7 +3022,7 @@ Cliente B`)
     function renderQualityBuilderAdminHtml(){
       const renderRole = (role, title) => {
         const items = qualitySurveyForms?.[role] || []
-        return `<div class="card" style="padding:10px;margin:0 0 8px"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">${title}</h4><button class="ghost" onclick="addQualityQuestion('${role}')">+ Pregunta</button></div>${items.length ? items.map((q, idx) => `<div class="row"><div><label>ID</label><input value="${htmlEscape(q.id || '')}" onchange="updateQualityQuestion('${role}',${idx},'id',this.value)"></div><div><label>Pregunta</label><input value="${htmlEscape(q.label || '')}" onchange="updateQualityQuestion('${role}',${idx},'label',this.value)"></div><div><label>Opciones (coma)</label><input value="${htmlEscape((q.options||[]).join(', '))}" onchange="updateQualityQuestion('${role}',${idx},'options',this.value)"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="removeQualityQuestion('${role}',${idx})">Quitar</button></div></div>`).join("") : `<p class="small">Sin preguntas.</p>`}</div>`
+        return `<div class="card" style="padding:10px;margin:0 0 8px"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">${title}</h4><button class="ghost" onclick="addQualityQuestion('${role}')">+ Pregunta</button></div><div class="small" style="margin:6px 0 10px">1) Escribí la pregunta.<br>2) En opciones, separá respuestas por coma.<br>3) Guardá formularios.</div>${items.length ? items.map((q, idx) => `<div class="row"><div><label>Pregunta</label><input value="${htmlEscape(q.label || '')}" onchange="updateQualityQuestion('${role}',${idx},'label',this.value)"></div><div><label>Opciones (coma)</label><input value="${htmlEscape((q.options||[]).join(', '))}" onchange="updateQualityQuestion('${role}',${idx},'options',this.value)"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="removeQualityQuestion('${role}',${idx})">Quitar</button></div></div>`).join("") : `<p class="small">Sin preguntas.</p>`}</div>`
       }
       return `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Admin puede modificar, agregar y quitar preguntas; y definir formularios diferentes para analista y consultor.</div><div style="margin-top:8px">${renderRole("analista","Encuesta que completa el consultor (evalúa analista)")}${renderRole("consultor","Encuesta que completa el analista (evalúa consultor)")}<div class="inline" style="justify-content:flex-end"><button onclick="saveQualityForms()">Guardar formularios</button></div></div></div>`
     }
@@ -5614,6 +5642,11 @@ Cliente B`)
       if(btnDeadlines) btnDeadlines.classList.toggle("ghost", analystActivityTab !== "deadlines")
     }
 
+    function toggleAnalystPendingRequests(){
+      analystPendingRequestsExpanded = !analystPendingRequestsExpanded
+      loadDashboard()
+    }
+
     function setConsultorActivityTab(tab){
       consultorActivityTab = ["comments","requests","surveys"].includes(tab) ? tab : "comments"
       const comments = document.getElementById("consultorCommentsActivity")
@@ -6395,8 +6428,18 @@ Cliente B`)
 
           const deadlinesContainer = document.getElementById("recentActivityDeadlines")
           if(deadlinesContainer){
+            const pendingRequests = myTickets.filter(t => t.deadlineChangeStatus === "pending")
             const deadlines = calculated.filter(x => x.businessDays !== null && x.businessDays <= 5)
-            deadlinesContainer.innerHTML = deadlines.length
+            const pendingHtml = pendingRequests.length ? `
+              <div class="feedItem">
+                <div class="feedTop">
+                  <div><div class="feedType">Solicitudes pendientes</div><div class="feedMeta">${pendingRequests.length} solicitud(es) en revisión</div></div>
+                  <button class="ghost" onclick="toggleAnalystPendingRequests()">${analystPendingRequestsExpanded ? "▼" : "▶"}</button>
+                </div>
+                ${analystPendingRequestsExpanded ? `<div style="margin-top:8px">${pendingRequests.map(ticket => `<div class=\"small\">• ${htmlEscape(ticket.id||"-")} · Nueva fecha: ${htmlEscape(ticket.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticket.deadlineChangeReason||"Sin motivo")}</div>`).join("")}</div>` : ""}
+              </div>
+            ` : ""
+            deadlinesContainer.innerHTML = (pendingHtml || "") + (deadlines.length
               ? deadlines.map(({ticket, businessDays}) => `
                   <div class="feedItem">
                     <div class="feedTop">
@@ -6408,7 +6451,7 @@ Cliente B`)
                     </div>
                   </div>
                 `).join("")
-              : `<p class="small">Sin tickets cerca de deadline.</p>`
+              : `<p class="small">Sin tickets cerca de deadline.</p>`)
           }
           setAnalystActivityTab(analystActivityTab)
           return
