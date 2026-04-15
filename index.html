@@ -2822,6 +2822,12 @@ Cliente B`)
         return
       }
       wrap.innerHTML = analysts.length ? `
+        <h4 style="margin:0 0 8px">Estacionalidad</h4>
+        <div class="inline" style="margin-bottom:8px">
+          <label style="margin:0">Año</label>
+          <input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:130px;margin:0">
+        </div>
+        <div class="card" style="margin-bottom:12px">${seasonalityChartHtml}</div>
         <h4 style="margin:0 0 8px">Asistencia</h4>
         <div class="small" style="margin-bottom:8px">Marcá por analista los días trabajados del período para calcular el avance diario. <strong>Abreviaturas:</strong> Lu=Lunes, Ma=Martes, Mi=Miércoles, Ju=Jueves, Vi=Viernes.</div>
         <div class="inline" style="margin-bottom:8px;align-items:flex-end">
