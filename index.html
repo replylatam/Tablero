@@ -3635,8 +3635,10 @@ Cliente B`)
           </div>` : `
           <div class="grid ${currentRole === "admin" ? "adminFull" : ""}">
             <div class="card ${currentRole === "admin" ? "dashboardAdmin" : ""}">
-              <h3 style="margin:0 0 10px">Dashboard</h3>
-              ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="inline" style="justify-content:flex-end"><div id="qualityOrb" class="qualityOrb hidden" style="position:relative;left:auto;top:auto"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad</div></div></div>` : ""}
+              <div class="inline" style="justify-content:space-between; align-items:center; margin-bottom:14px; min-height:45px;">
+                <h3 style="margin:0">Dashboard</h3>
+                ${(currentRole === "analista" || currentRole === "consultor") ? `<div id="qualityOrb" class="qualityOrb hidden" style="position:relative; left:auto; top:auto; transform:scale(0.7); transform-origin:right center; margin:-20px 0;"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad</div></div>` : ""}
+              </div>
               <div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : currentRole === "admin" ? "adminRow" : ""}">
                 ${currentRole !== "consultor"
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
