@@ -1067,6 +1067,7 @@
     var adminCapacityClientFilter = ""
     var adminCapacityExpandedClients = {}
     var adminCapacityViewMode = "cards"
+    var adminCapacitySeasonalityYear = String(new Date().getFullYear())
     var adminAnalystDetailSelection = ""
     var qualitySurveyForms = null
     var adminGuidelinesClient = ""
@@ -2312,9 +2313,23 @@ Cliente B`)
       loadInstalledCapacityByClient()
     }
 
+    function setAdminCapacitySeasonalityYear(value){
+      const year = Number(String(value || "").trim())
+      if(!Number.isFinite(year) || year < 2000 || year > 3000) return
+      adminCapacitySeasonalityYear = String(year)
+      loadAdminHoursTable()
+    }
+
     function setAdminCapacityClientFilter(value){
       adminCapacityClientFilter = String(value || "")
-      loadInstalledCapacityByClient()
+      const cursor = Number(document.getElementById("adminCapacityClientFilterInput")?.selectionStart || adminCapacityClientFilter.length)
+      loadInstalledCapacityByClient().then(() => {
+        const input = document.getElementById("adminCapacityClientFilterInput")
+        if(!input) return
+        input.focus()
+        const pos = Math.min(cursor, String(input.value || "").length)
+        try{ input.setSelectionRange(pos, pos) }catch(_){}
+      })
     }
 
     function setAdminCapacityViewMode(mode){
@@ -2497,6 +2512,52 @@ Cliente B`)
       return `<div class="small" style="margin-top:6px">Comparación diaria (hs) · Teórico vs Ejecutado</div><div style="overflow:auto"><svg viewBox="0 0 ${width} ${height}" style="width:100%;min-width:620px;height:auto"><rect x="${padX}" y="${padY}" width="${innerW}" height="${innerH}" fill="rgba(8,12,22,.25)" stroke="var(--stroke)" rx="8"/>${yGuides}<polyline fill="none" stroke="var(--accent-2)" stroke-width="3" points="${theoreticalPolyline}"/><polyline fill="none" stroke="var(--accent)" stroke-width="3" points="${executedPolyline}"/>${xLabels}</svg></div><div class="small" style="margin-top:6px"><span style="display:inline-flex;align-items:center;gap:6px;margin-right:12px"><span style="width:12px;height:2px;background:var(--accent-2);display:inline-block"></span>Tiempo teórico diario</span><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:2px;background:var(--accent);display:inline-block"></span>Tiempo ejecutado diario</span></div>`
     }
 
+    function buildCapacitySeasonalityChart(labels, ticketsSeries, hoursSeries){
+      const months = Array.isArray(labels) ? labels : []
+      if(!months.length) return `<div class="small">Sin datos para graficar estacionalidad.</div>`
+      const width = 980
+      const height = 340
+      const padLeft = 62
+      const padRight = 62
+      const padTop = 24
+      const padBottom = 50
+      const innerW = width - padLeft - padRight
+      const innerH = height - padTop - padBottom
+      const maxTickets = Math.max(1, ...ticketsSeries.map(v => Number(v || 0)))
+      const maxHours = Math.max(1, ...hoursSeries.map(v => Number(v || 0)))
+      const xStep = innerW / Math.max(1, months.length)
+      const barW = Math.max(14, xStep * 0.5)
+      const yFractions = [0, 0.25, 0.5, 0.75, 1]
+      const yGuides = yFractions.map(fr => {
+        const y = padTop + innerH - (innerH * fr)
+        const leftVal = (maxTickets * fr).toFixed(0)
+        const rightVal = (maxHours * fr).toFixed(1)
+        return `<line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="rgba(148,163,184,.2)"/><text x="${padLeft - 10}" y="${y + 4}" text-anchor="end" fill="var(--muted)" font-size="11">${leftVal}</text><text x="${width - padRight + 10}" y="${y + 4}" text-anchor="start" fill="var(--muted)" font-size="11">${rightVal}</text>`
+      }).join("")
+      const bars = months.map((_, idx) => {
+        const x = padLeft + (idx * xStep) + ((xStep - barW) / 2)
+        const val = Number(ticketsSeries[idx] || 0)
+        const h = (val / maxTickets) * innerH
+        const y = padTop + innerH - h
+        return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barW.toFixed(2)}" height="${Math.max(1, h).toFixed(2)}" fill="rgba(61,110,245,.55)" stroke="rgba(61,110,245,.9)" rx="4"/>`
+      }).join("")
+      const linePoints = months.map((_, idx) => {
+        const x = padLeft + (idx * xStep) + (xStep / 2)
+        const y = padTop + innerH - ((Number(hoursSeries[idx] || 0) / maxHours) * innerH)
+        return `${x.toFixed(2)},${y.toFixed(2)}`
+      }).join(" ")
+      const dots = months.map((_, idx) => {
+        const x = padLeft + (idx * xStep) + (xStep / 2)
+        const y = padTop + innerH - ((Number(hoursSeries[idx] || 0) / maxHours) * innerH)
+        return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.5" fill="var(--accent)"/>`
+      }).join("")
+      const xLabels = months.map((label, idx) => {
+        const x = padLeft + (idx * xStep) + (xStep / 2)
+        return `<text x="${x.toFixed(2)}" y="${height - 16}" text-anchor="middle" fill="var(--muted)" font-size="11">${htmlEscape(label)}</text>`
+      }).join("")
+      return `<div class="small" style="margin-bottom:6px">Eje Y izquierdo: tickets recibidos · Eje Y derecho: horas ejecutadas.</div><div style="overflow:auto"><svg viewBox="0 0 ${width} ${height}" style="width:100%;min-width:720px;height:auto"><rect x="${padLeft}" y="${padTop}" width="${innerW}" height="${innerH}" fill="rgba(8,12,22,.25)" stroke="var(--stroke)" rx="8"/>${yGuides}${bars}<polyline fill="none" stroke="var(--accent)" stroke-width="3" points="${linePoints}"/>${dots}${xLabels}<text x="${padLeft}" y="${14}" fill="var(--muted)" font-size="11">Tickets</text><text x="${width - padRight}" y="${14}" text-anchor="end" fill="var(--muted)" font-size="11">Horas ejecutadas</text></svg></div><div class="small" style="margin-top:6px"><span style="display:inline-flex;align-items:center;gap:6px;margin-right:12px"><span style="width:12px;height:8px;background:rgba(61,110,245,.55);border:1px solid rgba(61,110,245,.9);display:inline-block"></span>Tickets recibidos</span><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:2px;background:var(--accent);display:inline-block"></span>Horas ejecutadas</span></div>`
+    }
+
     function removeAnalystFromHoursTable(analystEmail){
       adminHoursHiddenAnalysts[String(analystEmail || "").toLowerCase()] = true
       loadAdminHoursTable()
@@ -2558,6 +2619,28 @@ Cliente B`)
       const monthKey = String(adminHoursMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const executedByAnalyst = getExecutedHoursByAnalyst(monthKey, tickets)
       const entriesByAnalyst = getMonthlyEntriesByAnalyst(monthKey, tickets)
+      const activeAnalystCount = visibleAnalysts.length
+      const seasonalityYear = Number(adminCapacitySeasonalityYear || new Date().getFullYear())
+      const monthLabelsShort = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+      const seasonalityTickets = new Array(12).fill(0)
+      const seasonalityHours = new Array(12).fill(0)
+      tickets.forEach(t => {
+        const ticketDate = new Date(String(t?.createdAt || ""))
+        if(Number.isFinite(ticketDate.getTime()) && ticketDate.getFullYear() === seasonalityYear){
+          seasonalityTickets[ticketDate.getMonth()] += 1
+        }
+        const monthlyFolders = t?.timeTracking?.monthlyFolders || {}
+        Object.values(monthlyFolders).forEach(folder => {
+          const entries = Array.isArray(folder?.entries) ? folder.entries : []
+          entries.forEach(entry => {
+            const stamp = String(entry?.loggedDate || entry?.date || entry?.createdAt || "")
+            const entryDate = new Date(stamp)
+            if(!Number.isFinite(entryDate.getTime()) || entryDate.getFullYear() !== seasonalityYear) return
+            seasonalityHours[entryDate.getMonth()] += Math.max(0, Number(entry?.minutes || Number(entry?.hours || 0) * 60 || 0) / 60)
+          })
+        })
+      })
+      const seasonalityChartHtml = buildCapacitySeasonalityChart(monthLabelsShort, seasonalityTickets, seasonalityHours)
       if(!adminAnalystDetailSelection && visibleAnalysts[0]?.email){
         adminAnalystDetailSelection = String(visibleAnalysts[0].email || "").toLowerCase()
       }
@@ -2603,27 +2686,20 @@ Cliente B`)
       }, 0)
       const daysElapsed = businessDates.filter(d => d <= today).length
       const avgAdjusted = visibleAnalysts.length ? visibleAnalysts.reduce((acc,u)=>acc + getAdminHoursRowValues(String(u.email||"").toLowerCase()).adjustedHours, 0) / visibleAnalysts.length : 0
-      const avgFactor = visibleAnalysts.length ? visibleAnalysts.reduce((acc,u)=>acc + getAdminHoursRowValues(String(u.email||"").toLowerCase()).factor, 0) / visibleAnalysts.length : 0
-      const hhEffective = daysElapsed > 0 ? (totalExecutedHours / daysElapsed) : 0
+      const monthlyTheoreticalPerAnalyst = avgAdjusted * monthBusinessDaysARG(monthKey)
+      const hhEffective = activeAnalystCount > 0 ? (totalExecutedHours / activeAnalystCount) : 0
       const totalMonthlyTheoretical = visibleAnalysts.reduce((acc, u) => {
         const email = String(u?.email || "").toLowerCase()
         const row = getAdminHoursRowValues(email)
         return acc + (Math.max(0, row.monthDays - row.holidays) * row.adjustedHours)
       }, 0)
-      const totalDailyTheoreticalToday = visibleAnalysts.reduce((acc, u) => {
+      const usedCapacityGapHours = totalMonthlyTheoretical - totalExecutedHours
+      const elapsedBusinessDates = businessDates.filter(d => d <= today)
+      const totalTheoreticalToDate = elapsedBusinessDates.reduce((accDate, date) => accDate + visibleAnalysts.reduce((acc, u) => {
         const email = String(u?.email || "").toLowerCase()
         const row = getAdminHoursRowValues(email)
-        return acc + ((attendanceMonth[email] || {})[today] ? row.adjustedHours : 0)
-      }, 0)
-      const gapMonthlyPct = totalMonthlyTheoretical > 0 ? (totalExecutedHours / totalMonthlyTheoretical) * 100 : 0
-      const executedToday = visibleAnalysts.reduce((acc, u) => {
-        const email = String(u?.email || "").toLowerCase()
-        const rows = entriesByAnalyst[email] || []
-        const todayHours = rows.filter(r => String(r.date || "").slice(0,10) === today).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
-        return acc + todayHours
-      }, 0)
-      const gapTodayPct = totalDailyTheoreticalToday > 0 ? (executedToday / totalDailyTheoreticalToday) * 100 : 0
-      const elapsedBusinessDates = businessDates.filter(d => d <= today)
+        return acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0)
+      }, 0), 0)
       const theoreticalSeries = elapsedBusinessDates.map(date => visibleAnalysts.reduce((acc, u) => {
         const email = String(u?.email || "").toLowerCase()
         const row = getAdminHoursRowValues(email)
@@ -2635,13 +2711,21 @@ Cliente B`)
         const dateHours = rows.filter(r => String(r.date || "").slice(0,10) === date).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
         return acc + dateHours
       }, 0))
+      const totalExecutedToDate = executedSeries.reduce((acc, v) => acc + Number(v || 0), 0)
+      const gapIdlePct = totalTheoreticalToDate > 0 ? ((totalTheoreticalToDate - totalExecutedToDate) / totalTheoreticalToDate) * 100 : 0
       const miniDash = document.getElementById("adminCapacityMiniDash")
       if(miniDash){
-        const cardsHtml = `<div class="kpi"><div class="label">Horas diarias teóricas (ajuste)</div><div class="value">${avgAdjusted.toFixed(2)} h</div><div class="small">Ajuste promedio: ${avgFactor.toFixed(2)}%</div></div><div class="kpi"><div class="label">Hs hombre efectivas mensuales por analista</div><div class="value">${hhEffective.toFixed(2)} h</div><div class="small">Consolidado / días hábiles transcurridos</div></div><div class="kpi"><div class="label">Días hábiles transcurridos</div><div class="value">${daysElapsed}</div><div class="small">Período ${htmlEscape(monthKey)}</div></div><div class="kpi"><div class="label">Tiempo total teórico mensual</div><div class="value">${totalMonthlyTheoretical.toFixed(2)} h</div><div class="small">Suma mensual teórica del área</div></div><div class="kpi"><div class="label">Tiempo total ejecutado</div><div class="value">${totalExecutedHours.toFixed(2)} h</div><div class="small">Suma mensual ejecutada del área</div></div><div class="kpi"><div class="label">% GAP mensual</div><div class="value">${gapMonthlyPct.toFixed(2)}%</div><div class="small">Ejecutado / Teórico mensual</div></div><div class="kpi"><div class="label">% GAP hoy</div><div class="value">${gapTodayPct.toFixed(2)}%</div><div class="small">Ejecutado hoy / Teórico hoy</div></div>`
+        const cardsHtml = `<div class="kpi"><div class="label">Hs hombre efectivas mensuales por analista</div><div class="value">${hhEffective.toFixed(2)} h</div><div class="small">Teóricas mensuales por analista: ${monthlyTheoreticalPerAnalyst.toFixed(2)} h</div></div><div class="kpi"><div class="label">Días hábiles transcurridos</div><div class="value">${daysElapsed}</div><div class="small">Período ${htmlEscape(monthKey)}</div></div><div class="kpi"><div class="label">Tiempo total teórico mensual</div><div class="value">${totalMonthlyTheoretical.toFixed(2)} h</div><div class="small">Suma mensual teórica del área</div></div><div class="kpi"><div class="label">Tiempo total ejecutado</div><div class="value">${totalExecutedHours.toFixed(2)} h</div><div class="small">Suma mensual ejecutada del área</div></div><div class="kpi"><div class="label">% de GAP</div><div class="value">${gapIdlePct.toFixed(2)}%</div><div class="small">Ociosidad teórica vs ejecutado acumulado al día</div></div><div class="kpi"><div class="label">Uso de capacidad del área actual</div><div class="value">${usedCapacityGapHours.toFixed(2)} h</div><div class="small">Diferencia: tiempo teórico mensual - ejecutado mensual</div></div>`
         const chartHtml = buildCapacityLineChart(elapsedBusinessDates.map(d => d.slice(-2)), theoreticalSeries, executedSeries)
         miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}</div>` : cardsHtml}`
       }
       wrap.innerHTML = analysts.length ? `
+        <h4 style="margin:0 0 8px">Estacionalidad</h4>
+        <div class="inline" style="margin-bottom:8px">
+          <label style="margin:0">Año</label>
+          <input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:130px;margin:0">
+        </div>
+        <div class="card" style="margin-bottom:12px">${seasonalityChartHtml}</div>
         <h4 style="margin:0 0 8px">Asistencia</h4>
         <div class="small" style="margin-bottom:8px">Marcá por analista los días trabajados del período para calcular el avance diario. <strong>Abreviaturas:</strong> Lu=Lunes, Ma=Martes, Mi=Miércoles, Ju=Jueves, Vi=Viernes.</div>
         <div class="inline" style="margin-bottom:8px;align-items:flex-end">
@@ -2673,8 +2757,8 @@ Cliente B`)
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días ausentes <span class="tinyHelpIcon" title="Este campo abarca feriados, licencias y días no trabajados por motivos personales por el analista.">?</span></th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">TIempo mensual teorico</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado (h)</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% GAP mensual</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% GAP HOY</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% de GAP</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Uso de capacidad del área actual</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th>
             </tr></thead>
             <tbody>
@@ -2683,11 +2767,12 @@ Cliente B`)
                 const row = getAdminHoursRowValues(email)
                 const autoMonthly = Math.max(0, row.monthDays - row.holidays) * row.adjustedHours
                 const executedHours = Number((executedByAnalyst[email] || 0) / 60)
-                const workedDays = businessDates.filter(date => !!(attendanceMonth[email] || {})[date]).length
-                const todayHours = workedDays * row.adjustedHours
-                const gapPct = autoMonthly > 0 ? (executedHours / autoMonthly) * 100 : 0
-                const gapHoy = autoMonthly > 0 ? (todayHours / autoMonthly) * 100 : 0
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapHoy.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
+                const elapsedAnalystDates = businessDates.filter(date => date <= today)
+                const theoreticalToDate = elapsedAnalystDates.reduce((acc, date) => acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0)
+                const executedToDate = (entriesByAnalyst[email] || []).filter(r => String(r.date || "").slice(0,10) <= today).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
+                const gapPct = theoreticalToDate > 0 ? ((theoreticalToDate - executedToDate) / theoreticalToDate) * 100 : 0
+                const capacityUse = autoMonthly - executedHours
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)} h" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
               }).join("")}
               ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); return acc }, { theoretical: 0, executed: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
             </tbody>
@@ -2708,8 +2793,8 @@ Cliente B`)
         <div style="overflow:auto">
           ${adminAnalystDetailView === 'daily' ? `<table style="width:100%;border-collapse:collapse"><thead><tr><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Fecha</th><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Tiempo ejecutado en hs</th><th style=\"text-align:left;padding:8px;border-bottom:1px solid var(--stroke)\">Diferencia vs horas diarias ajustadas</th></tr></thead><tbody>${businessDates.map(date => { const dayHours = selectedAnalystRows.filter(r => String(r.date||'').slice(0,10)===date).reduce((acc,r)=>acc + (Number(r.minutes||0)/60),0); const diffPct = selectedAdjustedHours > 0 ? ((dayHours - selectedAdjustedHours) / selectedAdjustedHours) * 100 : 0; const low = diffPct < 0; return `<tr style=\"${low?'background:rgba(224,64,64,.18);':''}\"><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${htmlEscape(formatDateDMY(date))}</td><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${dayHours.toFixed(2)}</td><td style=\"padding:8px;border-bottom:1px solid var(--stroke-2)\">${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%</td></tr>` }).join('')}</tbody></table>` : `
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tarea</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Prioridad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rol</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo ejecutado en hs</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo teorico a ejecutar</th></tr></thead>
-            <tbody>${selectedAnalystRows.length ? selectedAnalystRows.map(row => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.title)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.priority)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.relation)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(Number(row.minutes || 0) / 60).toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${selectedAnalystTheoretical.toFixed(2)}</td></tr>`).join("") : `<tr><td colspan="6" class="small" style="padding:8px">Sin tiempos cargados para este analista en el período.</td></tr>`}</tbody>
+            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tarea</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Prioridad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rol</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo ejecutado en hs</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consumo en personas</th></tr></thead>
+            <tbody>${selectedAnalystRows.length ? selectedAnalystRows.map(row => { const executedHours = Number(row.minutes || 0) / 60; const personConsumption = selectedAnalystTheoretical > 0 ? (executedHours / selectedAnalystTheoretical) : 0; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.title)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.priority)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.relation)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${executedHours.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${personConsumption.toFixed(3)}</td></tr>` }).join("") : `<tr><td colspan="6" class="small" style="padding:8px">Sin tiempos cargados para este analista en el período.</td></tr>`}</tbody>
           </table>
           `}
         </div>
@@ -2747,7 +2832,7 @@ Cliente B`)
       wrap.innerHTML = rows.length ? `
         <div class="inline" style="margin-bottom:8px">
           <label style="margin:0">Filtrar cliente</label>
-          <input placeholder="Buscar cliente..." value="${htmlEscape(adminCapacityClientFilter)}" oninput="setAdminCapacityClientFilter(this.value)" style="max-width:280px;margin:0">
+          <input id="adminCapacityClientFilterInput" placeholder="Buscar cliente..." value="${htmlEscape(adminCapacityClientFilter)}" oninput="setAdminCapacityClientFilter(this.value)" style="max-width:280px;margin:0">
         </div>
         <div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
