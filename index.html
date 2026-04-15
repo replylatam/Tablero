@@ -936,6 +936,23 @@
     </div>
   </div>
 
+  <div id="capacityLowHoursModal" class="modalBack hidden" onclick="if(event.target===this) closeCapacityLowHoursModal()">
+    <div class="card modal" style="max-width:560px">
+      <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="margin:0">⚠️ Advertencia al analista</h3>
+        <button class="secondary" onclick="closeCapacityLowHoursModal()">Cerrar</button>
+      </div>
+      <input id="capacityLowHoursAnalystEmail" type="hidden">
+      <div class="small" style="margin-bottom:6px">Este aviso se envía una sola vez por período al analista seleccionado.</div>
+      <label>Motivo</label>
+      <textarea id="capacityLowHoursReason" placeholder="Ej: Observamos baja carga de tiempos en el período actual."></textarea>
+      <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:10px">
+        <button class="secondary" onclick="closeCapacityLowHoursModal()">Cancelar</button>
+        <button onclick="submitCapacityLowHoursWarning()">Enviar advertencia</button>
+      </div>
+    </div>
+  </div>
+
   <div id="deadlineRequestModal" class="modalBack hidden" onclick="if(event.target===this) closeDeadlineRequestModal()">
     <div class="card modal" style="max-width:520px">
       <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -1090,6 +1107,7 @@
     var adminCapacityViewMode = "cards"
     var adminCapacitySeasonalityYear = String(new Date().getFullYear())
     var adminCapacityKpiDetails = {}
+    var adminCapacityHhEffectiveMonthly = 0
     var adminAnalystDetailSelection = ""
     var qualitySurveyForms = null
     var adminGuidelinesClient = ""
@@ -1433,6 +1451,46 @@
       const action = globalThis.__urgentCapacityConfirmAction
       closeUrgentCapacityWarningDialog()
       if(typeof action === "function") await action()
+    }
+
+    function openCapacityLowHoursModal(analystEmail){
+      const email = String(analystEmail || "").toLowerCase()
+      if(!email) return
+      const modal = document.getElementById("capacityLowHoursModal")
+      const input = document.getElementById("capacityLowHoursAnalystEmail")
+      const reason = document.getElementById("capacityLowHoursReason")
+      if(input) input.value = email
+      if(reason) reason.value = ""
+      if(modal) modal.classList.remove("hidden")
+    }
+
+    function closeCapacityLowHoursModal(){
+      document.getElementById("capacityLowHoursModal")?.classList.add("hidden")
+    }
+
+    async function submitCapacityLowHoursWarning(){
+      const analystEmail = String(document.getElementById("capacityLowHoursAnalystEmail")?.value || "").toLowerCase()
+      const reason = String(document.getElementById("capacityLowHoursReason")?.value || "").trim()
+      if(!analystEmail) return
+      const monthKey = String(adminHoursMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const ref = db.ref("capacity_low_hours_alerts").child(monthKey).child(emailKey(analystEmail))
+      const existing = (await ref.once("value")).val()
+      if(existing){
+        showToast("Este aviso ya fue enviado a este analista para el período.", "info", 2600)
+        closeCapacityLowHoursModal()
+        return
+      }
+      const message = "⚠️ Detectamos una carga de tiempos menor a la esperada hasta este momento. Revisá si te falta registrar horas y cargalas para mantener actualizado el tablero."
+      await ref.set({
+        analystEmail,
+        monthKey,
+        reason: reason || "Sin motivo adicional",
+        message,
+        sentAt: new Date().toISOString(),
+        sentBy: String(currentUser?.email || "").toLowerCase()
+      })
+      closeCapacityLowHoursModal()
+      showToast("Advertencia enviada al analista.", "ok", 2200)
     }
 
     function isTicketSaved(ticketId){
@@ -2798,11 +2856,13 @@ Cliente B`)
       }, 0))
       const totalExecutedToDate = executedSeries.reduce((acc, v) => acc + Number(v || 0), 0)
       const gapIdlePct = totalTheoreticalToDate > 0 ? ((totalTheoreticalToDate - totalExecutedToDate) / totalTheoreticalToDate) * 100 : 0
-      const gapPeople = (activeAnalystCount > 0 && totalTheoreticalToDate > 0)
-        ? (activeAnalystCount - (((totalExecutedToDate * activeAnalystCount) / totalTheoreticalToDate)))
+      const totalTheoreticalForGap = totalTheoreticalToDate * Math.max(1, activeAnalystCount)
+      const gapPeople = (activeAnalystCount > 0 && totalTheoreticalForGap > 0)
+        ? (activeAnalystCount - (((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap)))
         : 0
       const miniDash = document.getElementById("adminCapacityMiniDash")
       if(miniDash){
+        adminCapacityHhEffectiveMonthly = hhEffective
         adminCapacityKpiDetails = {
           hh_effective: { title: "Hs hombre efectivas mensuales por analista", formula: "Suma de horas ejecutadas del mes / cantidad de analistas activos.", detailsHtml: `<div class="small">(${totalExecutedHours.toFixed(2)} h) / (${activeAnalystCount}) = <strong>${hhEffective.toFixed(2)} h</strong>.</div><div class="small" style="margin-top:6px">Horas teóricas mensuales por analista: ${avgAdjusted.toFixed(2)} h/día × ${monthBusinessDaysARG(monthKey)} días hábiles = <strong>${monthlyTheoreticalPerAnalyst.toFixed(2)} h</strong>.</div>` },
           days_elapsed: { title: "Días hábiles transcurridos", formula: "Cantidad de días hábiles del período hasta la fecha actual.", detailsHtml: `<div class="small">Período: <strong>${htmlEscape(monthKey)}</strong> · Días hábiles transcurridos: <strong>${daysElapsed}</strong>.</div>` },
@@ -2810,10 +2870,11 @@ Cliente B`)
           total_executed: { title: "Tiempo total ejecutado", formula: "Suma de horas ejecutadas por todos los analistas para el período filtrado.", detailsHtml: `<div class="small">Total ejecutado del área en ${htmlEscape(monthKey)}: <strong>${totalExecutedHours.toFixed(2)} h</strong>.</div>` },
           gap_idle: { title: "Utilización del día", formula: "((Teórico acumulado desde el 1er día hábil del mes hasta hoy - Ejecutado acumulado en ese período) / Teórico acumulado del período) × 100.", detailsHtml: `<div class="small">Período: 1er día hábil del mes → hoy.<br>Teórico al día: <strong>${totalTheoreticalToDate.toFixed(2)} h</strong> · Ejecutado al día: <strong>${totalExecutedToDate.toFixed(2)} h</strong> · Utilización del día: <strong>${gapIdlePct.toFixed(2)}%</strong>.</div>` },
           capacity_use: { title: "Utilización del mes", formula: "(Tiempo total ejecutado mensual / Tiempo total teórico mensual) × 100.", detailsHtml: `<div class="small">(${totalExecutedHours.toFixed(2)} h / ${totalMonthlyTheoretical.toFixed(2)} h) × 100 = <strong>${usedCapacityPct.toFixed(2)}%</strong>.</div>` },
-          gap_people: { title: "GAP", formula: "Analistas activos - ((Ejecutado acumulado del 1er día hábil a hoy × analistas activos) / Teórico acumulado del 1er día hábil a hoy).", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalToDate.toFixed(2)}) = <strong>${(totalTheoreticalToDate > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalToDate) : 0).toFixed(2)}</strong>.<br>GAP = ${activeAnalystCount} - resultado = <strong>${gapPeople.toFixed(2)}</strong>.</div>` }
+          gap_people: { title: "GAP", formula: "Analistas activos - ((Ejecutado acumulado del 1er día hábil a hoy × analistas activos) / (Teórico acumulado del 1er día hábil a hoy × analistas activos)).", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado total para GAP: ${totalTheoreticalToDate.toFixed(2)} × ${activeAnalystCount} = <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = ${activeAnalystCount} - resultado = <strong>${gapPeople.toFixed(2)}</strong>.</div>` }
         }
         const kpiCard = (key, label, value, small) => `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('${key}')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">${label}</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('${key}')">?</button></div><div class="value">${value}</div><div class="small">${small}</div></div>`
-        const cardsHtml = `${kpiCard("hh_effective","Hs hombre efectivas mensuales por analista",`${hhEffective.toFixed(2)} h`,`Teóricas mensuales por analista: ${monthlyTheoreticalPerAnalyst.toFixed(2)} h`)}${kpiCard("days_elapsed","Días hábiles transcurridos",`${daysElapsed}`,`Período ${htmlEscape(monthKey)}`)}${kpiCard("total_theoretical","Tiempo total teórico mensual",`${totalMonthlyTheoretical.toFixed(2)} h`,`Suma mensual teórica del área`)}${kpiCard("total_executed","Tiempo total ejecutado",`${totalExecutedHours.toFixed(2)} h`,`Suma mensual ejecutada del área`)}${kpiCard("gap_idle","Utilización del día",`${gapIdlePct.toFixed(2)}%`,`Desde el 1er día hábil del mes hasta hoy`)}${kpiCard("capacity_use","Utilización del mes",`${usedCapacityPct.toFixed(2)}%`,`Ejecutado mensual / teórico mensual`)}${kpiCard("gap_people","GAP",`${gapPeople.toFixed(2)}`,`Brecha en personas activas equivalentes`)}`
+        const dualCard = `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('total_theoretical')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">Tiempo total mensual</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('total_theoretical')">?</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div style="padding-right:6px;border-right:1px solid var(--stroke)"><div class=\"small\">Teórico</div><div class=\"value\" style=\"font-size:20px\">${totalMonthlyTheoretical.toFixed(2)} h</div></div><div style="padding-left:6px"><div class=\"small\">Ejecutado</div><div class=\"value\" style=\"font-size:20px\">${totalExecutedHours.toFixed(2)} h</div></div></div></div>`
+        const cardsHtml = `${kpiCard("hh_effective","Hs hombre efectivas mensuales por analista",`${hhEffective.toFixed(2)} h`,`Teóricas mensuales por analista: ${monthlyTheoreticalPerAnalyst.toFixed(2)} h`)}${kpiCard("days_elapsed","Días hábiles transcurridos",`${daysElapsed}`,`Período ${htmlEscape(monthKey)}`)}${dualCard}${kpiCard("capacity_use","Utilización del mes",`${usedCapacityPct.toFixed(2)}%`,`Ejecutado mensual / teórico mensual`)}${kpiCard("gap_people","GAP",`${gapPeople.toFixed(2)}`,`Brecha en personas activas equivalentes`)}`
         const chartHtml = buildCapacityLineChart(elapsedBusinessDates.map(d => d.slice(-2)), theoreticalSeries, executedSeries)
         miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : cardsHtml}`
       }
@@ -2874,7 +2935,7 @@ Cliente B`)
                 const executedToDate = (entriesByAnalyst[email] || []).filter(r => String(r.date || "").slice(0,10) <= today).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
                 const gapPct = theoreticalToDate > 0 ? ((theoreticalToDate - executedToDate) / theoreticalToDate) * 100 : 0
                 const capacityUse = autoMonthly > 0 ? (executedHours / autoMonthly) * 100 : 0
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)}%" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)}%" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" title="Enviar advertencia por baja carga" onclick="openCapacityLowHoursModal('${email}')">⚠️</button><button class="danger" onclick="removeAnalystFromHoursTable('${email}')">X</button></td></tr>`
               }).join("")}
               ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); return acc }, { theoretical: 0, executed: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
             </tbody>
@@ -2941,16 +3002,19 @@ Cliente B`)
             <thead><tr>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total consolidado (${htmlEscape(monthKey)})</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consumo en personas</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th>
             </tr></thead>
             <tbody>
               ${rows.map(([client, mins]) => {
                 const tasks = byClientTasks[client] || []
                 const expanded = !!adminCapacityExpandedClients[client]
+                const totalHours = Number(mins || 0) / 60
+                const peopleConsumption = adminCapacityHhEffectiveMonthly > 0 ? (totalHours / adminCapacityHhEffectiveMonthly) : 0
                 const tasksHtml = expanded
                   ? `<div style="margin-top:6px">${tasks.length ? tasks.map(task => `<div class="small">• ${htmlEscape(task.id)} · ${htmlEscape(task.title)} · Prioridad: ${htmlEscape(task.priority)} · ${fmtMinutes(task.mins)}</div>`).join("") : `<div class="small">Sin tareas con tiempo en este período.</div>`}</div>`
                   : ""
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div>${htmlEscape(client)}</div>${tasksHtml}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(mins))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleAdminCapacityClientTasks('${encodeURIComponent(client)}')">${expanded ? "Ocultar tareas" : "Mostrar tareas"}</button></td></tr>`
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div>${htmlEscape(client)}</div>${tasksHtml}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(mins))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${peopleConsumption.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="toggleAdminCapacityClientTasks('${encodeURIComponent(client)}')">${expanded ? "Ocultar tareas" : "Mostrar tareas"}</button></td></tr>`
               }).join("")}
             </tbody>
           </table>
@@ -6764,6 +6828,23 @@ Cliente B`)
                 `).join("")
               : `<p class="small">Sin tickets cerca de deadline.</p>`)
           }
+          try{
+            const myEmail = String(currentUser?.email || "").toLowerCase()
+            const alertsByMonth = (await db.ref("capacity_low_hours_alerts").once("value")).val() || {}
+            const myAlerts = Object.values(alertsByMonth)
+              .map(monthObj => monthObj?.[emailKey(myEmail)] || null)
+              .filter(Boolean)
+              .sort((a,b)=>new Date(b.sentAt||0)-new Date(a.sentAt||0))
+            const latestAlert = myAlerts[0]
+            if(latestAlert){
+              const seenKey = `capacity_low_hours_seen_${myEmail}`
+              const seenStamp = localStorage.getItem(seenKey) || ""
+              if(String(latestAlert.sentAt || "") > seenStamp){
+                localStorage.setItem(seenKey, String(latestAlert.sentAt || ""))
+                showToast(`${latestAlert.message || "⚠️ Revisá tu carga de tiempos del período actual."} Motivo: ${latestAlert.reason || "Sin detalle"}`, "warn", 6500)
+              }
+            }
+          }catch(_){}
           setAnalystActivityTab(analystActivityTab)
           return
         }
