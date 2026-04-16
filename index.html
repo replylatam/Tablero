@@ -310,6 +310,26 @@
     .checkOption { display: flex; align-items: center; justify-content: flex-start; gap: 8px; font-size: 12px; color: var(--text-2); text-transform: none; }
     .agendaFilterField { display: flex; flex-direction: column; justify-content: flex-end; }
     .agendaMiniDash { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-bottom:10px; }
+    .ticketFilterDropdown summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 10px 12px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-sm);
+      background: rgba(8, 12, 22, 0.55);
+      color: var(--text-2);
+      margin-bottom: 10px;
+    }
+    .ticketFilterDropdown[open] summary { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .ticketFilterDropdown .agendaChecks { max-height: 190px; overflow-y: auto; }
+    .agendaSection {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      padding: 10px;
+      margin-top: 10px;
+      background: rgba(8,12,22,.28);
+    }
+    .agendaSection h4 { margin: 0 0 8px; }
     .agendaMiniDash .kpi { min-height: 96px; }
     @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .9fr; } }
 
@@ -1104,7 +1124,8 @@
       </div>
       <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
         <div><label>Título</label><input id="manualTitle" placeholder="Título"></div>
-        <div><label>Tipo de actividad (opcional)</label><input id="manualActivityType" placeholder="Ej: Carga masiva"></div>
+        <div><label>Tipo de actividad (opcional)</label><select id="manualActivityType"><option value="">Seleccionar tipo de actividad</option></select></div>
+        <div><label>Carpeta</label><select id="manualFolder"><option value="">Sin carpeta</option></select></div>
         <div style="grid-column:1/-1"><label>Detalle</label><textarea id="manualDetail" placeholder="Detalle del manual"></textarea></div>
         <div style="grid-column:1/-1"><label>Link del archivo</label><input id="manualLink" placeholder="https://..."></div>
       </div>
@@ -1170,6 +1191,9 @@
     var ticketFilterStatus = []
     var ticketFilterActivity = []
     var manualsSearchTerm = ""
+    var adminManualsSearchTerm = ""
+    var adminManualFolderFilter = ""
+    var analystShowSentGuidelines = false
     var cachedManuals = []
     var pendingTimeEditContext = null
     var mainViewTab = "tickets"
@@ -1808,7 +1832,7 @@
       return true
     }
 
-    function activityFilterOptionsHtml(){
+    function getActivityFilterOptions(){
       const role = String(currentRole || "").toLowerCase()
       const taskTypeField = (cachedTicketCustomFieldsDefs || []).find(f => {
         const key = String(f?.key || "").toLowerCase()
@@ -1820,7 +1844,22 @@
       const customFilters = (cachedTicketCustomFieldsDefs || [])
         .filter(f => Array.isArray(f.filterVisibleFor) && f.filterVisibleFor.includes(role))
         .map(f => ({ value: `custom:${f.key}`, label: String(f.label || f.key) }))
-      return [...taskType, ...customFilters].map(opt => `<option value="${htmlEscape(opt.value)}">${htmlEscape(opt.label)}</option>`).join("")
+      return [...taskType, ...customFilters]
+    }
+
+    function activityFilterOptionsHtml(){
+      return getActivityFilterOptions().map(opt => `<option value="${htmlEscape(opt.value)}">${htmlEscape(opt.label)}</option>`).join("")
+    }
+
+    function getTaskTypeOptions(){
+      const taskTypeField = (cachedTicketCustomFieldsDefs || []).find(f => {
+        const key = String(f?.key || "").toLowerCase()
+        const label = String(f?.label || "").toLowerCase()
+        return key === "tipo_de_tarea" || label.includes("tipo de tarea")
+      })
+      return Array.isArray(taskTypeField?.options)
+        ? taskTypeField.options.map(v => String(v || "").trim()).filter(Boolean)
+        : String(taskTypeField?.options || "").split(",").map(v => v.trim()).filter(Boolean)
     }
 
     function getDriveFileIdFromUrl(url){
@@ -2313,6 +2352,24 @@ Cliente B`)
       latestActivityLogs = []
     }
 
+    function selectedValuesFromChecks(containerId){
+      const root = typeof containerId === "string" ? document.getElementById(containerId) : containerId
+      if(!root) return []
+      return Array.from(root.querySelectorAll("input[type='checkbox']:checked")).map(chk => String(chk.value || "").trim().toLowerCase()).filter(Boolean)
+    }
+
+    function renderTicketFilterChecks(containerId, values, selected, onChangeFn, mapLabel){
+      const root = document.getElementById(containerId)
+      if(!root) return
+      const selectedSet = new Set((selected || []).map(v => String(v || "").toLowerCase()))
+      root.innerHTML = (values || []).map(item => {
+        const value = String(item?.value ?? item ?? "").trim()
+        const label = mapLabel ? mapLabel(item) : String(item?.label ?? item ?? "").trim()
+        const checked = selectedSet.has(value.toLowerCase()) ? "checked" : ""
+        return `<label class="checkOption"><input type="checkbox" value="${htmlEscape(value)}" onchange="${onChangeFn}(this)" ${checked}><span>${htmlEscape(label)}</span></label>`
+      }).join("")
+    }
+
     function setupRealtimeStreams(){
       if(!currentUser || realtimeStreamsStarted) return
       realtimeStreamsStarted = true
@@ -2329,14 +2386,8 @@ Cliente B`)
       db.ref("users_by_email").off()
       db.ref("users_by_email").on("value", snap => {
         cachedUsersByEmail = snap.val() || {}
-        const analystFilterSelect = document.getElementById("filterAnalyst")
-        if(analystFilterSelect){
-          const analysts = Object.values(cachedUsersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
-          analystFilterSelect.innerHTML = `${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join("")}`
-          Array.from(analystFilterSelect.options || []).forEach(opt => {
-            opt.selected = ticketFilterAnalyst.includes(String(opt.value || "").toLowerCase())
-          })
-        }
+        const analysts = Object.values(cachedUsersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
+        renderTicketFilterChecks("filterAnalyst", analysts, ticketFilterAnalyst, "updateAnalystFilter", (a) => userDisplayNameByEmail(a))
         if(cachedTickets && cachedTickets.length){
           const boardContainer = document.getElementById("boardContainer")
           if(boardContainer) renderTicketsFromData(cachedTickets)
@@ -2355,13 +2406,7 @@ Cliente B`)
         const clients = Object.values(snap.val() || {})
         cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
         globalThis.cachedClients = cachedClients
-        const clientFilterSelect = document.getElementById("filterClient")
-        if(clientFilterSelect){
-          clientFilterSelect.innerHTML = `${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
-          Array.from(clientFilterSelect.options || []).forEach(opt => {
-            opt.selected = ticketFilterClient.includes(String(opt.value || "").toLowerCase())
-          })
-        }
+        renderTicketFilterChecks("filterClient", cachedClients, ticketFilterClient, "updateClientFilter")
         const ticketClientSelect = document.getElementById("tClient")
         if(ticketClientSelect){
           ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
@@ -2381,24 +2426,12 @@ Cliente B`)
       globalThis.cachedClients = cachedClients
 
       const clientFilterSelect = document.getElementById("filterClient")
-      if(clientFilterSelect){
-        clientFilterSelect.innerHTML = `${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
-        Array.from(clientFilterSelect.options || []).forEach(opt => {
-          opt.selected = ticketFilterClient.includes(String(opt.value || "").toLowerCase())
-        })
-      }
-      const statusFilterSelect = document.getElementById("filterStatus")
-      if(statusFilterSelect){
-        Array.from(statusFilterSelect.options || []).forEach(opt => {
-          opt.selected = ticketFilterStatus.includes(String(opt.value || "").toLowerCase())
-        })
-      }
-      const activityFilterSelect = document.getElementById("filterActivityType")
-      if(activityFilterSelect){
-        Array.from(activityFilterSelect.options || []).forEach(opt => {
-          opt.selected = ticketFilterActivity.includes(String(opt.value || "").toLowerCase())
-        })
-      }
+      if(clientFilterSelect) renderTicketFilterChecks("filterClient", cachedClients, ticketFilterClient, "updateClientFilter")
+      renderTicketFilterChecks("filterStatus", Object.entries(STATUS).map(([value, label]) => ({ value, label })), ticketFilterStatus, "updateStatusFilter", item => item.label)
+      const activityOptions = getActivityFilterOptions()
+      const validActivity = activityOptions.map(opt => String(opt.value || "").toLowerCase())
+      ticketFilterActivity = (ticketFilterActivity || []).filter(v => validActivity.includes(v))
+      renderTicketFilterChecks("filterActivityType", activityOptions, ticketFilterActivity, "updateActivityFilter", item => item.label)
 
       const usersByEmailData = (await db.ref("users_by_email").once("value")).val() || {}
       cachedUsersByEmail = usersByEmailData
@@ -2406,10 +2439,7 @@ Cliente B`)
       const analystFilterSelect = document.getElementById("filterAnalyst")
       if(analystFilterSelect){
         const analysts = Object.values(usersByEmailData).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
-        analystFilterSelect.innerHTML = `${analysts.map(a => `<option value="${htmlEscape(a)}">${htmlEscape(a)}</option>`).join("")}`
-        Array.from(analystFilterSelect.options || []).forEach(opt => {
-          opt.selected = ticketFilterAnalyst.includes(String(opt.value || "").toLowerCase())
-        })
+        renderTicketFilterChecks("filterAnalyst", analysts, ticketFilterAnalyst, "updateAnalystFilter", (a) => userDisplayNameByEmail(a))
       }
 
       const informerSelect = document.getElementById("tInformer")
@@ -2430,15 +2460,10 @@ Cliente B`)
         renderTicketsFromData(cachedTickets)
       }
       await renderTicketCustomFields()
-      const activityFilterSelectRefresh = document.getElementById("filterActivityType")
-      if(activityFilterSelectRefresh){
-        activityFilterSelectRefresh.innerHTML = `${activityFilterOptionsHtml()}`
-        const validValues = Array.from(activityFilterSelectRefresh.options || []).map(opt => String(opt.value || "").toLowerCase())
-        ticketFilterActivity = (ticketFilterActivity || []).filter(v => validValues.includes(v))
-        Array.from(activityFilterSelectRefresh.options || []).forEach(opt => {
-          opt.selected = ticketFilterActivity.includes(String(opt.value || "").toLowerCase())
-        })
-      }
+      const refreshedActivityOptions = getActivityFilterOptions()
+      const refreshedValidValues = refreshedActivityOptions.map(opt => String(opt.value || "").toLowerCase())
+      ticketFilterActivity = (ticketFilterActivity || []).filter(v => refreshedValidValues.includes(v))
+      renderTicketFilterChecks("filterActivityType", refreshedActivityOptions, ticketFilterActivity, "updateActivityFilter", item => item.label)
     }
 
     async function getTicketCustomFields(){
@@ -4313,7 +4338,7 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Manuales</h3><button onclick="openManualModal()">agregar manuales</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3><div class="small"><h4 style="margin:10px 0 6px">1) Flujo general de tickets</h4><p>El ticket nace desde Admin/Analista/Consultor. Se define cliente, informador, deadline y campos de negocio (incluye tipo de actividad si está configurado). Luego se gestiona por estados (pendiente, en curso, recurrente, finalizada), con comentarios y tiempos.</p><p><strong>Consecuencia:</strong> toda modificación impacta dashboard, agenda, actividad reciente, notificaciones y trazabilidad histórica.</p><h4 style="margin:10px 0 6px">2) Roles y consecuencias por usuario</h4><p><strong>Admin:</strong> configura usuarios, clientes, campos, lineamientos, comunicados, agenda por equipo y permisos de edición por rol. Puede apagar/encender comunicados y decidir qué ve cada rol.</p><p><strong>Analista:</strong> gestiona tickets asignados, solicita cambios de deadline, registra tiempos, colabora con ayudantes y completa encuesta al cerrar. Si el admin desactiva su switch de edición, no puede modificar detalle/estado/asignaciones.</p><p><strong>Consultor:</strong> crea tickets, comenta, marca urgentes, aprueba/rechaza solicitudes de deadline y responde encuesta pendiente al cierre. Si su switch de edición está apagado, ve detalle sin editar.</p><h4 style="margin:10px 0 6px">3) Comentarios, lectura y notificaciones</h4><p>Cada comentario actualiza actividad. El sistema diferencia internos y visibles, calcula pendientes de lectura y muestra alertas en paneles. Los íconos de lectura y badges dependen del autor, rol y marca de leído por usuario.</p><p><strong>Consecuencia:</strong> comentar o mover tickets impacta indicadores y puede disparar recordatorios, alertas de urgencia y pendientes.</p><h4 style="margin:10px 0 6px">4) Tiempos y ayudantes</h4><p>El ticket guarda tiempo consolidado y por usuario (analista/ayudantes). Esto afecta reportes, vista "Estado de mis tickets" y control operativo del equipo.</p><p><strong>Consecuencia:</strong> si no se carga tiempo, el analista puede quedar con advertencias de gestión incompleta.</p><h4 style="margin:10px 0 6px">5) Lineamientos y calidad</h4><p>Lineamientos: el admin publica por cliente; analista puede proponer para aprobación. Calidad: analista evalúa consultor al cierre y luego consultor evalúa analista; cada uno ve resultados propios con recomendaciones.</p><p><strong>Consecuencia:</strong> las encuestas alimentan puntaje visible y sirven para detectar brechas de recepción, comunicación y satisfacción.</p><h4 style="margin:10px 0 6px">6) Comunicados</h4><p>El admin puede publicar, programar fecha/hora y apagar comunicados. Los usuarios reciben únicamente comunicados activos y ya vigentes por horario.</p><p><strong>Consecuencia:</strong> permite coordinar anuncios operativos sin saturar ni mostrar mensajes fuera de ventana.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px"><input placeholder="Buscar manual" style="margin:0;min-width:220px" oninput="updateAdminManualsSearch(this.value)"><input id="manualFolderName" placeholder="Nueva carpeta" style="margin:0;min-width:180px"><button class="ghost" onclick="createManualFolder()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3><div class="small"><h4 style="margin:10px 0 6px">1) Flujo general de tickets</h4><p>El ticket nace desde Admin/Analista/Consultor. Se define cliente, informador, deadline y campos de negocio (incluye tipo de actividad si está configurado). Luego se gestiona por estados (pendiente, en curso, recurrente, finalizada), con comentarios y tiempos.</p><p><strong>Consecuencia:</strong> toda modificación impacta dashboard, agenda, actividad reciente, notificaciones y trazabilidad histórica.</p><h4 style="margin:10px 0 6px">2) Roles y consecuencias por usuario</h4><p><strong>Admin:</strong> configura usuarios, clientes, campos, lineamientos, comunicados, agenda por equipo y permisos de edición por rol. Puede apagar/encender comunicados y decidir qué ve cada rol.</p><p><strong>Analista:</strong> gestiona tickets asignados, solicita cambios de deadline, registra tiempos, colabora con ayudantes y completa encuesta al cerrar. Si el admin desactiva su switch de edición, no puede modificar detalle/estado/asignaciones.</p><p><strong>Consultor:</strong> crea tickets, comenta, marca urgentes, aprueba/rechaza solicitudes de deadline y responde encuesta pendiente al cierre. Si su switch de edición está apagado, ve detalle sin editar.</p><h4 style="margin:10px 0 6px">3) Comentarios, lectura y notificaciones</h4><p>Cada comentario actualiza actividad. El sistema diferencia internos y visibles, calcula pendientes de lectura y muestra alertas en paneles. Los íconos de lectura y badges dependen del autor, rol y marca de leído por usuario.</p><p><strong>Consecuencia:</strong> comentar o mover tickets impacta indicadores y puede disparar recordatorios, alertas de urgencia y pendientes.</p><h4 style="margin:10px 0 6px">4) Tiempos y ayudantes</h4><p>El ticket guarda tiempo consolidado y por usuario (analista/ayudantes). Esto afecta reportes, vista "Estado de mis tickets" y control operativo del equipo.</p><p><strong>Consecuencia:</strong> si no se carga tiempo, el analista puede quedar con advertencias de gestión incompleta.</p><h4 style="margin:10px 0 6px">5) Lineamientos y calidad</h4><p>Lineamientos: el admin publica por cliente; analista puede proponer para aprobación. Calidad: analista evalúa consultor al cierre y luego consultor evalúa analista; cada uno ve resultados propios con recomendaciones.</p><p><strong>Consecuencia:</strong> las encuestas alimentan puntaje visible y sirven para detectar brechas de recepción, comunicación y satisfacción.</p><h4 style="margin:10px 0 6px">6) Comunicados</h4><p>El admin puede publicar, programar fecha/hora y apagar comunicados. Los usuarios reciben únicamente comunicados activos y ya vigentes por horario.</p><p><strong>Consecuencia:</strong> permite coordinar anuncios operativos sin saturar ni mostrar mensajes fuera de ventana.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Ocultar analistas</label><details id="agendaFilterAnalystDropdown" class="agendaDropdown"><summary class="small">Seleccionar analistas a ocultar</summary><div id="agendaFilterAnalystChecks" class="agendaChecks"></div></details></div><div class="agendaFilterField"><label>Ocultar estados</label><details id="agendaFilterStatusDropdown" class="agendaDropdown"><summary class="small">Seleccionar estados a ocultar</summary><div id="agendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<div class=\"checkOption\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAdminAgendaCheckboxFilter('status', this.value, this.checked)\"><span>${htmlEscape(v)}</span></div>`).join("")}</div></details></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -4323,7 +4348,7 @@ Cliente B`)
             <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
             <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
           </div>
-          ` : adminPanelTab==='user_management' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de clientes</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><h4 style="margin:0 0 8px">Clientes</h4><div class="row"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end;height:100%"><button style="margin-bottom:2px" onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
+          ` : adminPanelTab==='user_management' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de clientes</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><h4 style="margin:0 0 8px">Clientes</h4><div class="row" style="align-items:flex-end"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Analista)</h3>
             <div class="row">
@@ -4427,7 +4452,7 @@ Cliente B`)
 
           <div class="card">
             <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
-            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div><div><select id="filterClient" multiple size="4" onchange="updateClientFilter(this)"></select></div><div><select id="filterStatus" multiple size="4" onchange="updateStatusFilter(this)">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><select id="filterActivityType" multiple size="4" onchange="updateActivityFilter(this)">${activityFilterOptionsHtml()}</select></div>${isAnalyst?`<div><select id="filterAnalyst" multiple size="4" onchange="updateAnalystFilter(this)"></select></div>`:""}</div>
+            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div><div><details class="ticketFilterDropdown"><summary>${ticketFilterClient.length ? `Cliente (${ticketFilterClient.length})` : "Cliente"}</summary><div id="filterClient" class="agendaChecks"></div></details></div><div><details class="ticketFilterDropdown"><summary>${ticketFilterStatus.length ? `Estado (${ticketFilterStatus.length})` : "Estado"}</summary><div id="filterStatus" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<label class="checkOption"><input type="checkbox" value="${htmlEscape(k)}" onchange="updateStatusFilter(this)"><span>${htmlEscape(v)}</span></label>`).join("")}</div></details></div><div><details class="ticketFilterDropdown"><summary>${ticketFilterActivity.length ? `Actividad (${ticketFilterActivity.length})` : "Actividad"}</summary><div id="filterActivityType" class="agendaChecks">${activityFilterOptionsHtml().replace(/<option value="([^"]+)">([^<]+)<\/option>/g, `<label class="checkOption"><input type="checkbox" value="$1" onchange="updateActivityFilter(this)"><span>$2</span></label>`)}</div></details></div>${isAnalyst?`<div><details class="ticketFilterDropdown"><summary>${ticketFilterAnalyst.length ? `Analista (${ticketFilterAnalyst.length})` : "Analista"}</summary><div id="filterAnalyst" class="agendaChecks"></div></details></div>`:""}</div>
           </div>
           <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
@@ -4487,15 +4512,12 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'people'){ }
     }
 
-    function selectedValuesFromMulti(el){
-      if(!el || !el.options) return []
-      return Array.from(el.options).filter(o => o.selected).map(o => String(o.value || "").trim().toLowerCase()).filter(Boolean)
-    }
+    function selectedValuesFromMulti(el){ return selectedValuesFromChecks(el) }
     function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets(); loadDashboard() }
-    function updateClientFilter(el){ ticketFilterClient = selectedValuesFromMulti(el); globalThis.ticketFilterClient = ticketFilterClient; loadTickets(); loadDashboard() }
-    function updateAnalystFilter(el){ ticketFilterAnalyst = selectedValuesFromMulti(el); loadTickets(); loadDashboard() }
-    function updateStatusFilter(el){ ticketFilterStatus = selectedValuesFromMulti(el); loadTickets(); loadDashboard() }
-    function updateActivityFilter(el){ ticketFilterActivity = selectedValuesFromMulti(el); loadTickets(); loadDashboard() }
+    function updateClientFilter(){ ticketFilterClient = selectedValuesFromChecks("filterClient"); globalThis.ticketFilterClient = ticketFilterClient; loadTickets(); loadDashboard() }
+    function updateAnalystFilter(){ ticketFilterAnalyst = selectedValuesFromChecks("filterAnalyst"); loadTickets(); loadDashboard() }
+    function updateStatusFilter(){ ticketFilterStatus = selectedValuesFromChecks("filterStatus"); loadTickets(); loadDashboard() }
+    function updateActivityFilter(){ ticketFilterActivity = selectedValuesFromChecks("filterActivityType"); loadTickets(); loadDashboard() }
     function updateManualsSearch(value){ manualsSearchTerm = String(value || "").trim().toLowerCase(); loadManualsAnalyst() }
 
     function renderSavedItems(){
@@ -4546,12 +4568,28 @@ Cliente B`)
       return cachedManuals
     }
 
-    function openManualModal(){
+    async function getManualFolders(){
+      const folders = Object.values((await db.ref("manual_folders").once("value")).val() || {})
+      return folders.filter(f => f && f.id && f.name).sort((a,b) => String(a.name||"").localeCompare(String(b.name||""), "es"))
+    }
+
+    async function openManualModal(){
       if(currentRole !== "admin") return
+      await getTicketCustomFields()
       document.getElementById("manualTitle").value = ""
       document.getElementById("manualDetail").value = ""
       document.getElementById("manualLink").value = ""
+      const activitySelect = document.getElementById("manualActivityType")
+      if(activitySelect){
+        const options = getTaskTypeOptions()
+        activitySelect.innerHTML = `<option value="">Seleccionar tipo de actividad</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      }
       document.getElementById("manualActivityType").value = ""
+      getManualFolders().then(folders => {
+        const folderSelect = document.getElementById("manualFolder")
+        if(!folderSelect) return
+        folderSelect.innerHTML = `<option value="">Sin carpeta</option>${folders.map(f => `<option value="${htmlEscape(f.id)}">${htmlEscape(f.name)}</option>`).join("")}`
+      })
       document.getElementById("manualModal")?.classList.remove("hidden")
     }
 
@@ -4565,9 +4603,10 @@ Cliente B`)
       const detail = String(document.getElementById("manualDetail")?.value || "").trim()
       const link = String(document.getElementById("manualLink")?.value || "").trim()
       const activityType = String(document.getElementById("manualActivityType")?.value || "").trim()
+      const folderId = String(document.getElementById("manualFolder")?.value || "").trim()
       if(!title || !detail || !link) return alert("Completá título, detalle y link.")
       const id = db.ref("manuals").push().key
-      await db.ref("manuals").child(id).set({ id, title, detail, link, activityType, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      await db.ref("manuals").child(id).set({ id, title, detail, link, activityType, folderId, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
       closeManualModal()
       showToast("Manual guardado", "ok")
       loadManualsAdmin()
@@ -4583,19 +4622,69 @@ Cliente B`)
     async function loadManualsAdmin(){
       if(currentRole !== "admin" || adminPanelTab !== "manuals") return
       const manuals = await getManuals()
+      const folders = await getManualFolders()
+      const folderMap = Object.fromEntries(folders.map(f => [String(f.id), String(f.name)]))
       const wrap = document.getElementById("adminManualsList")
       if(!wrap) return
-      wrap.innerHTML = manuals.length ? manuals.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")}</div></div><button class="danger" onclick="deleteManual('${m.id}')">Eliminar</button></div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("") : `<div class="small">Sin manuales cargados.</div>`
+      const search = String(adminManualsSearchTerm || "").toLowerCase()
+      const filtered = manuals.filter(m => {
+        const folderName = folderMap[String(m.folderId || "")] || ""
+        const byText = !search || `${m.title || ""} ${m.detail || ""} ${m.activityType || ""} ${folderName}`.toLowerCase().includes(search)
+        const byFolder = !adminManualFolderFilter || String(m.folderId || "") === String(adminManualFolderFilter)
+        return byText && byFolder
+      })
+      const folderOptions = `<option value="">Todas las carpetas</option>${folders.map(f => `<option value="${htmlEscape(f.id)}" ${String(adminManualFolderFilter||"")===String(f.id)?"selected":""}>${htmlEscape(f.name)}</option>`).join("")}`
+      wrap.innerHTML = `
+        <div class="inline" style="margin-bottom:8px;gap:8px;flex-wrap:wrap"><label style="margin:0">Carpeta</label><select style="margin:0;max-width:280px" onchange="setAdminManualFolderFilter(this.value)">${folderOptions}</select></div>
+        ${filtered.length ? filtered.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")} · Carpeta: ${htmlEscape(folderMap[String(m.folderId || "")] || "Sin carpeta")}</div></div><div class="inline"><select style="margin:0;max-width:200px" onchange="moveManualToFolder('${m.id}', this.value)"><option value="">Sin carpeta</option>${folders.map(f => `<option value="${htmlEscape(f.id)}" ${String(m.folderId||"")===String(f.id)?"selected":""}>${htmlEscape(f.name)}</option>`).join("")}</select><button class="danger" onclick="deleteManual('${m.id}')">Eliminar</button></div></div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("") : `<div class="small">Sin manuales cargados.</div>`}
+      `
     }
 
     async function loadManualsAnalyst(){
       if(currentRole !== "analista" || analystPanelTab !== "manuals") return
       const manuals = await getManuals()
+      const folders = await getManualFolders()
+      const folderMap = Object.fromEntries(folders.map(f => [String(f.id), String(f.name)]))
       const wrap = document.getElementById("analystManualsList")
       if(!wrap) return
       const term = String(manualsSearchTerm || "").toLowerCase()
       const visible = manuals.filter(m => !term || `${m.title || ""} ${m.detail || ""} ${m.activityType || ""}`.toLowerCase().includes(term))
-      wrap.innerHTML = visible.length ? visible.map(m => `<div class="feedItem"><div class="feedType">${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")}</div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("") : `<div class="small">Sin manuales para el filtro actual.</div>`
+      const grouped = visible.reduce((acc, m) => {
+        const key = folderMap[String(m.folderId || "")] || "Sin carpeta"
+        if(!acc[key]) acc[key] = []
+        acc[key].push(m)
+        return acc
+      }, {})
+      wrap.innerHTML = Object.keys(grouped).length ? Object.entries(grouped).sort((a,b)=>a[0].localeCompare(b[0],'es')).map(([folderName, list]) => `<div class="feedItem"><div class="feedType">📁 ${htmlEscape(folderName)}</div><div class="small">${list.map(m => `<div style="margin-top:10px"><div class="feedType">${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")}</div><div style="margin-top:4px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:4px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("")}</div></div>`).join("") : `<div class="small">Sin manuales para el filtro actual.</div>`
+    }
+
+    function updateAdminManualsSearch(value){
+      adminManualsSearchTerm = String(value || "").trim().toLowerCase()
+      loadManualsAdmin()
+    }
+
+    async function createManualFolder(){
+      if(currentRole !== "admin") return
+      const nameInput = document.getElementById("manualFolderName")
+      const name = String(nameInput?.value || "").trim()
+      if(!name) return alert("Ingresá un nombre de carpeta")
+      const id = db.ref("manual_folders").push().key
+      await db.ref("manual_folders").child(id).set({ id, name, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      if(nameInput) nameInput.value = ""
+      showToast("Carpeta creada", "ok")
+      loadManualsAdmin()
+    }
+
+    function setAdminManualFolderFilter(value){
+      adminManualFolderFilter = String(value || "")
+      loadManualsAdmin()
+    }
+
+    async function moveManualToFolder(manualId, folderId){
+      if(currentRole !== "admin") return
+      await db.ref("manuals").child(manualId).update({ folderId: String(folderId || "") })
+      showToast("Manual movido", "ok", 1000)
+      loadManualsAdmin()
     }
 
     function guidelineVoteTotals(guideline){
@@ -4817,7 +4906,7 @@ Cliente B`)
       const wrap = document.getElementById("analystGuidelinesContainer")
       if(!wrap) return
       const clientsList = cachedClients.length ? cachedClients : Object.keys(byClient).filter(c => c !== "Lineamientos generales")
-      const sentBox = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">Lineamientos enviados</h4><button class="ghost" onclick="openAnalystGuidelineModal()">Crear lineamiento</button></div>${myVisibleRequests.length ? myVisibleRequests.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map(r => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(r.title||"-")}</div><div class="feedMeta">${htmlEscape(r.client||"-")} · Estado: ${htmlEscape(r.status||"-")}</div></div></div><div style="margin-top:6px">${htmlEscape(r.summary||"-")}</div></div>`).join("") : `<div class="small" style="margin-top:8px">No tenés solicitudes pendientes o rechazadas.</div>`}</div>`
+      const sentBox = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">Lineamientos enviados</h4><div class="inline" style="gap:8px"><button class="ghost" onclick="toggleAnalystSentGuidelines()">${analystShowSentGuidelines ? "Ocultar lista" : "Mostrar lista"}</button><button class="ghost" onclick="openAnalystGuidelineModal()">Crear lineamiento</button></div></div>${analystShowSentGuidelines ? (myVisibleRequests.length ? myVisibleRequests.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map(r => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(r.title||"-")}</div><div class="feedMeta">${htmlEscape(r.client||"-")} · Estado: ${htmlEscape(r.status||"-")}</div></div></div><div style="margin-top:6px">${htmlEscape(r.summary||"-")}</div></div>`).join("") : `<div class="small" style="margin-top:8px">No tenés solicitudes pendientes o rechazadas.</div>`) : `<div class="small" style="margin-top:8px">Lista oculta.</div>`}</div>`
       if(!analystGuidelinesClient){
         wrap.innerHTML = sentBox + (clients.length ? clients.map(client => `<div class="feedItem" style="cursor:pointer" onclick="openAnalystGuidelineFolder('${encodeURIComponent(client)}')"><div class="feedTop"><div><div class="feedType">📁 ${htmlEscape(client)}</div><div class="feedMeta">${byClient[client].length} lineamiento(s)</div></div></div></div>`).join("") : `<p class="small">No hay lineamientos.</p>`)
         return
@@ -4834,6 +4923,11 @@ Cliente B`)
 
     function openAnalystGuidelineFolder(encodedClient){
       analystGuidelinesClient = decodeURIComponent(String(encodedClient || ""))
+      loadAnalystGuidelines()
+    }
+
+    function toggleAnalystSentGuidelines(){
+      analystShowSentGuidelines = !analystShowSentGuidelines
       loadAnalystGuidelines()
     }
 
@@ -5287,7 +5381,7 @@ Cliente B`)
       const uniformHeight = Math.max(220, 120 + maxTicketsInColumn * 190)
 
       container.innerHTML = `<div class="board">${Object.entries(STATUS).map(([status, label]) => `
-        <div class="column" style="min-height:${uniformHeight}px" ondragover="onColumnDragOver(event)" ondragleave="onColumnDragLeave(event)" ondrop="onColumnDrop(event,'${status}')">
+        <div class="column" data-status="${status}" style="min-height:${uniformHeight}px" ondragover="onColumnDragOver(event)" ondragleave="onColumnDragLeave(event)" ondrop="onColumnDrop(event,'${status}')">
           <h4>${label} <span class="small">(${grouped[status].length})</span></h4>
           ${grouped[status].map(t => renderTicketCard(t, status)).join("") || `<p class="small">Sin tickets</p>`}
         </div>
@@ -5478,7 +5572,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados.</div>`}</div></div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados.</div>`}</div></div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -5497,7 +5591,13 @@ Cliente B`)
         .filter(l => l.ticketId === ticketId)
         .sort((a,b)=>new Date(a.timestampIso||0)-new Date(b.timestampIso||0))
       if(!logs.length){ el.innerHTML = "Sin historial."; return }
-      el.innerHTML = logs.map(l => `<div class="feedItem"><div class="feedType">${htmlEscape(l.eventType||"evento")}</div><div class="feedMeta">${htmlEscape(l.email||"-")} · ${l.timestampIso?new Date(l.timestampIso).toLocaleString():""}</div>${l.changes ? `<div class="small" style="margin-top:6px">${htmlEscape(l.changes)}</div>` : ""}</div>`).join("")
+      el.innerHTML = logs.map(l => {
+        const details = Object.entries(l || {})
+          .filter(([k,v]) => !["eventType","email","ticketId","timestampIso","changes"].includes(k) && v !== undefined && v !== null && String(v) !== "")
+          .map(([k,v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+        const full = [l.changes ? String(l.changes) : "", ...details].filter(Boolean).join(" · ")
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(l.eventType||"evento")}</div><div class="feedMeta">${htmlEscape(l.email||"-")} · ${l.timestampIso?new Date(l.timestampIso).toLocaleString():""}</div>${full ? `<div class="small" style="margin-top:6px">${htmlEscape(full)}</div>` : ""}</div>`
+      }).join("")
     }
 
     function closeTicketDetailModal(){
@@ -5983,20 +6083,21 @@ Cliente B`)
       if(dropColumn?.classList) dropColumn.classList.remove('dropTarget')
       try{
         await getRoleTicketEditSettings()
+        const targetStatus = String(dropColumn?.dataset?.status || status || "").trim()
         const ticketId = draggedTicketId || event?.dataTransfer?.getData("text/plain") || ""
         if(!ticketId) return
         const ticket = cachedTickets.find(t => t.id === ticketId)
-        if(!ticket || ticket.status === status) return
+        if(!ticket || !targetStatus || ticket.status === targetStatus) return
         if(!(currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets()))) return
-        const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
-        if(currentRole === "analista" && ticket.status !== "done" && status === "done"){
+        const updated = { ...ticket, status: targetStatus, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+        if(currentRole === "analista" && ticket.status !== "done" && targetStatus === "done"){
           return openCloseSurveyModal(ticketId, updated)
         }
-        await handleAnalystAutoTimerByStatus(ticket, status)
+        await handleAnalystAutoTimerByStatus(ticket, targetStatus)
         showToast("Moviendo ticket...", "info", 1400)
         await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
         mirrorToSheet("updateTicket", { id: ticketId, ...updated })
-        await logActivity("ticket_movido", { ticketId, nextStatus: status, fromStatus: ticket.status, source: "drag_drop" })
+        await logActivity("ticket_movido", { ticketId, nextStatus: targetStatus, fromStatus: ticket.status, source: "drag_drop" })
         const ix = cachedTickets.findIndex(t => t.id === ticketId)
         if(ix >= 0) cachedTickets[ix] = updated
         if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
@@ -7003,7 +7104,9 @@ Cliente B`)
       }
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
       wrap.innerHTML = `
-        <div style="overflow:auto">
+        <div class="agendaSection">
+          <h4>Agenda del equipo</h4>
+          <div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse;font-size:13px">
             <thead>
               <tr>
@@ -7050,9 +7153,12 @@ Cliente B`)
               }).join("")}
             </tbody>
           </table>
+          </div>
         </div>
-        <h4 style="margin:12px 0 8px">Tickets sin atención por 7 días</h4>
-        ${renderInactiveTicketsTable(teamTicketsAll, logs)}
+        <div class="agendaSection">
+          <h4>Tickets sin atención por 7 días</h4>
+          ${renderInactiveTicketsTable(teamTicketsAll, logs)}
+        </div>
       `
     }
 
@@ -7669,7 +7775,7 @@ Cliente B`)
                 <div class="feedTop">
                   <div>
                     <div class="feedType">Comentario reciente</div>
-                    <div class="feedMeta">${htmlEscape(it.email || "sin-usuario")} · Cliente: ${htmlEscape(cachedTickets.find(t => String(t.id||"") === String(it.ticketId||""))?.client || "-")} · ${it.timestampIso ? new Date(it.timestampIso).toLocaleString() : ""}</div>
+                    <div class="feedMeta">${htmlEscape(it.email || "sin-usuario")} · Cliente: ${htmlEscape(cachedTickets.find(t => String(t.id||"") === String(it.ticketId||""))?.client || "-")} · ${it.timestampIso ? new Date(it.timestampIso).toLocaleString() : ""}<br><span class="small">Ticket: ${htmlEscape(it.ticketId || "-")}</span></div>
                   </div>
                   <span class="badge">${htmlEscape(it.ticketId || "-")}</span>
                 </div>
