@@ -1058,6 +1058,20 @@
     </div>
   </div>
 
+  <div id="commentEditModal" class="modalBack hidden" onclick="if(event.target===this) closeCommentEditModal()">
+    <div class="card modal" style="max-width:640px">
+      <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="margin:0">Editar comentario</h3>
+        <button class="secondary" onclick="closeCommentEditModal()">Cerrar</button>
+      </div>
+      <textarea id="commentEditInput" placeholder="Editar comentario..."></textarea>
+      <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:8px">
+        <button class="secondary" onclick="closeCommentEditModal()">Cancelar</button>
+        <button onclick="saveCommentEditModal()">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     firebase.initializeApp({
       apiKey: "AIzaSyA4-yTeI0CemnlROxF9hIgj_HxiDLvYZTY",
@@ -1144,6 +1158,9 @@
     var qualitySurveyForms = null
     var adminGuidelinesClient = ""
     var analystNotificationsOpen = false
+    var analystNotifRefreshTimer = null
+    var analystBoardSettings = { autoTimerOnStatusChange: false }
+    var commentEditContext = null
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
@@ -1286,6 +1303,42 @@
       mainViewTab = "tickets"
       closeHeaderMenu()
       renderApp()
+    }
+
+    function analystBoardSettingsKey(){
+      return `analyst_board_settings_${String(currentUser?.email || "").toLowerCase()}`
+    }
+
+    function loadAnalystBoardSettings(){
+      if(currentRole !== "analista") return
+      try{
+        const parsed = JSON.parse(localStorage.getItem(analystBoardSettingsKey()) || "{}")
+        analystBoardSettings = { autoTimerOnStatusChange: !!parsed.autoTimerOnStatusChange }
+      }catch(_){
+        analystBoardSettings = { autoTimerOnStatusChange: false }
+      }
+    }
+
+    function setAnalystBoardAutoTimer(enabled){
+      analystBoardSettings.autoTimerOnStatusChange = !!enabled
+      localStorage.setItem(analystBoardSettingsKey(), JSON.stringify(analystBoardSettings))
+      showToast("Configuración del tablero guardada.", "ok", 1400)
+    }
+
+    function stopAnalystNotifRefreshTimer(){
+      if(analystNotifRefreshTimer) clearInterval(analystNotifRefreshTimer)
+      analystNotifRefreshTimer = null
+    }
+
+    function startAnalystNotifRefreshTimer(){
+      stopAnalystNotifRefreshTimer()
+      if(currentRole !== "analista") return
+      analystNotifRefreshTimer = setInterval(async () => {
+        await refreshAnalystNotificationBadge()
+        if(analystNotificationsOpen){
+          await renderAnalystNotificationsDropdown()
+        }
+      }, 9000)
     }
 
     function setMainViewTab(tab){
@@ -1841,7 +1894,7 @@
         const authorRole = String(usersByEmail?.[emailKey(authorEmail)]?.role || '').toLowerCase()
 
         const shouldMark = (currentRole === 'consultor' && (authorRole === 'admin' || authorRole === 'analista'))
-          || (currentRole === 'analista' && authorRole === 'consultor')
+          || ((currentRole === 'analista' || currentRole === 'admin') && authorRole === 'consultor')
         if(!shouldMark) return
 
         const readBy = { ...(item.readBy || {}) }
@@ -1865,6 +1918,14 @@
       const editor = document.getElementById(`comment-editor-${ticketId}`)
       if(!editor) return
       editor.focus()
+      if(command === "insertTable"){
+        document.execCommand("insertHTML", false, `<table border="1" style="border-collapse:collapse;width:100%"><tr><th>Columna 1</th><th>Columna 2</th></tr><tr><td>Dato</td><td>Dato</td></tr></table><br>`)
+        return
+      }
+      if(command === "insertAlertIcon"){
+        document.execCommand("insertText", false, value || "⚠️ ")
+        return
+      }
       document.execCommand(command, false, value)
     }
 
@@ -2580,7 +2641,16 @@ Cliente B`)
       const key = String(monthKey || "")
       if(!key) return {}
       const snapshot = (await db.ref("capacity_client_notes").child(key).once("value")).val() || {}
-      adminCapacityClientNotes[key] = snapshot && typeof snapshot === "object" ? snapshot : {}
+      const normalized = {}
+      Object.entries(snapshot || {}).forEach(([clientKey, raw]) => {
+        if(raw && typeof raw === "object" && raw.entries && typeof raw.entries === "object"){
+          const entries = Object.values(raw.entries).filter(Boolean).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+          normalized[clientKey] = { client: String(raw.client || ""), entries }
+        }else if(raw && typeof raw === "object" && raw.note){
+          normalized[clientKey] = { client: String(raw.client || ""), entries: [{ id: raw.id || generateId(), note: String(raw.note || ""), createdAt: String(raw.updatedAt || raw.createdAt || ""), createdBy: String(raw.updatedBy || "") }] }
+        }
+      })
+      adminCapacityClientNotes[key] = normalized
       return adminCapacityClientNotes[key]
     }
 
@@ -2590,20 +2660,19 @@ Cliente B`)
       const client = decodeURIComponent(String(encodedClient || ""))
       if(!key || !client) return
       const note = String(document.getElementById("capacityClientNotesInput")?.value || "").trim()
-      const ref = db.ref("capacity_client_notes").child(key).child(emailKey(client))
-      if(note){
-        await ref.set({
-          client,
-          note,
-          updatedAt: new Date().toISOString(),
-          updatedBy: String(currentUser?.email || "").toLowerCase()
-        })
-      }else{
-        await ref.remove()
-      }
+      if(!note) return alert("Ingresá una nota.")
+      const clientRef = db.ref("capacity_client_notes").child(key).child(emailKey(client))
+      const noteId = clientRef.child("entries").push().key
+      await clientRef.child("client").set(client)
+      await clientRef.child("entries").child(noteId).set({
+        id: noteId,
+        note,
+        createdAt: new Date().toISOString(),
+        createdBy: String(currentUser?.email || "").toLowerCase()
+      })
       adminCapacityClientNotes[key] = adminCapacityClientNotes[key] || {}
-      if(note) adminCapacityClientNotes[key][emailKey(client)] = { client, note }
-      else delete adminCapacityClientNotes[key][emailKey(client)]
+      const prev = adminCapacityClientNotes[key][emailKey(client)]?.entries || []
+      adminCapacityClientNotes[key][emailKey(client)] = { client, entries: [{ id: noteId, note, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() }, ...prev] }
       showToast("Nota guardada.", "ok", 1600)
     }
 
@@ -2622,18 +2691,25 @@ Cliente B`)
       if(title) title.textContent = `Notas de ${client}`
       if(monthLabel) monthLabel.textContent = key
       if(input){
-        const currentNote = String(adminCapacityClientNotes?.[key]?.[emailKey(client)]?.note || "")
+        const currentNote = ""
         input.value = currentNote
       }
       if(history){
         const allMonths = (await db.ref("capacity_client_notes").once("value")).val() || {}
-        const rows = Object.entries(allMonths)
-          .map(([mk, clientsObj]) => {
-            const noteObj = clientsObj?.[emailKey(client)]
-            return noteObj?.note ? { monthKey: mk, note: String(noteObj.note || ""), updatedAt: String(noteObj.updatedAt || ""), updatedBy: String(noteObj.updatedBy || "") } : null
-          })
-          .filter(Boolean)
-          .sort((a,b)=>String(b.monthKey).localeCompare(String(a.monthKey)))
+        const rows = []
+        Object.entries(allMonths).forEach(([mk, clientsObj]) => {
+          const node = clientsObj?.[emailKey(client)]
+          if(!node) return
+          if(node.entries && typeof node.entries === "object"){
+            Object.values(node.entries).forEach(entry => {
+              if(!entry?.note) return
+              rows.push({ monthKey: mk, note: String(entry.note || ""), updatedAt: String(entry.createdAt || ""), updatedBy: String(entry.createdBy || "") })
+            })
+          }else if(node.note){
+            rows.push({ monthKey: mk, note: String(node.note || ""), updatedAt: String(node.updatedAt || ""), updatedBy: String(node.updatedBy || "") })
+          }
+        })
+        rows.sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0))
         history.innerHTML = rows.length
           ? rows.map(row => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(row.monthKey)}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(row.updatedBy) || row.updatedBy || "-")} · ${formatDateTime24(row.updatedAt || "")}</div></div></div><div>${htmlEscape(row.note)}</div></div>`).join("")
           : `<div class="small">Sin historial para este cliente.</div>`
@@ -3221,11 +3297,22 @@ Cliente B`)
       const rows = Object.entries(byClientMinutes)
         .filter(([client]) => !query || client.toLowerCase().includes(query))
         .sort((a,b)=>b[1]-a[1])
+      const clientCardsHtml = rows.map(([client, mins]) => {
+        const totalHours = Number(mins || 0) / 60
+        const prevHours = Number(byClientMinutesPrev[client] || 0) / 60
+        const peopleConsumption = adminCapacityHhEffectiveMonthly > 0 ? (totalHours / adminCapacityHhEffectiveMonthly) : 0
+        const prevPeopleConsumption = adminCapacityHhEffectiveMonthly > 0 ? (prevHours / adminCapacityHhEffectiveMonthly) : 0
+        const diffHours = totalHours - prevHours
+        const diffPeople = peopleConsumption - prevPeopleConsumption
+        const hasNote = (adminCapacityClientNotes?.[monthKey]?.[emailKey(client)]?.entries || []).length > 0
+        return `<div class="kpi"><div class="label">${htmlEscape(client)}</div><div class="value">${totalHours.toFixed(2)} h</div><div class="small">Consumo: ${peopleConsumption.toFixed(2)} pers.</div><div class="small">Dif: ${diffHours >= 0 ? "+" : ""}${diffHours.toFixed(2)} h · ${diffPeople >= 0 ? "+" : ""}${diffPeople.toFixed(2)} pers.</div><div class="inline" style="margin-top:6px"><button class="${hasNote ? '' : 'ghost'}" onclick="openCapacityClientNotesModal('${monthKey}','${encodeURIComponent(client)}')">${hasNote ? "Ver/editar nota" : "Agregar nota"}</button><button class="ghost" onclick="toggleAdminCapacityClientTasks('${encodeURIComponent(client)}')">Tareas</button></div></div>`
+      }).join("")
       wrap.innerHTML = `
         <div class="inline" style="margin-bottom:8px">
           <label style="margin:0">Filtrar cliente</label>
           <input id="adminCapacityClientFilterInput" placeholder="Buscar cliente..." value="${htmlEscape(adminCapacityClientFilter)}" oninput="setAdminCapacityClientFilter(this.value)" style="max-width:280px;margin:0">
         </div>
+        ${rows.length ? `<div class="kpiGrid" style="margin-bottom:10px">${clientCardsHtml}</div>` : ""}
         ${rows.length ? `<div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
             <thead><tr>
@@ -3246,7 +3333,7 @@ Cliente B`)
                 const prevPeopleConsumption = adminCapacityHhEffectiveMonthly > 0 ? (prevHours / adminCapacityHhEffectiveMonthly) : 0
                 const diffHours = totalHours - prevHours
                 const diffPeople = peopleConsumption - prevPeopleConsumption
-                const hasNote = !!String(adminCapacityClientNotes?.[monthKey]?.[emailKey(client)]?.note || "").trim()
+                const hasNote = (adminCapacityClientNotes?.[monthKey]?.[emailKey(client)]?.entries || []).length > 0
                 const tasksHtml = expanded
                   ? `<div style="margin-top:6px">${tasks.length ? tasks.map(task => `<div class="small">• ${htmlEscape(task.id)} · ${htmlEscape(task.title)} · Prioridad: ${htmlEscape(task.priority)} · ${fmtMinutes(task.mins)}</div>`).join("") : `<div class="small">Sin tareas con tiempo en este período.</div>`}</div>`
                   : ""
@@ -3990,6 +4077,7 @@ Cliente B`)
     function renderApp(){
       const isAdmin = currentRole === "admin"
       const isAnalyst = currentRole === "analista"
+      if(isAnalyst) loadAnalystBoardSettings()
       const currentProfile = cachedUsersByEmail[emailKey(currentUser?.email || "")] || {}
       const currentDisplayName = userDisplayNameByEmail(currentUser?.email || "")
       const currentWelcome = `${welcomeBySex(currentProfile)} ${currentDisplayName}`
@@ -3998,13 +4086,14 @@ Cliente B`)
       const showAnalystProfile = isAnalyst && analystPanelTab === "profile"
       const showAnalystAgenda = isAnalyst && analystPanelTab === "agenda"
       const showAnalystGuidelines = isAnalyst && analystPanelTab === "guidelines"
+      const showAnalystBoardSettings = isAnalyst && analystPanelTab === "board_settings"
       const showAdminProfile = isAdmin && adminPanelTab === "profile"
       const showAdminGuidelines = isAdmin && adminPanelTab === "guidelines"
       const showSavedItems = mainViewTab === "saved"
       const showConsultorPortfolio = currentRole === "consultor" && mainViewTab === "portfolio"
       const showPortfolioOverview = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "portfolio_overview"
       const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAdminGuidelines || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystBoardSettings || showAdminGuidelines || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults
 
       document.getElementById("app").innerHTML = `
         <div class="card topbarCard">
@@ -4022,7 +4111,7 @@ Cliente B`)
             <div class="inline topbarActions">
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${isAnalyst ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
-              ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystGuidelines)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
+              ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
               <div class="menuWrap" onclick="event.stopPropagation()">
                 <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
                 <div id="headerMenuDropdown" class="menuDropdown hidden">
@@ -4031,7 +4120,7 @@ Cliente B`)
                   <button class="ghost" onclick="setMainViewTab('tickets')">Tickets</button>
                   ${currentRole === "consultor" ? `<button class="ghost" onclick="setMainViewTab('portfolio')">Cartera de clientes</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button>` : ""}${isAnalyst ? `<button class="ghost" onclick="setMainViewTab('portfolio_overview')">Cartera de consultores</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button><button class="ghost" onclick="setMainViewTab('my_ticket_status')">Estado de mis tickets</button>` : ""}
                   ${isAdmin ? `<button class="ghost" onclick="setMainViewTab('portfolio_overview')">Cartera de consultores</button><button class="ghost" onclick="setAdminTab('config_home')">Configuraciones</button><button class="ghost" onclick="setAdminTab('capacity')">Capacidad Instalada del área</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('help')">Ayuda</button><button class="ghost" onclick="setAdminTab('announcements')">Comunicados</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button>` : ""}
-                  ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="setAnalystTab('agenda')">Mi agenda</button>` : ""}
+                  ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="setAnalystTab('agenda')">Mi agenda</button><button class="ghost" onclick="setAnalystTab('board_settings')">Configuración del tablero</button>` : ""}
                 </div>
               </div>
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
@@ -4135,13 +4224,21 @@ Cliente B`)
             </div>
             <div id="analystAgendaTableWrap" style="margin-top:10px"></div>
           </div>` : showAnalystGuidelines ? `
+        <div class="card">
+          <div class="inline" style="justify-content:space-between;align-items:center">
+            <h3 style="margin:0">Lineamientos</h3>
+            <button class="ghost" onclick="loadAnalystGuidelines()">Actualizar</button>
+          </div>
+          <div id="analystGuidelinesSummary" class="small" style="margin-top:8px"></div>
+          <div id="analystGuidelinesContainer" style="margin-top:10px"></div>
+          </div>` : showAnalystBoardSettings ? `
           <div class="card">
-            <div class="inline" style="justify-content:space-between;align-items:center">
-              <h3 style="margin:0">Lineamientos</h3>
-              <button class="ghost" onclick="loadAnalystGuidelines()">Actualizar</button>
+            <h3 style="margin-top:0">Configuración del tablero</h3>
+            <div class="switchWrap">
+              <label class="switch"><input type="checkbox" ${analystBoardSettings.autoTimerOnStatusChange ? "checked" : ""} onchange="setAnalystBoardAutoTimer(this.checked)"><span class="slider"></span></label>
+              <span>Iniciar/detener timer automáticamente al cambiar estado (Por hacer ↔ En curso)</span>
             </div>
-            <div id="analystGuidelinesSummary" class="small" style="margin-top:8px"></div>
-            <div id="analystGuidelinesContainer" style="margin-top:10px"></div>
+            <div class="small" style="margin-top:8px">Si está activo: al mover de <strong>Por hacer</strong> a <strong>En curso</strong> se inicia el timer. Al salir de <strong>En curso</strong>, se detiene y pide confirmar la carga de tiempo.</div>
           </div>` : `
           <div class="grid ${currentRole === "admin" ? "adminFull" : ""}">
             <div class="card ${currentRole === "admin" ? "dashboardAdmin" : ""}">
@@ -4196,7 +4293,12 @@ Cliente B`)
         setupRealtimeStreams()
         if(!showAdminPanel) loadDashboard()
         if(!showAdminPanel) loadTickets()
-        if(isAnalyst) refreshAnalystNotificationBadge()
+        if(isAnalyst){
+          refreshAnalystNotificationBadge()
+          startAnalystNotifRefreshTimer()
+        }else{
+          stopAnalystNotifRefreshTimer()
+        }
         if(isAnalyst || currentRole === "consultor") showLatestAnnouncementIfNeeded()
       }else if(showSavedItems){
         setupRealtimeStreams()
@@ -4776,15 +4878,23 @@ Cliente B`)
       const dd = document.getElementById("analystNotifDropdown")
       if(!dd) return
       if(!analystNotificationsOpen){ dd.classList.add("hidden"); return }
-      const items = await fetchAnalystNotifications()
-      dd.innerHTML = items.length ? items.slice(0,20).map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:pointer" onclick="${i.ticketId ? `openTicketDetailModal('${i.ticketId}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      await renderAnalystNotificationsDropdown()
       dd.classList.remove("hidden")
+      refreshAnalystNotificationBadge()
+    }
+
+    async function renderAnalystNotificationsDropdown(){
+      const dd = document.getElementById("analystNotifDropdown")
+      if(!dd) return
+      const items = await fetchAnalystNotifications()
+      dd.style.maxHeight = "300px"
+      dd.style.overflowY = "auto"
+      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:pointer;min-height:54px" onclick="${i.ticketId ? `openTicketDetailModal('${i.ticketId}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
       const newest = items[0]?.ts || ""
       if(newest){
         const seenKey = `analyst_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
         localStorage.setItem(seenKey, String(newest))
       }
-      refreshAnalystNotificationBadge()
     }
 
     function openTicketModal(){
@@ -4990,7 +5100,7 @@ Cliente B`)
       const canOpenDetail = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const pulseClass = hasConsultorUnreadForCurrent(ticket) ? "consultorPulse" : ""
       return `
-        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ondragover="event.preventDefault()" ondrop="onColumnDrop(event,'${status}')" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(ticket)||"-"))}</div>
@@ -5213,6 +5323,9 @@ Cliente B`)
         }
         updated.comments = comments
       }
+      if(String(ticket.status || "") !== String(updated.status || "")){
+        await handleAnalystAutoTimerByStatus(ticket, updated.status)
+      }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id)
@@ -5258,8 +5371,8 @@ Cliente B`)
     }
 
     function toggleCommentsSort(ticketId){
-      const current = commentSortOrderByTicket[ticketId] || "asc"
-      commentSortOrderByTicket[ticketId] = current === "asc" ? "desc" : "asc"
+      const current = commentSortOrderByTicket[ticketId] || "desc"
+      commentSortOrderByTicket[ticketId] = current === "desc" ? "asc" : "desc"
       openTicketDetailModal(ticketId)
     }
 
@@ -5351,11 +5464,11 @@ Cliente B`)
         const running = !!u?.timerStartAt
         const canLogManual = mine || canManageHelpers
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><input id="manual-note-${ticketId}-${uk}" type="text" placeholder="Detalle" style="margin:0;max-width:170px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
       const entriesHtml = entries.length ? entries.map((e, ix) => {
         const entryKey = String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${ix}`)
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')} ${e.note ? `· ${htmlEscape(e.note)}` : ""}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="editTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Editar</button><button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
       }).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
@@ -5373,13 +5486,13 @@ Cliente B`)
 
 
     function renderComments(id, comments, usersByEmail){
-      const sortOrder = commentSortOrderByTicket[id] || "asc"
+      const sortOrder = commentSortOrderByTicket[id] || "desc"
       const list = Object.entries(comments || {}).map(([cid,c]) => ({ id: cid, ...(c||{}) })).filter(c => currentRole !== "consultor" || !c.internal).sort((a,b)=> sortOrder === "asc" ? new Date(a.createdAt||0)-new Date(b.createdAt||0) : new Date(b.createdAt||0)-new Date(a.createdAt||0))
       return `
         <div class="commentsSection">
           <div class="commentsHeader">
             <div><div class="commentsTitle">Información interna del ticket</div>${currentRole !== "consultor" ? `<div class="small">Consolidado: <strong>${fmtMinutes((cachedTickets.find(t => t.id === id)?.timeTracking?.consolidatedMinutes)||0)}</strong></div>` : ""}</div>
-            <button class="ghost sortBtn" onclick="toggleCommentsSort('${id}')">${sortOrder === "asc" ? "Más antiguos primero" : "Más recientes primero"}</button>
+            <button class="ghost sortBtn" onclick="toggleCommentsSort('${id}')">${sortOrder === "desc" ? "Más recientes primero" : "Más antiguos primero"}</button>
           </div>
           ${currentRole !== "consultor" ? `<div class="activityTabs">
             <button id="activity-btn-comments-${id}" class="activityTab ${(ticketActivityTabById[id] || "comments") === "comments" ? "active" : ""}" onclick="setTicketActivityTab('${id}','comments')">Comentarios</button>
@@ -5392,7 +5505,11 @@ Cliente B`)
               <div class="commentToolbar">
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','bold')"><b>B</b></button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','italic')"><i>I</i></button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','hiliteColor','#fff59d')">Resaltar</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','fontSize',4)">Tamaño +</button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertUnorderedList')">• Lista</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertTable')">Tabla</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertAlertIcon','🚨 ')">🚨</button>
                 <label class="colorBtn" title="Color de letra"><span>A</span><input type="color" onchange="formatCommentEditor('${id}','foreColor', this.value)"></label>
               </div>
               <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario (podés mencionar con @usuario)" onkeydown="handleCommentKeydown(event,'${id}')" oninput="handleCommentMentionInput('${id}')" onclick="handleCommentMentionInput('${id}')"></div>
@@ -5527,7 +5644,10 @@ Cliente B`)
 
     function onTicketDragStart(event, ticketId){
       draggedTicketId = ticketId
-      if(event?.dataTransfer) event.dataTransfer.setData("text/plain", ticketId)
+      if(event?.dataTransfer){
+        event.dataTransfer.effectAllowed = "move"
+        event.dataTransfer.setData("text/plain", ticketId)
+      }
       if(event?.currentTarget) event.currentTarget.classList.add("dragging")
     }
 
@@ -5546,6 +5666,23 @@ Cliente B`)
       event.currentTarget.classList.remove('dropTarget')
     }
 
+    async function handleAnalystAutoTimerByStatus(ticket, nextStatus){
+      if(currentRole !== "analista" || !analystBoardSettings.autoTimerOnStatusChange) return
+      const prevStatus = String(ticket?.status || "")
+      const next = String(nextStatus || "")
+      const analystEmail = String(ticket?.assignedTo || currentUser?.email || "").toLowerCase()
+      const userKey = emailKey(analystEmail)
+      const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
+      if(prevStatus === "todo" && next === "doing"){
+        await startTicketTimerForUser(ticket.id, userKey)
+      }else if(prevStatus === "doing" && next !== "doing"){
+        const users = ticket?.timeTracking?.users || {}
+        if(users[userKey]?.timerStartAt){
+          await stopTicketTimerForUser(ticket.id, userKey, monthKey, true)
+        }
+      }
+    }
+
     async function onColumnDrop(event, status){
       event.preventDefault()
       event.currentTarget.classList.remove('dropTarget')
@@ -5559,6 +5696,7 @@ Cliente B`)
       if(currentRole === "analista" && ticket.status !== "done" && status === "done"){
         return openCloseSurveyModal(ticketId, updated)
       }
+      await handleAnalystAutoTimerByStatus(ticket, status)
       showToast("Moviendo ticket...", "info", 1400)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
@@ -5654,6 +5792,7 @@ Cliente B`)
         loggedDate: entry.loggedDate,
         hours: Number(entry.hours || 0).toFixed(2),
         analyst: entry.analyst,
+        note: String(entry.note || ""),
         createdAt: entry.createdAt || new Date().toISOString()
       }
       await sheetWrite("upsertTimeEntry", payload).catch(err => console.warn("No se pudo espejar tiempo en sheet:", err))
@@ -5676,24 +5815,28 @@ Cliente B`)
       showToast('Timer iniciado','ok')
     }
 
-    async function stopTicketTimerForUser(ticketId, userKey, monthKey){
+    async function stopTicketTimerForUser(ticketId, userKey, monthKey, fromStatusChange = false){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const u = (ticket.timeTracking?.users||{})[userKey] || {}
       if(!u.timerStartAt) return alert('El timer no está iniciado')
       const elapsed = Math.max(1, Math.round((Date.now() - new Date(u.timerStartAt).getTime())/60000))
-      const acceptClock = confirm(`Tiempo medido: ${elapsed} min. ¿Cargar este tiempo del reloj?`)
+      const promptMsg = fromStatusChange
+        ? `¿Quieres cargar el tiempo ${elapsed} min de trabajo al ticket?`
+        : `Tiempo medido: ${elapsed} min. ¿Cargar este tiempo del reloj?`
+      const acceptClock = confirm(promptMsg)
       let minutes = elapsed
       if(!acceptClock){
         const manual = Number(prompt('Ingresá minutos manuales:', String(elapsed)) || 0)
         if(manual <= 0) return
         minutes = manual
       }
+      const note = String(prompt("Detalle opcional del tiempo:", "") || "").trim()
       await applyTimeUpdate(ticketId, (tracking)=>{
         const curr = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
-      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
       showToast('Tiempo cargado','ok')
     }
 
@@ -5705,6 +5848,7 @@ Cliente B`)
       if(!(currentRole === 'admin' || currentRole === 'analista')) return alert('Solo admin o analista')
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
+      const note = String(document.getElementById(`manual-note-${ticketId}-${userKey}`)?.value || "").trim()
       const minutes = hs * 60 + mins
       if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
@@ -5712,7 +5856,7 @@ Cliente B`)
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         u.totalMinutes = Number(u.totalMinutes||0) + minutes
         tracking.users[userKey] = u
-      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey) })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
       showToast('Tiempo manual cargado','ok')
     }
 
@@ -5731,6 +5875,36 @@ Cliente B`)
       const mins = Math.max(0, Math.round(Number(removed?.hours || 0) * 60))
       if(tracking.users?.[analystKey]){
         tracking.users[analystKey].totalMinutes = Math.max(0, Number(tracking.users[analystKey].totalMinutes || 0) - mins)
+      }
+      tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
+      const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => t.id === ticketId)
+      if(ix >= 0) cachedTickets[ix] = updated
+      openTicketDetailModal(ticketId, "times")
+    }
+
+    async function editTimeEntry(ticketId, monthKey, entryKey){
+      if(!(currentRole === "admin" || currentRole === "analista")) return
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket) return
+      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const folder = tracking.monthlyFolders?.[monthKey]
+      if(!folder || !Array.isArray(folder.entries)) return
+      const idx = folder.entries.findIndex((e, i) => String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${i}`) === String(entryKey))
+      if(idx < 0) return
+      const entry = folder.entries[idx]
+      const nextHours = Number(prompt("Horas (ej: 1.50):", String(Number(entry.hours || 0).toFixed(2))) || 0)
+      if(!(nextHours > 0)) return
+      const nextNote = String(prompt("Detalle del tiempo:", String(entry.note || "")) || "").trim()
+      const prevMinutes = Math.max(0, Math.round(Number(entry.hours || 0) * 60))
+      const nextMinutes = Math.max(0, Math.round(nextHours * 60))
+      folder.entries[idx] = { ...entry, hours: nextHours, note: nextNote, updatedAt: new Date().toISOString() }
+      const analystEmail = String(entry?.analyst || "").toLowerCase()
+      const analystKey = emailKey(analystEmail)
+      if(tracking.users?.[analystKey]){
+        tracking.users[analystKey].totalMinutes = Math.max(0, Number(tracking.users[analystKey].totalMinutes || 0) - prevMinutes + nextMinutes)
       }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -5781,6 +5955,7 @@ Cliente B`)
           loggedDate: new Date().toISOString(),
           hours: Number(meta.minutes) / 60,
           analyst: String(meta.analyst || currentUser.email || "").toLowerCase(),
+          note: String(meta.note || "").trim(),
           createdAt: new Date().toISOString()
         }
         tracking.monthlyFolders[monthKey].entries.push(entry)
@@ -5920,6 +6095,7 @@ Cliente B`)
       if(currentRole === "analista" && ticket.status !== "done" && next === "done"){
         return openCloseSurveyModal(id, updated)
       }
+      await handleAnalystAutoTimerByStatus(ticket, next)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status })
@@ -6070,9 +6246,28 @@ Cliente B`)
       const mine = String(original.author || "").toLowerCase() === String(currentUser.email || "").toLowerCase()
       if(!mine) return alert("Solo podés editar tus propios comentarios.")
       const baseText = String(original.message || commentPlainTextFromHtml(original.messageHtml || "") || "")
-      const next = prompt("Editar comentario:", baseText)
-      if(next === null) return
-      const trimmed = String(next || "").trim()
+      commentEditContext = { ticketId, commentId }
+      const input = document.getElementById("commentEditInput")
+      if(input) input.value = baseText
+      document.getElementById("commentEditModal")?.classList.remove("hidden")
+    }
+
+    function closeCommentEditModal(){
+      commentEditContext = null
+      document.getElementById("commentEditModal")?.classList.add("hidden")
+    }
+
+    async function saveCommentEditModal(){
+      const ctx = commentEditContext
+      if(!ctx) return
+      const ticketId = ctx.ticketId
+      const commentId = ctx.commentId
+      const ticket = cachedTickets.find(t => t.id === ticketId)
+      if(!ticket || !commentId) return
+      const comments = { ...(ticket.comments || {}) }
+      const original = comments[commentId]
+      if(!original) return
+      const trimmed = String(document.getElementById("commentEditInput")?.value || "").trim()
       if(!trimmed) return alert("El comentario no puede quedar vacío.")
       comments[commentId] = {
         ...original,
@@ -6086,6 +6281,7 @@ Cliente B`)
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === ticketId)
       if(ix >= 0) cachedTickets[ix] = updated
+      closeCommentEditModal()
       const detailOpen = !document.getElementById("ticketDetailModal").classList.contains("hidden")
       if(detailOpen) openTicketDetailModal(ticketId)
       loadDashboard()
@@ -6208,28 +6404,34 @@ Cliente B`)
         const isSelf = (u.email||"").toLowerCase() === (currentUser.email||"").toLowerCase()
         const team = String(u.analystTeam || "")
         const enabled = u.active !== false
-        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""} · Estado: ${enabled ? "Activo" : "Apagado"}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="ghost" ${isSelf?"disabled":""} onclick="toggleUserAccessActive('${key}', ${enabled ? "false" : "true"})">${enabled ? "Apagar" : "Encender"}</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
+        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""} · Estado: ${enabled ? "Activo" : "Apagado"}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="ghost" ${isSelf?"disabled":""} onclick="toggleUserAccessActive('${key}', ${enabled ? "false" : "true"}, this)">${enabled ? "Apagar" : "Encender"}</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
       }).join("")
     }
 
-    async function toggleUserAccessActive(key, nextActive){
+    async function toggleUserAccessActive(key, nextActive, btn = null){
       if(currentRole !== "admin") return
-      const user = (await db.ref("users_by_email").child(key).once("value")).val()
-      if(!user) return
-      const isSelf = String(user.email || "").toLowerCase() === String(currentUser?.email || "").toLowerCase()
-      if(isSelf && !nextActive) return alert("No podés apagarte a vos mismo.")
-      const payload = {
-        ...user,
-        key,
-        active: !!nextActive,
-        updatedAt: new Date().toISOString(),
-        updatedBy: currentUser.email
+      const originalText = btn ? String(btn.textContent || "") : ""
+      if(btn){ btn.disabled = true; btn.textContent = "Guardando..." }
+      try{
+        const user = (await db.ref("users_by_email").child(key).once("value")).val()
+        if(!user) return
+        const isSelf = String(user.email || "").toLowerCase() === String(currentUser?.email || "").toLowerCase()
+        if(isSelf && !nextActive) return alert("No podés apagarte a vos mismo.")
+        const payload = {
+          ...user,
+          key,
+          active: !!nextActive,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser.email
+        }
+        await db.ref("users_by_email").child(key).update(payload)
+        await adminWrite("upsertUser", payload).catch(()=>{})
+        showToast(nextActive ? "Usuario activado." : "Usuario apagado.", "ok", 1800)
+        await loadUsersAdmin()
+        await loadFilterOptions()
+      }finally{
+        if(btn){ btn.disabled = false; btn.textContent = originalText }
       }
-      await db.ref("users_by_email").child(key).update(payload)
-      await adminWrite("upsertUser", payload).catch(()=>{})
-      showToast(nextActive ? "Usuario activado." : "Usuario apagado.", "ok", 1800)
-      await loadUsersAdmin()
-      await loadFilterOptions()
     }
 
     async function openUserEditModal(key){
