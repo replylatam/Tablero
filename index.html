@@ -1072,6 +1072,24 @@
     </div>
   </div>
 
+  <div id="timerStopModal" class="modalBack hidden" onclick="if(event.target===this) confirmTimerStopModal(false)">
+    <div class="card modal" style="max-width:560px">
+      <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="margin:0">Cargar tiempo del timer</h3>
+        <button class="secondary" onclick="confirmTimerStopModal(false)">Cerrar</button>
+      </div>
+      <div class="small" id="timerStopModalElapsedLabel" style="margin-bottom:8px">Tiempo medido: 0 min</div>
+      <div class="row">
+        <div><label>Minutos a cargar</label><input id="timerStopModalMinutes" type="number" min="1" step="1"></div>
+        <div><label>Detalle (opcional)</label><input id="timerStopModalNote" type="text" placeholder="Ej: Ajustes y revisión"></div>
+      </div>
+      <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:8px">
+        <button class="secondary" onclick="confirmTimerStopModal(false)">Cancelar</button>
+        <button class="ghost" onclick="confirmTimerStopModal(true)">Cargar tiempo</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     firebase.initializeApp({
       apiKey: "AIzaSyA4-yTeI0CemnlROxF9hIgj_HxiDLvYZTY",
@@ -1123,6 +1141,8 @@
     var headerMenuOpen = false
     var pendingCloseSurvey = null
     var pendingConsultorSurveyTicket = null
+    var pendingTimerStopResolve = null
+    var pendingTimerStopContext = null
     var userEditContext = null
     var adminAgendaTeam = "equipo_1"
     var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
@@ -1918,8 +1938,28 @@
       const editor = document.getElementById(`comment-editor-${ticketId}`)
       if(!editor) return
       editor.focus()
+      if(command === "toggleHighlight"){
+        document.execCommand("hiliteColor", false, "transparent")
+        return
+      }
+      if(command === "increaseFontSize"){
+        document.execCommand("fontSize", false, 4)
+        return
+      }
+      if(command === "decreaseFontSize"){
+        document.execCommand("fontSize", false, 2)
+        return
+      }
       if(command === "insertTable"){
         document.execCommand("insertHTML", false, `<table border="1" style="border-collapse:collapse;width:100%"><tr><th>Columna 1</th><th>Columna 2</th></tr><tr><td>Dato</td><td>Dato</td></tr></table><br>`)
+        return
+      }
+      if(command === "addTableRow"){
+        document.execCommand("insertHTML", false, `<tr><td>Dato</td><td>Dato</td></tr>`)
+        return
+      }
+      if(command === "addTableColumn"){
+        document.execCommand("insertHTML", false, `<td>Nueva columna</td>`)
         return
       }
       if(command === "insertAlertIcon"){
@@ -1934,6 +1974,25 @@
       const h = Math.floor(m/60)
       const rem = Math.round(m%60)
       return `${h}h ${rem}m`
+    }
+
+    function ticketHasRunningTimer(ticket){
+      const users = ticket?.timeTracking?.users || {}
+      return Object.values(users).some(u => !!u?.timerStartAt)
+    }
+
+    function ticketRunningTimerElapsed(ticket){
+      const users = ticket?.timeTracking?.users || {}
+      let maxElapsed = 0
+      Object.values(users).forEach(u => {
+        if(!u?.timerStartAt) return
+        const elapsed = Math.max(0, Math.floor((Date.now() - new Date(u.timerStartAt).getTime()) / 1000))
+        if(elapsed > maxElapsed) maxElapsed = elapsed
+      })
+      const hh = String(Math.floor(maxElapsed / 3600)).padStart(2, "0")
+      const mm = String(Math.floor((maxElapsed % 3600) / 60)).padStart(2, "0")
+      const ss = String(maxElapsed % 60).padStart(2, "0")
+      return `${hh}:${mm}:${ss}`
     }
 
     function normalizeQualityToTen(score){
@@ -3297,22 +3356,11 @@ Cliente B`)
       const rows = Object.entries(byClientMinutes)
         .filter(([client]) => !query || client.toLowerCase().includes(query))
         .sort((a,b)=>b[1]-a[1])
-      const clientCardsHtml = rows.map(([client, mins]) => {
-        const totalHours = Number(mins || 0) / 60
-        const prevHours = Number(byClientMinutesPrev[client] || 0) / 60
-        const peopleConsumption = adminCapacityHhEffectiveMonthly > 0 ? (totalHours / adminCapacityHhEffectiveMonthly) : 0
-        const prevPeopleConsumption = adminCapacityHhEffectiveMonthly > 0 ? (prevHours / adminCapacityHhEffectiveMonthly) : 0
-        const diffHours = totalHours - prevHours
-        const diffPeople = peopleConsumption - prevPeopleConsumption
-        const hasNote = (adminCapacityClientNotes?.[monthKey]?.[emailKey(client)]?.entries || []).length > 0
-        return `<div class="kpi"><div class="label">${htmlEscape(client)}</div><div class="value">${totalHours.toFixed(2)} h</div><div class="small">Consumo: ${peopleConsumption.toFixed(2)} pers.</div><div class="small">Dif: ${diffHours >= 0 ? "+" : ""}${diffHours.toFixed(2)} h · ${diffPeople >= 0 ? "+" : ""}${diffPeople.toFixed(2)} pers.</div><div class="inline" style="margin-top:6px"><button class="${hasNote ? '' : 'ghost'}" onclick="openCapacityClientNotesModal('${monthKey}','${encodeURIComponent(client)}')">${hasNote ? "Ver/editar nota" : "Agregar nota"}</button><button class="ghost" onclick="toggleAdminCapacityClientTasks('${encodeURIComponent(client)}')">Tareas</button></div></div>`
-      }).join("")
       wrap.innerHTML = `
         <div class="inline" style="margin-bottom:8px">
           <label style="margin:0">Filtrar cliente</label>
           <input id="adminCapacityClientFilterInput" placeholder="Buscar cliente..." value="${htmlEscape(adminCapacityClientFilter)}" oninput="setAdminCapacityClientFilter(this.value)" style="max-width:280px;margin:0">
         </div>
-        ${rows.length ? `<div class="kpiGrid" style="margin-bottom:10px">${clientCardsHtml}</div>` : ""}
         ${rows.length ? `<div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
             <thead><tr>
@@ -5099,13 +5147,15 @@ Cliente B`)
       const canDrag = currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets())
       const canOpenDetail = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const pulseClass = hasConsultorUnreadForCurrent(ticket) ? "consultorPulse" : ""
+      const timerBadge = ticketHasRunningTimer(ticket) ? `<span class="small" title="Timer activo">🕒 ${ticketRunningTimerElapsed(ticket)}</span>` : ""
       return `
-        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ondragover="event.preventDefault()" ondrop="onColumnDrop(event,'${status}')" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ondragover="event.preventDefault()" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
           <h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>
           <div class="meta">${htmlEscape(ticket.client||"-")}</div>
           <div class="meta">Informador: ${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(ticket)||"-"))}</div>
           <div class="assignedAvatarRow">${assignedTo ? `<img class="assignedAvatar" src="${htmlEscape(assignedAvatar || buildInitialAvatar(assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div class="meta">${htmlEscape(ticket.assignedTo ? analystDisplayNameWithTeam(ticket.assignedTo) : "Sin asignar")}</div></div>
           <div class="meta deadline">Deadline: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>
+          ${timerBadge}
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
           <div class="inline" style="margin-top:8px">${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
@@ -5207,7 +5257,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia"></div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia"></div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div></div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -5505,12 +5555,16 @@ Cliente B`)
               <div class="commentToolbar">
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','bold')"><b>B</b></button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','italic')"><i>I</i></button>
-                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','hiliteColor','#fff59d')">Resaltar</button>
-                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','fontSize',4)">Tamaño +</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','toggleHighlight')">Resaltar off</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','increaseFontSize')">A+</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','decreaseFontSize')">A-</button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertUnorderedList')">• Lista</button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertTable')">Tabla</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','addTableRow')">+ Fila</button>
+                <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','addTableColumn')">+ Columna</button>
                 <button type="button" class="ghost" style="padding:4px 8px" onclick="formatCommentEditor('${id}','insertAlertIcon','🚨 ')">🚨</button>
                 <label class="colorBtn" title="Color de letra"><span>A</span><input type="color" onchange="formatCommentEditor('${id}','foreColor', this.value)"></label>
+                <label class="colorBtn" title="Color de resaltar"><span>🖍️</span><input type="color" value="#fff59d" onchange="formatCommentEditor('${id}','hiliteColor', this.value)"></label>
               </div>
               <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario (podés mencionar con @usuario)" onkeydown="handleCommentKeydown(event,'${id}')" oninput="handleCommentMentionInput('${id}')" onclick="handleCommentMentionInput('${id}')"></div>
               <div id="mention-suggest-${id}" class="mentionSuggest hidden"></div>
@@ -5671,42 +5725,54 @@ Cliente B`)
       const prevStatus = String(ticket?.status || "")
       const next = String(nextStatus || "")
       const analystEmail = String(ticket?.assignedTo || currentUser?.email || "").toLowerCase()
+      if(emailKey(analystEmail) !== emailKey(currentUser?.email || "")) return
       const userKey = emailKey(analystEmail)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
-      if(prevStatus === "todo" && next === "doing"){
-        await startTicketTimerForUser(ticket.id, userKey)
-      }else if(prevStatus === "doing" && next !== "doing"){
-        const users = ticket?.timeTracking?.users || {}
-        if(users[userKey]?.timerStartAt){
-          await stopTicketTimerForUser(ticket.id, userKey, monthKey, true)
+      try{
+        if(prevStatus === "todo" && next === "doing"){
+          await startTicketTimerForUser(ticket.id, userKey)
+        }else if(prevStatus === "doing" && next !== "doing"){
+          const users = ticket?.timeTracking?.users || {}
+          if(users[userKey]?.timerStartAt){
+            await stopTicketTimerForUser(ticket.id, userKey, monthKey, true)
+          }
         }
+      }catch(err){
+        console.error("Error en timer automático por estado:", err)
+        showToast("No se pudo completar la carga automática de tiempo", "warn", 2600)
       }
     }
 
     async function onColumnDrop(event, status){
       event.preventDefault()
-      event.currentTarget.classList.remove('dropTarget')
-      await getRoleTicketEditSettings()
-      const ticketId = draggedTicketId || event?.dataTransfer?.getData("text/plain") || ""
-      if(!ticketId) return
-      const ticket = cachedTickets.find(t => t.id === ticketId)
-      if(!ticket || ticket.status === status) return
-      if(!(currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets()))) return
-      const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
-      if(currentRole === "analista" && ticket.status !== "done" && status === "done"){
-        return openCloseSurveyModal(ticketId, updated)
+      const dropColumn = event?.currentTarget?.closest ? event.currentTarget.closest(".column") : event?.currentTarget
+      if(dropColumn?.classList) dropColumn.classList.remove('dropTarget')
+      try{
+        await getRoleTicketEditSettings()
+        const ticketId = draggedTicketId || event?.dataTransfer?.getData("text/plain") || ""
+        if(!ticketId) return
+        const ticket = cachedTickets.find(t => t.id === ticketId)
+        if(!ticket || ticket.status === status) return
+        if(!(currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets()))) return
+        const updated = { ...ticket, status, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+        if(currentRole === "analista" && ticket.status !== "done" && status === "done"){
+          return openCloseSurveyModal(ticketId, updated)
+        }
+        await handleAnalystAutoTimerByStatus(ticket, status)
+        showToast("Moviendo ticket...", "info", 1400)
+        await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+        mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+        await logActivity("ticket_movido", { ticketId, nextStatus: status, fromStatus: ticket.status, source: "drag_drop" })
+        const ix = cachedTickets.findIndex(t => t.id === ticketId)
+        if(ix >= 0) cachedTickets[ix] = updated
+        if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
+        renderTicketsFromData(cachedTickets)
+        await loadDashboard()
+        showToast("Ticket movido correctamente", "ok")
+      }catch(err){
+        console.error("Error moviendo ticket por drag & drop:", err)
+        showToast("No se pudo mover el ticket", "error", 2600)
       }
-      await handleAnalystAutoTimerByStatus(ticket, status)
-      showToast("Moviendo ticket...", "info", 1400)
-      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
-      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
-      await logActivity("ticket_movido", { ticketId, nextStatus: status, fromStatus: ticket.status, source: "drag_drop" })
-      const ix = cachedTickets.findIndex(t => t.id === ticketId)
-      if(ix >= 0) cachedTickets[ix] = updated
-      if(currentRole === "analista") warnAnalystMovementWithoutTime(updated)
-      renderTicketsFromData(cachedTickets)
-      await loadDashboard()
-      showToast("Ticket movido correctamente", "ok")
     }
 
     function refreshLiveTimerText(ticketId){
@@ -5815,28 +5881,54 @@ Cliente B`)
       showToast('Timer iniciado','ok')
     }
 
+    function openTimerStopModal(elapsedMinutes){
+      const modal = document.getElementById("timerStopModal")
+      const elapsedLabel = document.getElementById("timerStopModalElapsedLabel")
+      const minsInput = document.getElementById("timerStopModalMinutes")
+      const noteInput = document.getElementById("timerStopModalNote")
+      if(elapsedLabel) elapsedLabel.textContent = `Tiempo medido: ${elapsedMinutes} min`
+      if(minsInput) minsInput.value = String(elapsedMinutes)
+      if(noteInput) noteInput.value = ""
+      if(modal) modal.classList.remove("hidden")
+      return new Promise(resolve => { pendingTimerStopResolve = resolve })
+    }
+
+    function confirmTimerStopModal(accept){
+      if(accept){
+        const mins = Number(document.getElementById("timerStopModalMinutes")?.value || 0)
+        const note = String(document.getElementById("timerStopModalNote")?.value || "").trim()
+        closeTimerStopModal()
+        if(pendingTimerStopResolve) pendingTimerStopResolve({ accepted: true, minutes: mins, note })
+        pendingTimerStopResolve = null
+        return
+      }
+      closeTimerStopModal()
+      if(pendingTimerStopResolve) pendingTimerStopResolve({ accepted: false, minutes: 0, note: "" })
+      pendingTimerStopResolve = null
+    }
+
+    function closeTimerStopModal(){
+      document.getElementById("timerStopModal")?.classList.add("hidden")
+    }
+
     async function stopTicketTimerForUser(ticketId, userKey, monthKey, fromStatusChange = false){
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       const u = (ticket.timeTracking?.users||{})[userKey] || {}
       if(!u.timerStartAt) return alert('El timer no está iniciado')
       const elapsed = Math.max(1, Math.round((Date.now() - new Date(u.timerStartAt).getTime())/60000))
-      const promptMsg = fromStatusChange
-        ? `¿Quieres cargar el tiempo ${elapsed} min de trabajo al ticket?`
-        : `Tiempo medido: ${elapsed} min. ¿Cargar este tiempo del reloj?`
-      const acceptClock = confirm(promptMsg)
-      let minutes = elapsed
-      if(!acceptClock){
-        const manual = Number(prompt('Ingresá minutos manuales:', String(elapsed)) || 0)
-        if(manual <= 0) return
-        minutes = manual
-      }
-      const note = String(prompt("Detalle opcional del tiempo:", "") || "").trim()
+      pendingTimerStopContext = { ticketId, userKey, fromStatusChange }
+      const result = await openTimerStopModal(elapsed)
+      pendingTimerStopContext = null
+      if(!result?.accepted) return
+      const minutes = Math.max(1, Number(result.minutes || 0))
+      const note = String(result.note || "").trim()
       await applyTimeUpdate(ticketId, (tracking)=>{
         const curr = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
       }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
+      if(fromStatusChange) showToast("Tiempo registrado por cambio de estado", "ok", 2200)
       showToast('Tiempo cargado','ok')
     }
 
