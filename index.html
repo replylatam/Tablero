@@ -1354,7 +1354,7 @@
     var analystPanelTab = "panel"
     var sidebarExpanded = false
     var analystActivityTab = "comments"
-    var analystSummaryTab = "dashboard"
+    var analystSummaryTab = "summary"
     var analystMoodToday = ""
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = []
@@ -4664,10 +4664,18 @@ Cliente B`)
         ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
         ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
         ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-        ...(isAdmin ? [{ icon: "🧑‍💼", label: "Panel admin", action: "setAdminTab('panel')" }] : []),
+        ...(isAdmin ? [{ icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
         ...(isAdmin ? [{ icon: "⚙️", label: "Configuraciones", action: "setAdminTab('config_home')" }] : []),
-        ...(isAdmin ? [{ icon: "🧮", label: "Capacidad", action: "setAdminTab('capacity')" }] : []),
+        ...(isAdmin ? [{ icon: "🧮", label: "Capacidad Instalada del área", action: "setAdminTab('capacity')" }] : []),
+        ...(isAdmin ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
+        ...(isAdmin ? [{ icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" }] : []),
+        ...(isAdmin ? [{ icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" }] : []),
+        ...(isAdmin ? [{ icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" }] : []),
+        ...(isAdmin ? [{ icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" }] : []),
+        ...(isAdmin ? [{ icon: "❓", label: "Ayuda", action: "setAdminTab('help')" }] : []),
         ...(isAdmin ? [{ icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }] : []),
+        ...(isAdmin ? [{ icon: "🙍", label: "Mi perfil", action: "setAdminTab('profile')" }] : []),
+        ...(isAdmin ? [{ icon: "🗓️", label: "Organizar agenda", action: "setAdminTab('agenda')" }] : []),
         ...(isAdmin ? [{ icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" }] : [])
       ]
 
@@ -4846,7 +4854,7 @@ Cliente B`)
               </div>
               ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
-              ${currentRole === "analista" ? `<div style="margin-top:12px;border-top:1px solid var(--stroke);padding-top:10px"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-states" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div></div><div class="feedItem" style="min-width:230px;max-width:260px;margin:0"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div><div id="analyst-summary-panel"><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div>` : ""}
+              ${currentRole === "analista" ? `<div style="margin-top:12px;border-top:1px solid var(--stroke);padding-top:10px"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-summary" class="${analystSummaryTab==='summary'?'':'ghost'}" onclick="setAnalystSummaryTab('summary')">Resumen general</button><button id="analyst-summary-states" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-summary-panel" class="${analystSummaryTab==='summary'?'':'hidden'}"><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="openAnalystSummaryActivity('comments')">Comentarios</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="openAnalystSummaryActivity('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="openAnalystSummaryActivity('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="feedItem" style="margin-top:12px"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div>` : ""}
             </div>
             ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
@@ -5977,7 +5985,7 @@ Cliente B`)
         grouped[status].push(t)
       })
 
-      if(currentRole === "consultor"){
+      if(currentRole === "consultor" || currentRole === "admin" || currentRole === "analista"){
         container.innerHTML = renderConsultorTicketList(visibleTickets)
         return
       }
@@ -6579,7 +6587,7 @@ Cliente B`)
                 <button class="ghost" onclick="addComment('${id}')">Comentar</button>
               </div>
             </div>
-            ${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${c.editedAt ? "· editado" : ""} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}
+            <div style="margin-top:16px">${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${c.editedAt ? "· editado" : ""} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}</div>
           </div>
 
           <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">${currentRole !== "consultor" ? "Cargando..." : ""}</div>
@@ -7648,7 +7656,13 @@ Cliente B`)
     }
 
     function setAnalystSummaryTab(tab){
-      analystSummaryTab = ["dashboard","states"].includes(tab) ? tab : "dashboard"
+      analystSummaryTab = ["dashboard","summary","states"].includes(tab) ? tab : "summary"
+      renderApp()
+    }
+
+    function openAnalystSummaryActivity(tab){
+      analystSummaryTab = "summary"
+      analystActivityTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
       renderApp()
     }
 
@@ -7663,7 +7677,11 @@ Cliente B`)
         votedAt: new Date().toISOString()
       })
       analystMoodToday = String(mood || "").toLowerCase()
-      renderApp()
+      document.querySelectorAll(".moodBtn").forEach(btn => {
+        const title = String(btn.getAttribute("title") || "").toLowerCase()
+        const moodByTitle = title === "feliz" ? "feliz" : title === "meh" ? "meh" : title === "triste" ? "triste" : title === "enojado" ? "enojado" : ""
+        btn.classList.toggle("active", moodByTitle === analystMoodToday)
+      })
       showToast("Estado de ánimo guardado", "ok", 1200)
     }
 
