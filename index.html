@@ -207,6 +207,13 @@
     .analystOverviewPanel { border: 1px solid var(--stroke); border-radius: var(--radius-md); padding: 12px; background: transparent; min-height: 340px; max-height: 340px; overflow: hidden; display:flex; flex-direction:column; }
     .analystOverviewScroll { margin-top:10px; max-height: 250px; overflow-y:auto; padding-right:4px; }
     .encuentroPost { border:1px solid var(--stroke); border-radius:var(--radius-md); padding:10px; background:var(--surface-2); margin-bottom:8px; }
+    .encuentroReactions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .encuentroReactionBtn { padding:5px 9px; border-radius:999px; font-size:13px; line-height:1; display:inline-flex; align-items:center; gap:5px; }
+    .encuentroReactionBtn.active { border:1px solid var(--accent); box-shadow:0 0 0 1px rgba(61,110,245,.25) inset; }
+    .encuentroCommentList { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+    .encuentroCommentItem { border:1px solid var(--stroke); border-radius:10px; padding:7px 9px; background:rgba(255,255,255,.02); }
+    .encuentroCommentInput { margin-top:8px; display:flex; gap:6px; }
+    .encuentroCommentInput input { margin:0; }
     @media (max-width: 980px){
       .layoutShell { flex-direction: column; }
       .mainShell { margin-left: 0; padding: 10px; }
@@ -476,7 +483,7 @@
 
     /* ── KPI Grid ──────────────────────────────────────────────────── */
     .kpiGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-    .kpiGrid.adminRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .kpiGrid.adminRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .kpiGrid.singleRow { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
     .kpiGrid.analystDashRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .kpiGrid.analystDashRow .kpi { padding: 7px 8px; }
@@ -1506,6 +1513,9 @@
     var analystBoardSettings = { autoTimerOnStatusChange: false }
     var encuentroSelectedGif = ""
     var activeGifTarget = { mode: "encuentro", ticketId: "" }
+    var encuentroReactionOptions = ["👍","👎","🔥","💀","👏","❤️","🚀"]
+    var adminReassignRecommendationCache = []
+    var adminReassignIgnoredIds = {}
     var commentEditContext = null
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
@@ -4782,7 +4792,7 @@ Cliente B`)
         ...(isAdmin ? [{ icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
         ...(isAdmin ? [{ icon: "⚙️", label: "Configuraciones", action: "setAdminTab('config_home')" }] : []),
         ...(isAdmin ? [{ icon: "🧮", label: "Capacidad Instalada del área", action: "setAdminTab('capacity')" }] : []),
-        ...(isAdmin ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
+        ...(isAdmin ? [{ icon: "?", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
         ...(isAdmin ? [{ icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" }] : []),
         ...(isAdmin ? [{ icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" }] : []),
         ...(isAdmin ? [{ icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" }] : []),
@@ -4982,14 +4992,14 @@ Cliente B`)
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
-                     ${currentRole === "admin" ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div>` : ""}`
+                     ${currentRole === "admin" ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Saturación semanal</div></div>` : ""}`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>` : ""}
-              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
+              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div><h4 style="margin:12px 0 0">Recomendación de reasignación</h4><div id="adminReassignPanel" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
@@ -5127,14 +5137,62 @@ Cliente B`)
       if(currentRole === "admin") return setAdminTab("profile")
     }
 
+    function normalizeEncuentroReactions(map){
+      const out = {}
+      Object.entries(map || {}).forEach(([emoji, users]) => {
+        const arr = Array.isArray(users) ? users : Object.values(users || {})
+        out[emoji] = arr.filter(Boolean).map(v => String(v || "").toLowerCase())
+      })
+      return out
+    }
+
+    async function reactEncuentroPost(postId, emoji){
+      const id = String(postId || "")
+      const em = String(emoji || "")
+      if(!id || !em || !(currentRole === "admin" || currentRole === "analista" || currentRole === "consultor")) return
+      const me = String(currentUser?.email || "").toLowerCase()
+      const key = emailKey(me)
+      const ref = encuentroRef().child(id).child("reactions").child(em)
+      const users = Object.values((await ref.once("value")).val() || {}).map(v => String(v || "").toLowerCase())
+      const hasReaction = users.includes(me)
+      if(hasReaction){
+        await ref.child(key).remove()
+      }else{
+        await ref.child(key).set(me)
+      }
+      await loadEncuentro()
+    }
+
+    async function submitEncuentroComment(postId){
+      const id = String(postId || "")
+      const input = document.getElementById(`encuentro-comment-input-${id}`)
+      const text = String(input?.value || "").trim()
+      if(!id || !text) return
+      const payload = {
+        id: generateId(),
+        author: String(currentUser?.email || "").toLowerCase(),
+        role: String(currentRole || ""),
+        message: text,
+        createdAt: new Date().toISOString()
+      }
+      await encuentroRef().child(id).child("comments").child(payload.id).set(payload)
+      if(input) input.value = ""
+      await loadEncuentro()
+    }
+
     async function loadEncuentro(){
       const feed = document.getElementById("encuentroFeed")
       const membersWrap = document.getElementById("encuentroMembers")
       if(!feed || !membersWrap) return
       const rows = Object.values((await encuentroRef().once("value")).val() || {})
         .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      const myEmail = String(currentUser?.email || "").toLowerCase()
       feed.innerHTML = rows.length
-        ? rows.map(r => `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${htmlEscape(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div></div>`).join("")
+        ? rows.map(r => {
+          const reactions = normalizeEncuentroReactions(r.reactions || {})
+          const comments = Object.values(r.comments || {}).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
+          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${htmlEscape(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${htmlEscape(r.id || "")}', '${emoji}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${htmlEscape(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${htmlEscape(r.id || "")}')">Comentar</button></div></div>`
+        }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
         .filter(u => u && u.active !== false && ["analista","consultor","admin"].includes(String(u.role||"")))
@@ -8735,6 +8793,120 @@ Cliente B`)
       return formatDateDMY(value)
     }
 
+    function countAnalystConsultorTurns(ticketComments, analystEmail){
+      const analyst = String(analystEmail || "").toLowerCase()
+      const comments = Object.values(parseCommentsValue(ticketComments) || {})
+        .filter(c => !c?.internal)
+        .sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
+      let lastRole = ""
+      let turns = 0
+      comments.forEach(c => {
+        const author = String(c?.author || "").toLowerCase()
+        const role = author === analyst ? "analista" : String(cachedUsersByEmail[emailKey(author)]?.role || "").toLowerCase()
+        if(role !== "analista" && role !== "consultor") return
+        if(lastRole && role !== lastRole) turns += 1
+        lastRole = role
+      })
+      return turns
+    }
+
+    function buildAdminReassignmentData(normalizedTickets, users, monthKey){
+      const analysts = users.filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const now = new Date()
+      const weekStart = new Date(now)
+      weekStart.setDate(now.getDate() - now.getDay() + 1)
+      weekStart.setHours(0,0,0,0)
+      const byAnalyst = analysts.map(u => {
+        const email = String(u.email || "").toLowerCase()
+        const assignedTickets = normalizedTickets.filter(t => String(t?.assignedTo || "").toLowerCase() === email && String(t?.status || "") !== "done")
+        const entries = assignedTickets.flatMap(t => Array.isArray(t?.timeTracking?.monthlyFolders?.[monthKey]?.entries) ? t.timeTracking.monthlyFolders[monthKey].entries : [])
+        const weekEntries = entries.filter(e => {
+          const dt = new Date(String(e?.loggedDate || e?.date || e?.createdAt || ""))
+          return !Number.isNaN(dt.getTime()) && dt >= weekStart
+        })
+        const minutes = weekEntries.reduce((acc,e)=> acc + Math.max(0, Number(e?.minutes || Number(e?.hours || 0) * 60 || 0)), 0)
+        const avgTicketMinutes = assignedTickets.length ? (minutes / assignedTickets.length) : 0
+        const pingPong = assignedTickets.reduce((acc,t) => acc + countAnalystConsultorTurns(t.comments || {}, email), 0)
+        const capacity = getAdminHoursRowValues(email)
+        const theoreticalWeekMins = Math.max(1, capacity.adjustedHours * 5 * 60)
+        const taskWeight = Math.min(160, (avgTicketMinutes / 240) * 100)
+        const taskVolume = Math.min(160, assignedTickets.length * 8)
+        const commWeight = Math.min(140, pingPong * 4)
+        const timeUse = Math.min(180, (minutes / theoreticalWeekMins) * 100)
+        const saturation = Math.max(0, Math.min(200, (timeUse * 0.45) + (taskWeight * 0.25) + (taskVolume * 0.2) + (commWeight * 0.1)))
+        return { email, minutes, assignedTickets, pingPong, saturation }
+      }).sort((a,b)=>b.saturation-a.saturation)
+
+      const overloaded = byAnalyst.filter(a => a.saturation >= 110)
+      const underloaded = byAnalyst.filter(a => a.saturation <= 85)
+      const recommendations = []
+      overloaded.forEach(src => {
+        const dst = underloaded.find(x => x.email !== src.email)
+        if(!dst) return
+        const candidate = [...src.assignedTickets].sort((a,b) => {
+          const am = Number((a?.timeTracking?.monthlyFolders?.[monthKey]?.entries || []).reduce((acc,e)=> acc + Math.max(0, Number(e?.minutes || Number(e?.hours || 0) * 60 || 0)), 0))
+          const bm = Number((b?.timeTracking?.monthlyFolders?.[monthKey]?.entries || []).reduce((acc,e)=> acc + Math.max(0, Number(e?.minutes || Number(e?.hours || 0) * 60 || 0)), 0))
+          return am - bm
+        }).find(t => String(t?.status || "") !== "done")
+        if(!candidate) return
+        recommendations.push({
+          id: `${src.email}__${dst.email}__${candidate.id}`,
+          ticketId: String(candidate.id || ""),
+          from: src.email,
+          to: dst.email,
+          fromSaturation: src.saturation,
+          toSaturation: dst.saturation,
+          reason: `Reasignar ticket de menor consumo para aliviar carga (${src.saturation.toFixed(1)}% vs ${dst.saturation.toFixed(1)}%).`
+        })
+      })
+      return { byAnalyst, recommendations }
+    }
+
+    async function applyAdminReassignment(ticketId, fromEmail, toEmail){
+      const id = String(ticketId || "")
+      const to = String(toEmail || "").toLowerCase()
+      const from = String(fromEmail || "").toLowerCase()
+      if(!id || !to) return
+      const ticket = (cachedTickets || []).find(t => String(t?.id || "") === id)
+      if(!ticket) return alert("No se encontró el ticket a reasignar.")
+      const comments = { ...(parseCommentsValue(ticket.comments) || {}) }
+      comments[generateId()] = {
+        message: `Ticket reasignado automáticamente a ${userDisplayNameByEmail(to) || to} por balance de carga de trabajo semanal.`,
+        author: String(currentUser?.email || "").toLowerCase(),
+        createdAt: new Date().toISOString(),
+        internal: false
+      }
+      const updated = {
+        ...ticket,
+        assignedTo: to,
+        comments,
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(currentUser?.email || "").toLowerCase()
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      const ix = cachedTickets.findIndex(t => String(t?.id || "") === id)
+      if(ix >= 0) cachedTickets[ix] = updated
+      showToast(`Reasignado ${id} de ${userDisplayNameByEmail(from)||from} a ${userDisplayNameByEmail(to)||to}.`, "ok")
+      await loadDashboard()
+      await loadTickets()
+    }
+
+    function rejectAdminReassignment(recoId){
+      adminReassignIgnoredIds[String(recoId || "")] = true
+      loadDashboard()
+    }
+
+    function renderAdminReassignmentPanel(data){
+      const panel = document.getElementById("adminReassignPanel")
+      const summary = document.getElementById("adminReassignSummary")
+      if(!panel || !summary) return
+      const validRecs = (data.recommendations || []).filter(r => !adminReassignIgnoredIds[String(r.id || "")])
+      summary.textContent = validRecs.length ? `${validRecs.length} sugerencia(s)` : "Sin sugerencias"
+      const rows = data.byAnalyst || []
+      panel.innerHTML = `<div class="card" style="padding:10px;margin:0"><div class="small" style="margin-bottom:8px">Saturación semanal = tiempo registrado + peso promedio de tarea + cantidad de tickets activos + ida/vuelta con consultor.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Saturación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo semana</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tickets activos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ida/Vuelta</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.email)||r.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${r.saturation.toFixed(1)}%</strong></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(r.minutes/60).toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.assignedTickets.length}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.pingPong}</td></tr>`).join("") || `<tr><td colspan="5" class="small" style="padding:8px">Sin datos suficientes.</td></tr>`}</tbody></table></div><h4 style="margin:12px 0 8px">Detalle de recomendaciones</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mover de</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">A</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${validRecs.length ? validRecs.map(rec => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(rec.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(rec.from)||rec.from)} (${rec.fromSaturation.toFixed(1)}%)</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(rec.to)||rec.to)} (${rec.toSaturation.toFixed(1)}%)</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(rec.reason)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div class="inline" style="gap:6px"><button class="ghost" onclick="applyAdminReassignment('${htmlEscape(rec.ticketId)}','${htmlEscape(rec.from)}','${htmlEscape(rec.to)}')">Aceptar reasignación</button><button class="danger" onclick="rejectAdminReassignment('${htmlEscape(rec.id)}')">Rechazar</button></div></td></tr>`).join("") : `<tr><td colspan="5" class="small" style="padding:8px">Sin recomendaciones accionables en este período.</td></tr>`}</tbody></table></div></div>`
+    }
+
     function renderDashboardList(label, tickets, containerId = "dashboardTicketList"){
       const container = document.getElementById(containerId)
       if(!container) return
@@ -8981,6 +9153,9 @@ Cliente B`)
                 <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
               </div>
             `
+            const reassignmentData = buildAdminReassignmentData(normalizedTickets, users, selectedMonth)
+            adminReassignRecommendationCache = reassignmentData.recommendations || []
+            renderAdminReassignmentPanel(reassignmentData)
           }
           return
         }
