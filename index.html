@@ -874,8 +874,8 @@
     }
     .ticketListHeader, .ticketListRow {
       display: grid;
-      grid-template-columns: 120px 1.2fr 1fr 170px 220px 130px 100px;
-      gap: 10px;
+      grid-template-columns: 110px 1.2fr 0.9fr 140px 210px 130px 100px 88px;
+      gap: 8px;
       align-items: center;
       padding: 11px 16px;
     }
@@ -899,8 +899,8 @@
     .ticketListRow:hover { background: rgba(61,110,245,.07); }
     .ticketListRowTitle { font-weight: 600; }
 
-    @media (max-width: 1280px) { .ticketListHeader, .ticketListRow { grid-template-columns: 110px 1.1fr 1fr 150px 180px 115px 90px; font-size: 12px; } }
-    @media (max-width: 1120px) { .ticketListWrap { overflow-x: auto; } .ticketListHeader, .ticketListRow { min-width: 980px; } }
+    @media (max-width: 1280px) { .ticketListHeader, .ticketListRow { grid-template-columns: 100px 1.1fr .8fr 132px 180px 110px 86px 80px; font-size: 12px; } }
+    @media (max-width: 1120px) { .ticketListWrap { overflow-x: auto; } .ticketListHeader, .ticketListRow { min-width: 1040px; } }
 
     body.light .ticketListWrap { background: rgba(255,255,255,.9); }
     body.light .ticketListHeader { background: rgba(36,85,232,.08); color: var(--muted); }
@@ -924,6 +924,22 @@
     .statusPill.doing      { background: rgba(240,160,48,.15); border-color: rgba(240,160,48,.42); color: #fcd274; }
     .statusPill.recurrent  { background: rgba(160,90,240,.18); border-color: rgba(160,90,240,.40); color: #d0b0ff; }
     .statusPill.done       { background: rgba(34,199,122,.16); border-color: rgba(34,199,122,.38); color: #80e8a8; }
+    .statusSelect {
+      width: 100%;
+      min-width: 0 !important;
+      margin: 0;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 28px 4px 10px;
+      border: 1px solid var(--stroke);
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: linear-gradient(45deg,transparent 50%,currentColor 50%), linear-gradient(135deg,currentColor 50%,transparent 50%);
+      background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
 
     /* ── Unread Bubble ─────────────────────────────────────────────── */
     .unreadBubble {
@@ -4838,7 +4854,7 @@ Cliente B`)
           <div class="grid ${(currentRole === "admin" || currentRole === "analista") ? "adminFull" : ""}">
             <div class="card ${currentRole === "admin" ? "dashboardAdmin" : ""}">
               <div class="inline" style="justify-content:space-between; align-items:center; margin-bottom:14px; min-height:45px;">
-                <h3 style="margin:0">${currentRole === "analista" ? "Resumen general" : "Dashboard"}</h3>
+                <h3 style="margin:0">Dashboard</h3>
                 
               </div>
               ${currentRole !== "analista" ? `<div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : currentRole === "admin" ? "adminRow" : ""}">
@@ -4855,19 +4871,19 @@ Cliente B`)
               </div>` : ""}
               ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
-              ${currentRole === "analista" ? `<div style="margin-top:12px;border-top:1px solid var(--stroke);padding-top:10px;display:grid;grid-template-columns:1fr 240px;gap:12px"><div><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="${analystSummaryTab==='dashboard'?'':'hidden'}" style="margin-top:10px"><div class="kpiGrid"><div class="kpi"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="setAnalystTab('agenda')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div></div></div><div id="recentActivity" class="${analystSummaryTab === 'comments' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystSummaryTab === 'alerts' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystSummaryTab === 'deadlines' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="feedItem" style="height:max-content"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div>` : ""}
+              ${currentRole === "analista" ? `<div style="margin-top:12px;display:grid;grid-template-columns:1fr 240px;gap:12px"><div class="card" style="margin:0"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="${analystSummaryTab==='dashboard'?'':'hidden'}" style="margin-top:10px"><div class="kpiGrid"><div class="kpi"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="setAnalystTab('agenda')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div></div></div><div id="recentActivity" class="${analystSummaryTab === 'comments' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystSummaryTab === 'alerts' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystSummaryTab === 'deadlines' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="card" style="margin:0;height:max-content"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div>` : ""}
             </div>
             ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
 
           <div class="card ticketsShell">
             <div class="ticketsFiltersBar">
-              <div class="searchWrap"><input id="ticketsSearchInput" value="${htmlEscape(ticketSearchTerm)}" oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div>
+              <div class="searchWrap"><label>Buscador</label><input id="ticketsSearchInput" value="${htmlEscape(ticketSearchTerm)}" oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div>
               <div class="filterField"><label>Cliente</label><select id="filterClient" onchange="updateClientFilter()"></select></div>
               <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
-              <div><button class="secondary" onclick="clearTicketFilters()">Limpiar filtros</button></div>
+              <div><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
@@ -6073,7 +6089,7 @@ Cliente B`)
                 <div><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">${htmlEscape(t.id||"-")}</span></div>
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
-                <div>${canEditStatusInline ? `<select style="margin:0;min-width:130px" onclick="event.stopPropagation()" onchange="updateTicketStatusFromList('${t.id}', this.value, event)">${Object.entries(STATUS).map(([k,v]) => `<option value="${k}" ${k===normalizedStatus?'selected':''}>${htmlEscape(v)}</option>`).join("")}</select>` : `<span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span>`}</div>
+                <div>${canEditStatusInline ? `<select class="statusPill statusSelect ${normalizedStatus}" onclick="event.stopPropagation()" onchange="handleAnalystListStatusChange(this, '${t.id}', event)">${Object.entries(STATUS).map(([k,v]) => `<option value="${k}" ${k===normalizedStatus?'selected':''}>${htmlEscape(v)}</option>`).join("")}</select>` : `<span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span>`}</div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div>${helpers.length ? helpers.map(h => htmlEscape(userDisplayNameByEmail(h))).join(", ") : "-"}</div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
@@ -7265,6 +7281,15 @@ Cliente B`)
       showToast("Ticket movido correctamente", "ok")
     }
 
+    function handleAnalystListStatusChange(selectEl, id, ev){
+      if(selectEl){
+        Object.keys(STATUS).forEach(k => selectEl.classList.remove(k))
+        const next = STATUS[selectEl.value] ? selectEl.value : "unassigned"
+        selectEl.classList.add(next)
+      }
+      updateTicketStatusFromList(id, selectEl?.value, ev)
+    }
+
     async function updateTicketStatusFromList(id, nextStatus, ev){
       if(ev) ev.stopPropagation()
       await getRoleTicketEditSettings()
@@ -7704,7 +7729,27 @@ Cliente B`)
 
     function setAnalystSummaryTab(tab){
       analystSummaryTab = ["dashboard","comments","alerts","deadlines","states"].includes(tab) ? tab : "comments"
-      renderApp()
+      const dashboard = document.getElementById("analyst-dashboard-panel")
+      const comments = document.getElementById("recentActivity")
+      const alerts = document.getElementById("recentActivityAlerts")
+      const deadlines = document.getElementById("recentActivityDeadlines")
+      const statesPanel = document.getElementById("analyst-states-panel")
+      if(dashboard) dashboard.classList.toggle("hidden", analystSummaryTab !== "dashboard")
+      if(comments) comments.classList.toggle("hidden", analystSummaryTab !== "comments")
+      if(alerts) alerts.classList.toggle("hidden", analystSummaryTab !== "alerts")
+      if(deadlines) deadlines.classList.toggle("hidden", analystSummaryTab !== "deadlines")
+      if(statesPanel) statesPanel.classList.toggle("hidden", analystSummaryTab !== "states")
+      const tabButtons = {
+        dashboard: document.getElementById("analyst-summary-dashboard"),
+        comments: document.getElementById("analyst-summary-comments"),
+        alerts: document.getElementById("analyst-summary-alerts"),
+        deadlines: document.getElementById("analyst-summary-deadlines"),
+        states: document.getElementById("analyst-summary-states")
+      }
+      Object.entries(tabButtons).forEach(([key, btn]) => {
+        if(btn) btn.classList.toggle("ghost", key !== analystSummaryTab)
+      })
+      if(analystSummaryTab === "states") loadAnalystMovedStatesToday()
     }
 
     function openAnalystSummaryActivity(tab){
