@@ -193,6 +193,7 @@
     }
     .ticketsFiltersBar .filterField { min-width: 170px; flex: 1; }
     .ticketsFiltersBar .searchWrap { min-width: 260px; flex: 1.4; }
+    .ticketsFiltersBar > div { display: flex; flex-direction: column; justify-content: flex-end; }
     .activityTabs { border-bottom: 1px solid var(--stroke); margin: 8px 0 0; padding-bottom: 8px; }
     .activityTabs button { border-radius: 999px; }
     .moodBtn.active {
@@ -1354,7 +1355,7 @@
     var analystPanelTab = "panel"
     var sidebarExpanded = false
     var analystActivityTab = "comments"
-    var analystSummaryTab = "summary"
+    var analystSummaryTab = "comments"
     var analystMoodToday = ""
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = []
@@ -4854,7 +4855,7 @@ Cliente B`)
               </div>` : ""}
               ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
-              ${currentRole === "analista" ? `<div style="margin-top:12px;border-top:1px solid var(--stroke);padding-top:10px"><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-summary" class="${analystSummaryTab==='summary'?'':'ghost'}" onclick="setAnalystSummaryTab('summary')">Resumen general</button><button id="analyst-summary-states" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-summary-panel" class="${analystSummaryTab==='summary'?'':'hidden'}"><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="openAnalystSummaryActivity('comments')">Comentarios</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="openAnalystSummaryActivity('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="openAnalystSummaryActivity('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="feedItem" style="margin-top:12px"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div>` : ""}
+              ${currentRole === "analista" ? `<div style="margin-top:12px;border-top:1px solid var(--stroke);padding-top:10px;display:grid;grid-template-columns:1fr 240px;gap:12px"><div><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="${analystSummaryTab==='dashboard'?'':'hidden'}" style="margin-top:10px"><div class="kpiGrid"><div class="kpi"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="setAnalystTab('agenda')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div></div></div><div id="recentActivity" class="${analystSummaryTab === 'comments' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystSummaryTab === 'alerts' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystSummaryTab === 'deadlines' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="feedItem" style="height:max-content"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div>` : ""}
             </div>
             ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
@@ -4871,7 +4872,7 @@ Cliente B`)
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
         `}
-        ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">🛟</button>` : ""}
+        ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
           </div>
         </div>
       `
@@ -5616,6 +5617,11 @@ Cliente B`)
         .sort((a,b)=>new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
       const today = toLocalDateOnly(new Date())
       const withExpiredDeadline = mine.filter(t => !!String(t.deadline||"") && String(t.deadline) < today)
+      const nearDeadline = mine.filter(t => {
+        if(!t.deadline) return false
+        const days = businessDaysBetweenArg(new Date(), new Date(`${t.deadline}T00:00:00`))
+        return days >= 0 && days <= 5
+      })
       let usersByEmail = cachedUsersByEmail || {}
       if(!Object.keys(usersByEmail).length){
         try{ usersByEmail = (await db.ref("users_by_email").once("value")).val() || {} }catch(_){ usersByEmail = {} }
@@ -5635,8 +5641,9 @@ Cliente B`)
       })
       wrap.innerHTML = `
         <div class="inline" style="gap:10px;flex-wrap:wrap">
-          <div class="kpi"><div class="label">Cantidad de tickets asignados</div><div class="value">${mine.length}</div></div>
-          <div class="kpi"><div class="label">Cantidad de tickets con deadline vencida</div><div class="value">${withExpiredDeadline.length}</div></div>
+          <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de tickets asignados", ${JSON.stringify(mine.map(t=>t.id))})'><div class="label">Cantidad de tickets asignados</div><div class="value">${mine.length}</div></div>
+          <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de tickets con deadline vencida", ${JSON.stringify(withExpiredDeadline.map(t=>t.id))})'><div class="label">Cantidad de tickets con deadline vencida</div><div class="value">${withExpiredDeadline.length}</div></div>
+          <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Próximos a vencerse", ${JSON.stringify(nearDeadline.map(t=>t.id))})'><div class="label">Próximos a vencerse (5 días)</div><div class="value">${nearDeadline.length}</div></div>
           <div class="kpi"><div class="label">Cantidad de comentarios sin ver</div><div class="value">${unreadComments}</div></div>
           <div class="kpi"><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
         </div>
@@ -5671,6 +5678,21 @@ Cliente B`)
           </table>
         </div>
       `
+    }
+
+    function openMyTicketStatusDetail(title, ids){
+      const modal = document.getElementById("dashboardListModal")
+      const modalTitle = document.getElementById("dashboardListModalTitle")
+      const content = document.getElementById("dashboardListModalContent")
+      const wanted = Array.isArray(ids) ? ids.map(v => String(v || "")) : []
+      const list = (cachedTickets || []).filter(t => wanted.includes(String(t.id || "")))
+      if(modalTitle) modalTitle.textContent = title || "Detalle"
+      if(content){
+        content.innerHTML = list.length
+          ? list.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id || "-")} · ${htmlEscape(t.title || "-")}</div><div class="feedMeta">Cliente: ${htmlEscape(t.client || "-")} · Deadline: ${htmlEscape(t.deadline || "-")}</div></div>`).join("")
+          : `<div class="small">No hay tickets en esta categoría.</div>`
+      }
+      if(modal) modal.classList.remove("hidden")
     }
 
     function ticketAgeLabel(ticket){
@@ -6028,6 +6050,8 @@ Cliente B`)
     function renderConsultorTicketList(tickets){
       const sorted = [...tickets].sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
       if(!sorted.length) return `<div class="small">Sin tickets</div>`
+      const canEditStatusInline = currentRole === "analista"
+      const canManageHelpers = currentRole === "analista" || currentRole === "admin"
       return `
         <div class="ticketListWrap">
           <div class="ticketListHeader">
@@ -6036,19 +6060,22 @@ Cliente B`)
             <div>Cliente</div>
             <div>Estado</div>
             <div>Analista asignado</div>
+            <div>Ayudantes</div>
             <div>Deadline</div>
             <div>Sin leer</div>
           </div>
           ${sorted.map(t => {
             const normalizedStatus = STATUS[t.status] ? t.status : "unassigned"
             const unreadCount = unreadCommentsCount(t)
+            const helpers = Array.isArray(t.helpers) ? t.helpers : []
             return `
               <div class="ticketListRow ${t.hasProblem ? "problemFlag" : ""}" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')">
                 <div><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">${htmlEscape(t.id||"-")}</span></div>
                 <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
-                <div><span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span></div>
+                <div>${canEditStatusInline ? `<select style="margin:0;min-width:130px" onclick="event.stopPropagation()" onchange="updateTicketStatusFromList('${t.id}', this.value, event)">${Object.entries(STATUS).map(([k,v]) => `<option value="${k}" ${k===normalizedStatus?'selected':''}>${htmlEscape(v)}</option>`).join("")}</select>` : `<span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span>`}</div>
                 <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
+                <div>${helpers.length ? helpers.map(h => htmlEscape(userDisplayNameByEmail(h))).join(", ") : "-"}</div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span></div>
               </div>
@@ -7238,6 +7265,26 @@ Cliente B`)
       showToast("Ticket movido correctamente", "ok")
     }
 
+    async function updateTicketStatusFromList(id, nextStatus, ev){
+      if(ev) ev.stopPropagation()
+      await getRoleTicketEditSettings()
+      if(!(currentRole === "analista" && canCurrentRoleEditTickets())) return
+      const ticket = cachedTickets.find(t => String(t.id || "") === String(id || ""))
+      if(!ticket) return
+      const next = String(nextStatus || "")
+      if(!next || next === String(ticket.status || "")) return
+      const updated = { ...ticket, status: next, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      await handleAnalystAutoTimerByStatus(ticket, next)
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id, ...updated })
+      await logActivity("ticket_movido", { ticketId: id, nextStatus: next, fromStatus: ticket.status, source: "preview_list" })
+      const ix = cachedTickets.findIndex(t => String(t.id || "") === String(id || ""))
+      if(ix >= 0) cachedTickets[ix] = updated
+      loadTickets()
+      await loadDashboard()
+      showToast("Estado actualizado", "ok", 1200)
+    }
+
     async function assignTicket(id){
       await getRoleTicketEditSettings()
       if(!(currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets()))) return alert("No tenés permisos para asignar tickets")
@@ -7656,12 +7703,12 @@ Cliente B`)
     }
 
     function setAnalystSummaryTab(tab){
-      analystSummaryTab = ["summary","states"].includes(tab) ? tab : "summary"
+      analystSummaryTab = ["dashboard","comments","alerts","deadlines","states"].includes(tab) ? tab : "comments"
       renderApp()
     }
 
     function openAnalystSummaryActivity(tab){
-      analystSummaryTab = "summary"
+      analystSummaryTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
       analystActivityTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
       renderApp()
     }
@@ -8695,7 +8742,23 @@ Cliente B`)
             await checkAndShowMyCapacityLowHoursAlert(capacityAlertsRealtimeCache)
           }catch(_){}
           await loadMyMoodToday()
-          setAnalystActivityTab(analystActivityTab)
+          const recent = document.getElementById("recentActivity")
+          const alerts = document.getElementById("recentActivityAlerts")
+          const deadlines = document.getElementById("recentActivityDeadlines")
+          if(recent) recent.classList.toggle("hidden", analystSummaryTab !== "comments")
+          if(alerts) alerts.classList.toggle("hidden", analystSummaryTab !== "alerts")
+          if(deadlines) deadlines.classList.toggle("hidden", analystSummaryTab !== "deadlines")
+          const dashUrgent = document.getElementById("analystDashUrgent")
+          const dashNear = document.getElementById("analystDashNearDeadline")
+          const dashUnread = document.getElementById("analystDashUnread")
+          const dashPlanned = document.getElementById("analystDashPlanned")
+          if(dashUrgent) dashUrgent.textContent = String(urgentTickets.length)
+          if(dashNear) dashNear.textContent = String(nearDeadlineTickets.length)
+          if(dashUnread) dashUnread.textContent = String(sorted.length || 0)
+          if(dashPlanned){
+            const plannedToday = myTickets.filter(t => String(t.plannedWorkDate || "") === toLocalDateOnly(new Date()))
+            dashPlanned.textContent = String(plannedToday.length)
+          }
           if(analystSummaryTab === "states") loadAnalystMovedStatesToday()
           return
         }
