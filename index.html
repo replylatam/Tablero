@@ -4896,7 +4896,7 @@ Cliente B`)
               <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
-              <div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
+              ${currentRole !== "analista" ? `<div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>` : ""}
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
