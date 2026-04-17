@@ -1296,6 +1296,20 @@
     </div>
   </div>
 
+  <div id="encuentroGifModal" class="modalBack hidden" onclick="if(event.target===this) closeEncuentroGifModal()">
+    <div class="modal" style="max-width:760px">
+      <div class="modalHead">
+        <h3 style="margin:0">Buscar GIF</h3>
+        <button class="ghost" onclick="closeEncuentroGifModal()">✕</button>
+      </div>
+      <div class="inline" style="gap:8px;margin-bottom:10px">
+        <input id="encuentroGifSearch" placeholder="Buscar gif (ej: excelente trabajo)" style="margin:0;flex:1">
+        <button class="ghost" onclick="searchEncuentroGifs()">Buscar</button>
+      </div>
+      <div id="encuentroGifResults" class="row"></div>
+    </div>
+  </div>
+
 
 
   <div id="manualModal" class="modalBack hidden" onclick="if(event.target===this) closeManualModal()">
@@ -1486,6 +1500,7 @@
     var analystNotificationsOpen = false
     var analystNotifRefreshTimer = null
     var analystBoardSettings = { autoTimerOnStatusChange: false }
+    var encuentroSelectedGif = ""
     var commentEditContext = null
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
@@ -4798,7 +4813,18 @@ Cliente B`)
               <div class="inline" style="gap:8px"><button class="ghost" onclick="openMyProfileFromEncuentro()">Mi perfil</button><button class="ghost" onclick="loadEncuentro()">Actualizar</button></div>
             </div>
             <div class="row" style="margin-top:8px">
-              <div><label>Publicar algo para el equipo</label><input id="encuentroMessageInput" placeholder="Escribí una novedad, felicitación o aviso"></div>
+              <div style="grid-column:1/-1">
+                <label>Publicar algo para el equipo</label>
+                <div class="inline" style="gap:8px;align-items:center;margin-bottom:6px">
+                  <label class="small" style="margin:0">Color</label><input id="encuentroColorInput" type="color" value="#e8edf5" style="margin:0;width:52px">
+                  <button type="button" class="ghost" onclick="toggleEncuentroEmojiPanel()">😊 Emoji</button>
+                  <button type="button" class="ghost" onclick="openEncuentroGifModal()">GIF</button>
+                  ${encuentroSelectedGif ? `<span class="small">GIF seleccionado</span>` : ""}
+                </div>
+                <div id="encuentroEmojiPanel" class="emojiPicker hidden"><div class="emojiGrid">${["👏","🔥","✅","💪","🚀","🎉","🙌","🧠","⭐","🤝","💙","📣","✨","😄","😎","💯","🛠️","⚠️"].map(e => `<button class=\"emojiBtn\" type=\"button\" onclick=\"addEncuentroEmoji('${e}')\">${e}</button>`).join("")}</div></div>
+                <textarea id="encuentroMessageInput" placeholder="Escribí una novedad, felicitación o aviso" style="min-height:88px"></textarea>
+                <div id="encuentroGifPreview" class="small" style="margin-top:6px"></div>
+              </div>
               <div style="display:flex;align-items:flex-end"><button onclick="publishEncuentroPost()">Publicar</button></div>
             </div>
             <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:12px;margin-top:10px">
@@ -4852,7 +4878,7 @@ Cliente B`)
             <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
             <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
           </div>
-          ` : adminPanelTab==='user_management' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de clientes</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><h4 style="margin:0 0 8px">Clientes</h4><div class="row" style="align-items:flex-end"><div><label>Nuevo cliente</label><input id="cName"></div><div style="display:flex;align-items:flex-end"><button onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
+          ` : adminPanelTab==='user_management' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de clientes</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><h4 style="margin:0 0 8px">Clientes</h4><div class="row" style="align-items:flex-end"><div><label>Nuevo cliente</label><input id="cName" style="margin:0"></div><div style="display:flex;align-items:flex-end"><button style="margin:0" onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Analista)</h3>
             <div class="row">
@@ -4911,7 +4937,6 @@ Cliente B`)
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:center">
             <h3 style="margin:0">Lineamientos</h3>
-            <button class="ghost" onclick="openAnalystGuidelineModal()">Crear lineamiento</button>
           </div>
           <div id="analystGuidelinesSummary" class="small" style="margin-top:8px"></div>
           <div id="analystGuidelinesContainer" style="margin-top:10px"></div>
@@ -5035,17 +5060,23 @@ Cliente B`)
     function updateActivityFilter(){ ticketFilterActivity = selectedValuesFromChecks("filterActivityType"); loadTickets(); loadDashboard() }
     function updateManualsSearch(value){ manualsSearchTerm = String(value || "").trim().toLowerCase(); loadManualsAnalyst() }
     function encuentroRef(){ return db.ref("encuentro_posts") }
+    function randomStartWorkPhrase(){
+      const variants = ["VAMOS CON ESA!", "¡A romperla!", "¡Excelente arranque!", "¡Con toda la energía!", "¡Buen trabajo, equipo!"]
+      return variants[Math.floor(Math.random() * variants.length)]
+    }
 
-    async function postEncuentroMessage(message, type = "manual"){
+    async function postEncuentroMessage(message, type = "manual", extra = {}){
       const text = String(message || "").trim()
-      if(!text) return
+      if(!text && !extra.gifUrl) return
       const payload = {
         id: generateId(),
         message: text,
         type,
         author: String(currentUser?.email || "").toLowerCase(),
         role: String(currentRole || ""),
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        textColor: String(extra.textColor || ""),
+        gifUrl: String(extra.gifUrl || "")
       }
       await encuentroRef().child(payload.id).set(payload)
     }
@@ -5053,9 +5084,13 @@ Cliente B`)
     async function publishEncuentroPost(){
       const input = document.getElementById("encuentroMessageInput")
       const msg = String(input?.value || "").trim()
-      if(!msg) return alert("Escribí un mensaje para publicar.")
-      await postEncuentroMessage(msg, "manual")
+      const textColor = String(document.getElementById("encuentroColorInput")?.value || "")
+      if(!msg && !encuentroSelectedGif) return alert("Escribí un mensaje o elegí un GIF para publicar.")
+      await postEncuentroMessage(msg, "manual", { textColor, gifUrl: encuentroSelectedGif })
       if(input) input.value = ""
+      encuentroSelectedGif = ""
+      const gifPreview = document.getElementById("encuentroGifPreview")
+      if(gifPreview) gifPreview.innerHTML = ""
       await loadEncuentro()
       showToast("Publicado en Encuentro", "ok", 1400)
     }
@@ -5078,13 +5113,62 @@ Cliente B`)
       const rows = Object.values((await encuentroRef().once("value")).val() || {})
         .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
       feed.innerHTML = rows.length
-        ? rows.map(r => `<div class="encuentroPost"><div class="feedType">${htmlEscape(r.message || "-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div></div>`).join("")
+        ? rows.map(r => `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${htmlEscape(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta">${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div></div>`).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
         .filter(u => u && u.active !== false && ["analista","consultor","admin"].includes(String(u.role||"")))
       membersWrap.innerHTML = users.length
         ? users.map(u => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(u.email||"-"))}</div><div class="feedMeta">${htmlEscape(u.role || "-")}</div></div><div class="inline" style="gap:6px"><button class="ghost" onclick="sendEncuentroCongrats('${htmlEscape(String(u.email||"").toLowerCase())}')">Felicitar</button>${String(u.email||"").toLowerCase() === String(currentUser?.email||"").toLowerCase() ? `<button class="ghost" onclick="openMyProfileFromEncuentro()">Mi perfil</button>` : ""}</div></div></div>`).join("")
         : `<div class="small">Sin miembros disponibles.</div>`
+    }
+
+    function toggleEncuentroEmojiPanel(){
+      document.getElementById("encuentroEmojiPanel")?.classList.toggle("hidden")
+    }
+
+    function addEncuentroEmoji(emoji){
+      const input = document.getElementById("encuentroMessageInput")
+      if(!input) return
+      input.value = `${String(input.value || "")}${emoji}`
+      input.focus()
+    }
+
+    function openEncuentroGifModal(){
+      document.getElementById("encuentroGifModal")?.classList.remove("hidden")
+      const search = document.getElementById("encuentroGifSearch")
+      if(search && !search.value) search.value = "great job team"
+      searchEncuentroGifs()
+    }
+
+    function closeEncuentroGifModal(){
+      document.getElementById("encuentroGifModal")?.classList.add("hidden")
+    }
+
+    async function searchEncuentroGifs(){
+      const q = encodeURIComponent(String(document.getElementById("encuentroGifSearch")?.value || "team work").trim() || "team work")
+      const target = document.getElementById("encuentroGifResults")
+      if(!target) return
+      target.innerHTML = `<div class="small">Buscando gifs...</div>`
+      try{
+        const res = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=RsOpBjIIfvcYEFBjILGUGp1kWi6eLC1i&q=${q}&limit=12&rating=g&lang=es`)
+        const json = await res.json()
+        const data = Array.isArray(json?.data) ? json.data : []
+        target.innerHTML = data.length ? data.map(g => {
+          const url = String(g?.images?.fixed_width?.url || g?.images?.downsized?.url || "")
+          return `<button class="ghost" style="padding:4px" onclick="selectEncuentroGif('${htmlEscape(url)}')"><img src="${htmlEscape(url)}" alt="gif" style="width:100%;max-width:160px;border-radius:8px"></button>`
+        }).join("") : `<div class="small">Sin resultados.</div>`
+      }catch(_){
+        target.innerHTML = `<div class="small">No se pudieron cargar gifs.</div>`
+      }
+    }
+
+    function selectEncuentroGif(url){
+      encuentroSelectedGif = String(url || "")
+      const preview = document.getElementById("encuentroGifPreview")
+      if(preview && encuentroSelectedGif){
+        preview.innerHTML = `<div>GIF seleccionado</div><img src="${htmlEscape(encuentroSelectedGif)}" alt="gif" style="max-width:180px;border-radius:8px">`
+      }
+      closeEncuentroGifModal()
     }
 
     function renderSavedItems(){
@@ -5635,7 +5719,7 @@ Cliente B`)
       const wrap = document.getElementById("analystGuidelinesContainer")
       if(!wrap) return
       const clientsList = cachedClients.length ? cachedClients : Object.keys(byClient).filter(c => c !== "Lineamientos generales")
-      const sentBox = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">Lineamientos enviados</h4><div class="inline" style="gap:8px"><button class="ghost" onclick="toggleAnalystSentGuidelines()">${analystShowSentGuidelines ? "Ocultar lista" : "Mostrar lista"}</button><button class="ghost" onclick="openAnalystGuidelineModal()">Crear lineamiento</button></div></div>${analystShowSentGuidelines ? (myVisibleRequests.length ? myVisibleRequests.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map(r => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(r.title||"-")}</div><div class="feedMeta">${htmlEscape(r.client||"-")} · Estado: ${htmlEscape(r.status||"-")}</div></div></div><div style="margin-top:6px">${htmlEscape(r.summary||"-")}</div></div>`).join("") : `<div class="small" style="margin-top:8px">No tenés solicitudes pendientes o rechazadas.</div>`) : `<div class="small" style="margin-top:8px">Lista oculta.</div>`}</div>`
+      const sentBox = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">Lineamientos enviados</h4><div class="inline" style="gap:8px"><button class="ghost" onclick="toggleAnalystSentGuidelines()">${analystShowSentGuidelines ? "Ocultar lista" : "Mostrar lista"}</button></div></div>${analystShowSentGuidelines ? (myVisibleRequests.length ? myVisibleRequests.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map(r => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(r.title||"-")}</div><div class="feedMeta">${htmlEscape(r.client||"-")} · Estado: ${htmlEscape(r.status||"-")}</div></div></div><div style="margin-top:6px">${htmlEscape(r.summary||"-")}</div></div>`).join("") : `<div class="small" style="margin-top:8px">No tenés solicitudes pendientes o rechazadas.</div>`) : `<div class="small" style="margin-top:8px">Lista oculta.</div>`}</div>`
       if(!analystGuidelinesClient){
         wrap.innerHTML = sentBox + (clients.length ? clients.map(client => `<div class="feedItem" style="cursor:pointer" onclick="openAnalystGuidelineFolder('${encodeURIComponent(client)}')"><div class="feedTop"><div><div class="feedType">📁 ${htmlEscape(client)}</div><div class="feedMeta">${byClient[client].length} lineamiento(s)</div></div></div></div>`).join("") : `<p class="small">No hay lineamientos.</p>`)
         return
@@ -6316,13 +6400,14 @@ Cliente B`)
         const label = String(f?.label || "").toLowerCase()
         return key.includes("microservicio") || label.includes("microservicio")
       })
-      const ticketActivityType = String(activityDef ? (customValues?.[activityDef.key] || "") : "").trim().toLowerCase()
-      const ticketMicroserviceType = String(microserviceDef ? (customValues?.[microserviceDef.key] || "") : "").trim().toLowerCase()
+      const normText = (v) => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim()
+      const ticketActivityType = normText(activityDef ? (customValues?.[activityDef.key] || "") : "")
+      const ticketMicroserviceType = normText(microserviceDef ? (customValues?.[microserviceDef.key] || "") : "")
       const usefulManuals = manuals.filter(m => {
-        const manualType = String(m?.activityType || "").trim().toLowerCase()
-        const manualMicro = String(m?.microserviceType || "").trim().toLowerCase()
-        const microMatches = !manualMicro || (ticketMicroserviceType && manualMicro === ticketMicroserviceType)
-        const typeMatches = !manualType || (ticketActivityType && manualType === ticketActivityType)
+        const manualType = normText(m?.activityType || "")
+        const manualMicro = normText(m?.microserviceType || "")
+        const microMatches = !manualMicro || (ticketMicroserviceType && (manualMicro === ticketMicroserviceType || ticketMicroserviceType.includes(manualMicro) || manualMicro.includes(ticketMicroserviceType)))
+        const typeMatches = !manualType || (ticketActivityType && (manualType === ticketActivityType || ticketActivityType.includes(manualType) || manualType.includes(ticketActivityType)))
         return microMatches && typeMatches
       })
 
@@ -6347,7 +6432,7 @@ Cliente B`)
           <div class="inline" style="gap:8px">${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}</div>
         </div>
         <div class="detailLayout withSidebar">
-          <div class="detailMainInfo">
+          <div class="detailMainInfo" style="background:var(--surface-2);border:1px solid var(--stroke);border-radius:var(--radius-md);padding:12px">
             <div class="row">
               <div><label>Título</label><input id="detail-title-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} value="${htmlEscape(ticketWithRead.title||"")}" ${canEdit?"":"disabled"}></div>
               <div><label>Prioridad</label><select id="detail-priority-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}><option value="Alta" ${ticketWithRead.priority==='Alta'?'selected':''}>Alta</option><option value="Media" ${ticketWithRead.priority==='Media'?'selected':''}>Media</option><option value="Baja" ${ticketWithRead.priority==='Baja'?'selected':''}>Baja</option></select></div>
@@ -6918,6 +7003,7 @@ Cliente B`)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
       try{
         if(next === "doing" && prevStatus !== "doing"){
+          postEncuentroMessage(`🛠️ ${userDisplayNameByEmail(currentUser?.email||"-")} comenzó a trabajar en ${ticket.id || "-"} · ${ticket.title || "-"}. ${randomStartWorkPhrase()}`, "trabajo_inicio").catch(()=>{})
           await startTicketTimerForUser(ticket.id, userKey)
         }else if(prevStatus === "doing" && next !== "doing"){
           const users = ticket?.timeTracking?.users || {}
@@ -8612,8 +8698,8 @@ Cliente B`)
       container.innerHTML = `
         <div class="small" style="margin-bottom:6px"><strong>${htmlEscape(label)}</strong> (${tickets.length})</div>
         <div class="dashboardListScroll">
-          ${topTickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
-          ${tickets.slice(2).map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+          ${topTickets.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} · Estado: ${htmlEscape(STATUS[t.status] || t.status || "-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
+          ${tickets.slice(2).map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id||"-")} · ${htmlEscape(t.title||"-")}</div><div class="feedMeta">${htmlEscape(t.client||"-")} · Estado: ${htmlEscape(STATUS[t.status] || t.status || "-")} ${t.deadline ? `· Deadline ${htmlEscape(t.deadline)}` : ""}</div></div>`).join("")}
         </div>
       `
     }
