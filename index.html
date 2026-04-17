@@ -203,6 +203,10 @@
       border-color: rgba(36,85,232,.6);
       color: var(--text);
     }
+    .analystOverviewGrid { display:grid; grid-template-columns: 1fr 240px; gap:12px; align-items:stretch; }
+    .analystOverviewPanel { border: 1px solid var(--stroke); border-radius: var(--radius-md); padding: 12px; background: transparent; min-height: 340px; max-height: 340px; overflow: hidden; display:flex; flex-direction:column; }
+    .analystOverviewScroll { margin-top:10px; max-height: 250px; overflow-y:auto; padding-right:4px; }
+    .encuentroPost { border:1px solid var(--stroke); border-radius:var(--radius-md); padding:10px; background:var(--surface-2); margin-bottom:8px; }
     @media (max-width: 980px){
       .layoutShell { flex-direction: column; }
       .mainShell { margin-left: 0; padding: 10px; }
@@ -474,8 +478,8 @@
     .kpiGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .kpiGrid.adminRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .kpiGrid.singleRow { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
-    .kpiGrid.analystDashRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .kpiGrid.analystDashRow .kpi { padding: 8px 10px; }
+    .kpiGrid.analystDashRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .kpiGrid.analystDashRow .kpi { padding: 7px 8px; }
     .kpiGrid.analystDashRow .label { font-size: 11px; }
     .kpiGrid.analystDashRow .value { font-size: 19px; }
     @media (max-width: 900px) { .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -1275,6 +1279,23 @@
     </div>
   </div>
 
+  <div id="memoCreateModal" class="modalBack hidden" onclick="if(event.target===this) closeMemoCreateModal()">
+    <div class="modal" style="max-width:560px">
+      <div class="modalHead">
+        <h3 style="margin:0">Crear memo</h3>
+        <button class="ghost" onclick="closeMemoCreateModal()">✕</button>
+      </div>
+      <div class="row">
+        <div><label>Título</label><input id="memoTitleModal" placeholder="Título del memo"></div>
+        <div><label>Detalle</label><input id="memoDetailModal" placeholder="Detalle"></div>
+      </div>
+      <div class="inline" style="justify-content:flex-end">
+        <button class="ghost" onclick="closeMemoCreateModal()">Cancelar</button>
+        <button onclick="saveMemoFromModal()">Guardar memo</button>
+      </div>
+    </div>
+  </div>
+
 
 
   <div id="manualModal" class="modalBack hidden" onclick="if(event.target===this) closeManualModal()">
@@ -1657,7 +1678,7 @@
     }
 
     function setMainViewTab(tab){
-      mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","support","consultor_guidelines","hoja_vida"].includes(tab) ? tab : "tickets"
+      mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
       if(mainViewTab === "tickets"){
         if(currentRole === "analista") analystPanelTab = "panel"
         if(currentRole === "admin") adminPanelTab = "panel"
@@ -2038,18 +2059,37 @@
       if(mainViewTab === "saved") renderSavedItems()
     }
 
-    function addMyMemo(){
+    function addMyMemo(titleArg, detailArg){
       if(currentRole !== "analista") return
-      const title = String(document.getElementById("memoTitle")?.value || "").trim()
-      const detail = String(document.getElementById("memoDetail")?.value || "").trim()
+      const title = String((titleArg ?? document.getElementById("memoTitle")?.value) || "").trim()
+      const detail = String((detailArg ?? document.getElementById("memoDetail")?.value) || "").trim()
       if(!title || !detail) return alert("Completá título y detalle del memo.")
       const state = getSavedItemsState()
       state.memos = [{ id: generateId(), title, detail, createdAt: new Date().toISOString() }, ...(state.memos || [])]
       setSavedItemsState(state)
-      document.getElementById("memoTitle").value = ""
-      document.getElementById("memoDetail").value = ""
+      const titleInput = document.getElementById("memoTitle")
+      const detailInput = document.getElementById("memoDetail")
+      if(titleInput) titleInput.value = ""
+      if(detailInput) detailInput.value = ""
       renderSavedItems()
       showToast("Memo guardado", "ok")
+    }
+
+    function openMemoCreateModal(){
+      document.getElementById("memoTitleModal").value = ""
+      document.getElementById("memoDetailModal").value = ""
+      document.getElementById("memoCreateModal")?.classList.remove("hidden")
+    }
+
+    function closeMemoCreateModal(){
+      document.getElementById("memoCreateModal")?.classList.add("hidden")
+    }
+
+    function saveMemoFromModal(){
+      const title = String(document.getElementById("memoTitleModal")?.value || "").trim()
+      const detail = String(document.getElementById("memoDetailModal")?.value || "").trim()
+      addMyMemo(title, detail)
+      closeMemoCreateModal()
     }
 
     function deleteMyMemo(id){
@@ -2737,6 +2777,9 @@ Cliente B`)
       const analystFilterSelect = document.getElementById("filterAnalyst")
       if(analystFilterSelect){
         const analysts = Object.values(usersByEmailData).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
+        if(currentRole === "analista" && (!Array.isArray(ticketFilterAnalyst) || !ticketFilterAnalyst.length)){
+          ticketFilterAnalyst = [String(currentUser?.email || "").toLowerCase()]
+        }
         renderTicketFilterChecks("filterAnalyst", analysts, ticketFilterAnalyst, "updateAnalystFilter", (a) => userDisplayNameByEmail(a))
       }
 
@@ -4684,9 +4727,11 @@ Cliente B`)
       const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showSupportCasesView || showConsultorGuidelines
+      const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showSupportCasesView || showConsultorGuidelines || showEncuentro
       const sidebarItems = [
         { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+        ...(["analista","consultor","admin"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
         { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
         ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
@@ -4694,6 +4739,8 @@ Cliente B`)
         ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
         ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
         ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
+        ...(isAnalyst ? [{ icon: "⚙️", label: "Configuraciones", action: "setAnalystTab('board_settings')" }] : []),
+        ...(isAnalyst ? [{ icon: "🙍", label: "Mi perfil", action: "setAnalystTab('profile')" }] : []),
         ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
         ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
         ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
@@ -4734,7 +4781,7 @@ Cliente B`)
             </div>
             <div class="topbarCenter"></div>
             <div class="inline topbarActions">
-              ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor") ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
+              ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor") ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" title="Notificaciones" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
               ${isAnalyst ? `<button class="ghost" title="Configuración del tablero" onclick="setAnalystTab('board_settings')">⚙️</button>` : ""}
@@ -4744,7 +4791,22 @@ Cliente B`)
           </div>
         </div>
 
-        ${showSavedItems ? `
+        ${showEncuentro ? `
+          <div class="card">
+            <div class="inline" style="justify-content:space-between;align-items:center">
+              <h3 style="margin:0">Encuentro</h3>
+              <div class="inline" style="gap:8px"><button class="ghost" onclick="openMyProfileFromEncuentro()">Mi perfil</button><button class="ghost" onclick="loadEncuentro()">Actualizar</button></div>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <div><label>Publicar algo para el equipo</label><input id="encuentroMessageInput" placeholder="Escribí una novedad, felicitación o aviso"></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="publishEncuentroPost()">Publicar</button></div>
+            </div>
+            <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:12px;margin-top:10px">
+              <div style="flex:2;min-width:280px"><h4 style="margin:0 0 8px">Actividad del equipo</h4><div id="encuentroFeed"></div></div>
+              <div style="flex:1;min-width:240px"><h4 style="margin:0 0 8px">Miembros</h4><div id="encuentroMembers"></div></div>
+            </div>
+          </div>
+        ` : showSavedItems ? `
           <div class="card">
             <h3 style="margin-top:0">Mis cosas</h3>
             <div id="savedItemsContainer" class="small"></div>
@@ -4849,7 +4911,7 @@ Cliente B`)
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:center">
             <h3 style="margin:0">Lineamientos</h3>
-            <button class="ghost" onclick="loadAnalystGuidelines()">Actualizar</button>
+            <button class="ghost" onclick="openAnalystGuidelineModal()">Crear lineamiento</button>
           </div>
           <div id="analystGuidelinesSummary" class="small" style="margin-top:8px"></div>
           <div id="analystGuidelinesContainer" style="margin-top:10px"></div>
@@ -4860,7 +4922,7 @@ Cliente B`)
             <div id="analystManualsList" class="small" style="margin-top:10px"></div>
           </div>` : showAnalystBoardSettings ? `
           <div class="card">
-            <h3 style="margin-top:0">Configuración del tablero</h3>
+            <div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración del tablero</h3><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button></div>
             <div class="switchWrap">
               <label class="switch"><input type="checkbox" ${analystBoardSettings.autoTimerOnStatusChange ? "checked" : ""} onchange="setAnalystBoardAutoTimer(this.checked)"><span class="slider"></span></label>
               <span>Iniciar/detener timer automáticamente al cambiar estado (Por hacer ↔ En curso)</span>
@@ -4884,7 +4946,7 @@ Cliente B`)
               </div>` : ""}
               ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
-              ${currentRole === "analista" ? `<div style="margin-top:0;display:grid;grid-template-columns:1fr 240px;gap:12px"><div class="card" style="margin:0"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="${analystSummaryTab==='dashboard'?'':'hidden'}" style="margin-top:10px"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div></div></div><div id="recentActivity" class="${analystSummaryTab === 'comments' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystSummaryTab === 'alerts' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystSummaryTab === 'deadlines' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="card" style="margin:0;height:max-content"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div>` : ""}
+              ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
             ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
@@ -4896,7 +4958,7 @@ Cliente B`)
               <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
-              ${currentRole !== "analista" ? `<div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>` : ""}
+              <div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
@@ -4954,6 +5016,8 @@ Cliente B`)
         loadMySupportCases()
       }else if(showConsultorGuidelines){
         loadConsultorGuidelines()
+      }else if(showEncuentro){
+        loadEncuentro()
       }else if(currentRole === "analista" && mainViewTab === "my_ticket_status"){
         setupRealtimeStreams()
         loadTickets().then(()=>loadMyTicketStatus())
@@ -4970,6 +5034,58 @@ Cliente B`)
     function updateStatusFilter(){ ticketFilterStatus = selectedValuesFromChecks("filterStatus"); loadTickets(); loadDashboard() }
     function updateActivityFilter(){ ticketFilterActivity = selectedValuesFromChecks("filterActivityType"); loadTickets(); loadDashboard() }
     function updateManualsSearch(value){ manualsSearchTerm = String(value || "").trim().toLowerCase(); loadManualsAnalyst() }
+    function encuentroRef(){ return db.ref("encuentro_posts") }
+
+    async function postEncuentroMessage(message, type = "manual"){
+      const text = String(message || "").trim()
+      if(!text) return
+      const payload = {
+        id: generateId(),
+        message: text,
+        type,
+        author: String(currentUser?.email || "").toLowerCase(),
+        role: String(currentRole || ""),
+        createdAt: new Date().toISOString()
+      }
+      await encuentroRef().child(payload.id).set(payload)
+    }
+
+    async function publishEncuentroPost(){
+      const input = document.getElementById("encuentroMessageInput")
+      const msg = String(input?.value || "").trim()
+      if(!msg) return alert("Escribí un mensaje para publicar.")
+      await postEncuentroMessage(msg, "manual")
+      if(input) input.value = ""
+      await loadEncuentro()
+      showToast("Publicado en Encuentro", "ok", 1400)
+    }
+
+    async function sendEncuentroCongrats(email){
+      const target = userDisplayNameByEmail(email || "")
+      await postEncuentroMessage(`👏 ${target} recibió una felicitación del equipo.`, "felicitacion")
+      await loadEncuentro()
+    }
+
+    function openMyProfileFromEncuentro(){
+      if(currentRole === "analista") return setAnalystTab("profile")
+      if(currentRole === "admin") return setAdminTab("profile")
+    }
+
+    async function loadEncuentro(){
+      const feed = document.getElementById("encuentroFeed")
+      const membersWrap = document.getElementById("encuentroMembers")
+      if(!feed || !membersWrap) return
+      const rows = Object.values((await encuentroRef().once("value")).val() || {})
+        .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+      feed.innerHTML = rows.length
+        ? rows.map(r => `<div class="encuentroPost"><div class="feedType">${htmlEscape(r.message || "-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div></div>`).join("")
+        : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
+      const users = Object.values(cachedUsersByEmail || {})
+        .filter(u => u && u.active !== false && ["analista","consultor","admin"].includes(String(u.role||"")))
+      membersWrap.innerHTML = users.length
+        ? users.map(u => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(u.email||"-"))}</div><div class="feedMeta">${htmlEscape(u.role || "-")}</div></div><div class="inline" style="gap:6px"><button class="ghost" onclick="sendEncuentroCongrats('${htmlEscape(String(u.email||"").toLowerCase())}')">Felicitar</button>${String(u.email||"").toLowerCase() === String(currentUser?.email||"").toLowerCase() ? `<button class="ghost" onclick="openMyProfileFromEncuentro()">Mi perfil</button>` : ""}</div></div></div>`).join("")
+        : `<div class="small">Sin miembros disponibles.</div>`
+    }
 
     function renderSavedItems(){
       const wrap = document.getElementById("savedItemsContainer")
@@ -5003,7 +5119,7 @@ Cliente B`)
         ${tickets.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td>${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td>${htmlEscape(item.ticket.client||"-")}</td><td>${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}</div>
         <div class="savedBlock comments"><h4 style="margin:0 0 8px">Comentarios guardados</h4>
         ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><div class="savedActionBtns">${c.guidelineRequestStatus === "pending" ? `<button class="ghost" disabled>Pendiente de aprobación</button>` : `<button class="ghost" onclick="elevateSavedCommentAsGuideline('${c.ticketId}','${c.commentId}', event)">Elevar como lineamiento</button>`}<button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}</div>
-        ${currentRole === "analista" ? `<div class="savedBlock"><h4 style="margin:0 0 8px">Mis memos</h4><div class="row"><div><label>Título</label><input id="memoTitle" placeholder="Título del memo"></div><div><label>Detalle</label><input id="memoDetail" placeholder="Detalle"></div><div style="display:flex;align-items:flex-end"><button onclick="addMyMemo()">Guardar memo</button></div></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.createdAt||"")}</div></div><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
+        ${currentRole === "analista" ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.createdAt||"")}</div></div><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
       `
     }
 
@@ -6954,6 +7070,10 @@ Cliente B`)
         if(!u.timerStartAt) u.timerStartAt = new Date().toISOString()
         tracking.users[userKey] = u
       })
+      const ticket = cachedTickets.find(t => String(t.id||"") === String(ticketId||""))
+      if(ticket){
+        postEncuentroMessage(`🛠️ ${userDisplayNameByEmail(currentUser?.email||"-")} comenzó a trabajar en ${ticket.id || "-"} · ${ticket.title || "-"}. ¡Que tengas un gran trabajo!`, "trabajo_inicio").catch(()=>{})
+      }
       showToast('Timer iniciado','ok')
     }
 
@@ -7212,6 +7332,9 @@ Cliente B`)
       const ix = cachedTickets.findIndex(t => t.id === id)
       if(ix >= 0) cachedTickets[ix] = updated
       await logActivity("ticket_problema", { ticketId: id, hasProblem: nextState })
+      postEncuentroMessage(nextState
+        ? `⚠️ ${userDisplayNameByEmail(currentUser?.email||"-")} marcó problema en ${ticket.id || "-"} · ${ticket.title || "-"}.`
+        : `✅ ${userDisplayNameByEmail(currentUser?.email||"-")} resolvió problema en ${ticket.id || "-"} · ${ticket.title || "-"}.`, "problema").catch(()=>{})
       renderTicketsFromData(cachedTickets)
       loadDashboard()
       openTicketDetailModal(id)
@@ -7847,7 +7970,7 @@ Cliente B`)
           && iso.slice(0,10) === today
       }).sort((a,b)=>new Date(b.timestampIso||0)-new Date(a.timestampIso||0))
       wrap.innerHTML = moved.length
-        ? moved.map(log => `<div class="feedItem"><div class="feedType">${htmlEscape(log.ticketId || "-")} · ${htmlEscape((cachedTickets.find(t => t.id === log.ticketId)?.title) || "-")}</div><div class="feedMeta">Cliente: ${htmlEscape((cachedTickets.find(t => t.id === log.ticketId)?.client) || "-")} · ${htmlEscape(formatDateTime24(log.timestampIso || ""))} · Estado: ${htmlEscape(STATUS[log.nextStatus] || log.nextStatus || "-")}</div></div>`).join("")
+        ? moved.map(log => `<div class="feedItem"><div class="feedType">${htmlEscape(log.ticketId || "-")} · ${htmlEscape((cachedTickets.find(t => t.id === log.ticketId)?.title) || "-")}</div><div class="feedMeta">Cliente: ${htmlEscape((cachedTickets.find(t => t.id === log.ticketId)?.client) || "-")} · ${htmlEscape(formatDateTime24(log.timestampIso || ""))} · Estado: ${htmlEscape(STATUS[log.fromStatus] || log.fromStatus || "-")} → ${htmlEscape(STATUS[log.nextStatus] || log.nextStatus || "-")}</div></div>`).join("")
         : `<div class="small">Hoy no moviste tickets de estado.</div>`
     }
 
@@ -8506,7 +8629,8 @@ Cliente B`)
         analyst_urgent: "Mis tickets urgentes",
         analyst_near_deadline: "Mis tickets a 3 días de deadline",
         analyst_unread: "Mis tickets con comentarios sin leer",
-        analyst_planned_today: "Mis tickets asignados para hoy"
+        analyst_planned_today: "Mis tickets asignados para hoy",
+        analyst_unassigned: "Tickets sin asignar"
       }
       const label = map[type] || "Tickets"
       renderDashboardList(label, dashboardListCache[type] || [], "dashboardListModalContent")
@@ -8817,6 +8941,7 @@ Cliente B`)
           const dashNear = document.getElementById("analystDashNearDeadline")
           const dashUnread = document.getElementById("analystDashUnread")
           const dashPlanned = document.getElementById("analystDashPlanned")
+          const dashUnassigned = document.getElementById("analystDashUnassigned")
           const myUrgentTickets = myTickets.filter(t => !!t.urgentRequested)
           const myNearDeadlineTickets = myTickets.filter(t => {
             if(!t.deadline) return false
@@ -8829,10 +8954,12 @@ Cliente B`)
           dashboardListCache.analyst_near_deadline = myNearDeadlineTickets
           dashboardListCache.analyst_unread = myUnreadTickets
           dashboardListCache.analyst_planned_today = plannedToday
+          dashboardListCache.analyst_unassigned = unassignedTickets
           if(dashUrgent) dashUrgent.textContent = String(myUrgentTickets.length)
           if(dashNear) dashNear.textContent = String(myNearDeadlineTickets.length)
           if(dashUnread) dashUnread.textContent = String(myUnreadTickets.length)
           if(dashPlanned) dashPlanned.textContent = String(plannedToday.length)
+          if(dashUnassigned) dashUnassigned.textContent = String(unassignedTickets.length)
           if(analystSummaryTab === "states") loadAnalystMovedStatesToday()
           return
         }
