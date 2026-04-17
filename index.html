@@ -93,6 +93,75 @@
     }
 
     .container { max-width: 1680px; margin: 0 auto; position: relative; z-index: 1; }
+    .layoutShell { display: flex; gap: 14px; align-items: flex-start; }
+    .mainShell { flex: 1; min-width: 0; }
+    .leftSidebar {
+      position: sticky;
+      top: 12px;
+      width: 78px;
+      background: linear-gradient(180deg, #102a56 0%, #0b2144 65%, #173a6f 100%);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 16px;
+      box-shadow: var(--shadow-card);
+      min-height: calc(100vh - 26px);
+      transition: width .24s ease;
+      overflow: hidden;
+      z-index: 20;
+    }
+    .leftSidebar.expanded { width: 220px; }
+    .sideToggle {
+      width: 100%;
+      background: rgba(255,255,255,.06);
+      border: none;
+      border-bottom: 1px solid rgba(148,163,184,.18);
+      border-radius: 0;
+      padding: 12px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: none;
+    }
+    .sideNavItem {
+      width: 100%;
+      border-radius: 0;
+      border-bottom: 1px solid rgba(148,163,184,.14);
+      background: transparent;
+      color: #dbe6fb;
+      box-shadow: none;
+      padding: 12px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: center;
+      min-height: 56px;
+    }
+    .leftSidebar.expanded .sideNavItem,
+    .leftSidebar.expanded .sideToggle { justify-content: flex-start; padding-left: 14px; }
+    .sideNavIcon { font-size: 18px; min-width: 24px; text-align: center; }
+    .sideNavLabel { display: none; white-space: nowrap; font-weight: 600; color: #f5f8ff; }
+    .leftSidebar.expanded .sideNavLabel { display: inline; }
+    .ticketsShell { padding: 0; overflow: hidden; }
+    .ticketsFiltersBar {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      padding: 14px;
+      border-bottom: 1px solid var(--stroke);
+      background: rgba(255,255,255,.02);
+    }
+    .ticketsFiltersBar .filterField { min-width: 170px; flex: 1; }
+    .ticketsFiltersBar .searchWrap { min-width: 260px; flex: 1.4; }
+    .activityTabs { border-bottom: 1px solid var(--stroke); margin: 8px 0 0; padding-bottom: 8px; }
+    .activityTabs button { border-radius: 999px; }
+    @media (max-width: 980px){
+      .layoutShell { flex-direction: column; }
+      .leftSidebar, .leftSidebar.expanded { width: 100%; min-height: auto; position: static; }
+      .sideNavList { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .sideNavLabel { display: inline; }
+      .sideNavItem { justify-content: flex-start; }
+    }
 
     /* ── Cards ─────────────────────────────────────────────────────── */
     .card {
@@ -1225,6 +1294,7 @@
     var uiTheme = localStorage.getItem("uiTheme") || "dark"
     var adminPanelTab = "panel"
     var analystPanelTab = "panel"
+    var sidebarExpanded = false
     var analystActivityTab = "comments"
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = []
@@ -1246,6 +1316,7 @@
     var timeMonthTabByTicket = {}
     var cachedUsersByEmail = {}
     var draggedTicketId = ""
+    var ticketDragReleasedAt = 0
     var ticketTimerIntervals = {}
     var realtimeStreamsStarted = false
     var latestActivityLogs = []
@@ -1495,6 +1566,37 @@
       mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","support","consultor_guidelines","hoja_vida"].includes(tab) ? tab : "tickets"
       closeHeaderMenu()
       renderApp()
+    }
+
+    function toggleSidebar(){
+      sidebarExpanded = !sidebarExpanded
+      renderApp()
+    }
+
+    function clearTicketFilters(){
+      ticketSearchTerm = ""
+      ticketFilterClient = []
+      ticketFilterStatus = []
+      ticketFilterActivity = []
+      ticketFilterAnalyst = []
+      globalThis.ticketSearchTerm = ticketSearchTerm
+      globalThis.ticketFilterClient = ticketFilterClient
+      const searchInput = document.getElementById("ticketsSearchInput")
+      if(searchInput) searchInput.value = ""
+      ;["filterClient","filterStatus","filterActivityType","filterAnalyst"].forEach(id => {
+        const node = document.getElementById(id)
+        if(!node) return
+        Array.from(node.options || []).forEach(opt => { opt.selected = false })
+      })
+      loadFilterOptions()
+      loadTickets()
+      loadDashboard()
+      showToast("Filtros limpiados", "ok", 1200)
+    }
+
+    function onTicketCardClick(ticketId){
+      if(draggedTicketId || (Date.now() - Number(ticketDragReleasedAt || 0) < 220)) return
+      openTicketDetailModal(ticketId)
     }
 
     function toggleHeaderMenu(ev){
@@ -2446,7 +2548,7 @@ Cliente B`)
       if(!root) return
       const selectedSet = new Set((selected || []).map(v => String(v || "").toLowerCase()))
       const isSelect = root.tagName === "SELECT"
-      root.innerHTML = (values || []).map(item => {
+      const optionsHtml = (values || []).map(item => {
         const value = String(item?.value ?? item ?? "").trim()
         const label = mapLabel ? mapLabel(item) : String(item?.label ?? item ?? "").trim()
         if(isSelect){
@@ -2456,6 +2558,7 @@ Cliente B`)
         const checked = selectedSet.has(value.toLowerCase()) ? "checked" : ""
         return `<label class="checkOption"><input type="checkbox" value="${htmlEscape(value)}" onchange="${onChangeFn}(this)" ${checked}><span>${htmlEscape(label)}</span></label>`
       }).join("")
+      root.innerHTML = isSelect ? `<option value="">Todos</option>${optionsHtml}` : optionsHtml
     }
 
     function setupRealtimeStreams(){
@@ -4476,8 +4579,25 @@ Cliente B`)
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showSupportCasesView || showConsultorGuidelines
+      const sidebarItems = [
+        { icon: "📊", label: "Dashboard", action: "setMainViewTab('tickets')" },
+        { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+        ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+        ...(isAnalyst ? [{ icon: "📚", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
+        ...(isAdmin ? [{ icon: "⚙️", label: "Configuración", action: "setAdminTab('config_home')" }] : []),
+        ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+        { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
+      ]
 
       document.getElementById("app").innerHTML = `
+        <div class="layoutShell">
+          <aside class="leftSidebar ${sidebarExpanded ? "expanded" : ""}">
+            <button class="sideToggle" onclick="toggleSidebar()"><span class="sideNavIcon">☰</span><span class="sideNavLabel">Menú</span></button>
+            <div class="sideNavList">
+              ${sidebarItems.map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}
+            </div>
+          </aside>
+          <div class="mainShell">
         <div class="card topbarCard">
           <div class="topbarLayout">
             <div class="inline topbarUserInfo" style="gap:10px;flex-wrap:nowrap">
@@ -4655,16 +4775,24 @@ Cliente B`)
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               
             </div>
-            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
+            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
 
-          <div class="card">
-            <div class="inline" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Tickets</h3></div>
-            <div class="row"><div class="searchWrap"><input oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div><div><label>Cliente</label><select id="filterClient" onchange="updateClientFilter()"></select></div><div><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div><div><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>${(isAnalyst || isAdmin)?`<div><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}</div>
+          <div class="card ticketsShell">
+            <div class="ticketsFiltersBar">
+              <div class="searchWrap"><input id="ticketsSearchInput" value="${htmlEscape(ticketSearchTerm)}" oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div>
+              <div class="filterField"><label>Cliente</label><select id="filterClient" onchange="updateClientFilter()"></select></div>
+              <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
+              <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
+              ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
+              <div><button class="secondary" onclick="clearTicketFilters()">Limpiar filtros</button></div>
+            </div>
+            <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
-          <div class="card"><div class="boardWrap"><div id="boardContainer"></div></div></div>
         `}
         ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">🛟</button>` : ""}
+          </div>
+        </div>
       `
 
       applyTheme()
@@ -5864,7 +5992,7 @@ Cliente B`)
       const fAssigned = fieldSetting("assignedTo", "Responsable")
       const fDeadline = fieldSetting("deadline", "Deadline")
       return `
-        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ondragover="event.preventDefault()" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id}')"` : ""}>
+        <div class="ticket ${priorityClass(ticket.priority)} ${ticket.hasProblem ? "problemFlag" : ""} ${pulseClass}" ondragover="event.preventDefault()" ${canDrag ? `draggable="true" ondragstart="onTicketDragStart(event,'${ticket.id}')" ondragend="onTicketDragEnd(event)"` : ""} ${canOpenDetail ? `style="cursor:pointer" onclick="onTicketCardClick('${ticket.id}')"` : ""}>
           ${fTitle.visible ? `<h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span>${htmlEscape(ticket.title||"-")}</h5>` : `<h5><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${ticket.id}')">${htmlEscape(ticket.id||"-")}</span></h5>`}
           ${fClient.visible ? `<div class="meta">${htmlEscape(fClient.label)}: ${htmlEscape(ticket.client||"-")}</div>` : ""}
           ${fInformer.visible ? `<div class="meta">${htmlEscape(fInformer.label)}: ${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(ticket)||"-"))}</div>` : ""}
@@ -6500,6 +6628,7 @@ Cliente B`)
     function onTicketDragEnd(event){
       if(event?.currentTarget) event.currentTarget.classList.remove("dragging")
       document.querySelectorAll('.column.dropTarget').forEach(el => el.classList.remove('dropTarget'))
+      ticketDragReleasedAt = Date.now()
       draggedTicketId = ""
     }
 
@@ -6565,6 +6694,9 @@ Cliente B`)
       }catch(err){
         console.error("Error moviendo ticket por drag & drop:", err)
         showToast("No se pudo mover el ticket", "error", 2600)
+      }finally{
+        ticketDragReleasedAt = Date.now()
+        draggedTicketId = ""
       }
     }
 
