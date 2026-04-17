@@ -80,7 +80,7 @@
         radial-gradient(ellipse 500px 400px at 50% 80%, rgba(61,110,245,.07) 0%, transparent 60%),
         linear-gradient(160deg, var(--bg-2) 0%, var(--bg-1) 100%);
       min-height: 100vh;
-      padding: clamp(12px, 2.2vw, 24px);
+      padding: 0;
     }
 
     body::before {
@@ -92,21 +92,25 @@
       z-index: 0;
     }
 
-    .container { max-width: 1680px; margin: 0 auto; position: relative; z-index: 1; }
-    .layoutShell { display: flex; gap: 14px; align-items: flex-start; }
-    .mainShell { flex: 1; min-width: 0; }
+    .container { max-width: none; margin: 0; position: relative; z-index: 1; }
+    .layoutShell { display: block; }
+    .mainShell {
+      margin-left: 88px;
+      min-width: 0;
+      padding: 14px;
+    }
     .leftSidebar {
-      position: sticky;
-      top: 12px;
+      position: fixed;
+      inset: 0 auto 0 0;
       width: 78px;
-      background: linear-gradient(180deg, #102a56 0%, #0b2144 65%, #173a6f 100%);
-      border: 1px solid rgba(148, 163, 184, 0.22);
-      border-radius: 16px;
-      box-shadow: var(--shadow-card);
-      min-height: calc(100vh - 26px);
+      background: linear-gradient(180deg, #0f172a 0%, #14213d 60%, #1f3b67 100%);
+      border-right: 1px solid rgba(110, 152, 228, 0.24);
       transition: width .24s ease;
       overflow: hidden;
       z-index: 20;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
     .leftSidebar.expanded { width: 220px; }
     .sideToggle {
@@ -122,6 +126,7 @@
       gap: 8px;
       box-shadow: none;
     }
+    .sideNavList { flex: 1; overflow-y: auto; }
     .sideNavItem {
       width: 100%;
       border-radius: 0;
@@ -141,6 +146,23 @@
     .sideNavIcon { font-size: 18px; min-width: 24px; text-align: center; }
     .sideNavLabel { display: none; white-space: nowrap; font-weight: 600; color: #f5f8ff; }
     .leftSidebar.expanded .sideNavLabel { display: inline; }
+    .sideQualityWrap {
+      margin-top: auto;
+      border-top: 1px solid rgba(148,163,184,.18);
+      padding: 10px 0 14px;
+      display: flex;
+      justify-content: center;
+    }
+    .leftSidebar .qualityOrb{
+      position: relative;
+      left: auto;
+      top: auto;
+      transform: none;
+      width: 56px;
+      height: 56px;
+      margin: 0;
+    }
+    .leftSidebar .qualityOrb #qualityOrbValue { font-size: 16px; }
     .ticketsShell { padding: 0; overflow: hidden; }
     .ticketsFiltersBar {
       display: flex;
@@ -157,10 +179,12 @@
     .activityTabs button { border-radius: 999px; }
     @media (max-width: 980px){
       .layoutShell { flex-direction: column; }
+      .mainShell { margin-left: 0; padding: 10px; }
       .leftSidebar, .leftSidebar.expanded { width: 100%; min-height: auto; position: static; }
       .sideNavList { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); }
       .sideNavLabel { display: inline; }
       .sideNavItem { justify-content: flex-start; }
+      .sideQualityWrap { justify-content: flex-start; padding-left: 10px; }
     }
 
     /* ── Cards ─────────────────────────────────────────────────────── */
@@ -4580,13 +4604,22 @@ Cliente B`)
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showSupportCasesView || showConsultorGuidelines
       const sidebarItems = [
-        { icon: "📊", label: "Dashboard", action: "setMainViewTab('tickets')" },
         { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
-        ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-        ...(isAnalyst ? [{ icon: "📚", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
-        ...(isAdmin ? [{ icon: "⚙️", label: "Configuración", action: "setAdminTab('config_home')" }] : []),
+        { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
         ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-        { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
+        ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
+        ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+        ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+        ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
+        ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
+        ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
+        ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+        ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+        ...(isAdmin ? [{ icon: "🧑‍💼", label: "Panel admin", action: "setAdminTab('panel')" }] : []),
+        ...(isAdmin ? [{ icon: "⚙️", label: "Configuraciones", action: "setAdminTab('config_home')" }] : []),
+        ...(isAdmin ? [{ icon: "🧮", label: "Capacidad", action: "setAdminTab('capacity')" }] : []),
+        ...(isAdmin ? [{ icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }] : []),
+        ...(isAdmin ? [{ icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" }] : [])
       ]
 
       document.getElementById("app").innerHTML = `
@@ -4596,6 +4629,7 @@ Cliente B`)
             <div class="sideNavList">
               ${sidebarItems.map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}
             </div>
+            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad</div></div></div>` : ""}
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -4614,17 +4648,8 @@ Cliente B`)
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor") ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
-              <div class="menuWrap" onclick="event.stopPropagation()">
-                <button class="ghost" onclick="toggleHeaderMenu(event)">☰ Menú</button>
-                <div id="headerMenuDropdown" class="menuDropdown hidden">
-                  <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
-                  <button class="ghost" onclick="setMainViewTab('saved')">Mis cosas</button>
-                  <button class="ghost" onclick="setMainViewTab('tickets')">Tickets</button>
-                  ${currentRole === "consultor" ? `<button class="ghost" onclick="setMainViewTab('portfolio')">Cartera de clientes</button><button class="ghost" onclick="setMainViewTab('consultor_guidelines')">Lineamientos de acco</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button><button class="ghost" onclick="setMainViewTab('support')">Soporte técnico</button>` : ""}${isAnalyst ? `<button class="ghost" onclick="setMainViewTab('portfolio_overview')">Cartera de consultores</button><button class="ghost" onclick="setMainViewTab('quality_results')">Resultados encuesta de calidad</button><button class="ghost" onclick="setMainViewTab('my_ticket_status')">Estado de mis tickets</button><button class="ghost" onclick="setMainViewTab('support')">Soporte técnico</button>` : ""}
-                  ${isAdmin ? `<button class="ghost" onclick="setMainViewTab('portfolio_overview')">Cartera de consultores</button><button class="ghost" onclick="setAdminTab('config_home')">Configuraciones</button><button class="ghost" onclick="setAdminTab('capacity')">Capacidad Instalada del área</button><button class="ghost" onclick="setAdminTab('support')">Soporte técnico</button><button class="ghost" onclick="setAdminTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAdminTab('manuals')">Manuales</button><button class="ghost" onclick="setMainViewTab('hoja_vida')">Hoja de vida</button><button class="ghost" onclick="setAdminTab('quality')">Encuesta de calidad</button><button class="ghost" onclick="setAdminTab('help')">Ayuda</button><button class="ghost" onclick="setAdminTab('announcements')">Comunicados</button><button class="ghost" onclick="setAdminTab('profile')">Mi perfil</button><button class="ghost" onclick="setAdminTab('agenda')">Organizar agenda</button><button class="ghost" onclick="setAdminTab('comments')">Comentarios</button>` : ""}
-                  ${isAnalyst ? `<button class="ghost" onclick="setAnalystTab('guidelines')">Lineamientos</button><button class="ghost" onclick="setAnalystTab('manuals')">Manuales</button><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button><button class="ghost" onclick="setAnalystTab('agenda')">Mi agenda</button><button class="ghost" onclick="setAnalystTab('board_settings')">Configuración del tablero</button>` : ""}
-                </div>
-              </div>
+              ${isAnalyst ? `<button class="ghost" title="Configuración del tablero" onclick="setAnalystTab('board_settings')">⚙️</button>` : ""}
+              <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
           </div>
@@ -4757,7 +4782,7 @@ Cliente B`)
             <div class="card ${currentRole === "admin" ? "dashboardAdmin" : ""}">
               <div class="inline" style="justify-content:space-between; align-items:center; margin-bottom:14px; min-height:45px;">
                 <h3 style="margin:0">Dashboard</h3>
-                ${(currentRole === "analista" || currentRole === "consultor") ? `<div id="qualityOrb" class="qualityOrb hidden" style="position:relative; left:auto; top:auto; transform:scale(0.7); transform-origin:right center; margin:-20px 0;"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad</div></div>` : ""}
+                
               </div>
               <div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : currentRole === "admin" ? "adminRow" : ""}">
                 ${currentRole !== "consultor"
