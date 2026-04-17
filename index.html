@@ -1111,7 +1111,7 @@
   <div id="adminRecommendationDetailModal" class="modalBack hidden" onclick="if(event.target===this) closeAdminRecommendationDetailModal()">
     <div class="card modal" style="max-width:680px">
       <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:8px">
-        <h3 style="margin:0">Detalle de recomendación</h3>
+        <h3 id="adminRecommendationDetailTitle" style="margin:0">Detalle de recomendación</h3>
         <button class="secondary" onclick="closeAdminRecommendationDetailModal()">Cerrar</button>
       </div>
       <div id="adminRecommendationDetailBody"></div>
@@ -1520,6 +1520,7 @@
     var activeGifTarget = { mode: "encuentro", ticketId: "" }
     var encuentroReactionOptions = ["👍","👎","🔥","💀","👏","❤️","🚀"]
     var adminReassignRecommendationCache = []
+    var adminReassignAnalystCache = []
     var adminReassignIgnoredIds = {}
     var commentEditContext = null
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
@@ -8863,6 +8864,25 @@ Cliente B`)
       const byAnalyst = analysts.map(u => {
         const email = String(u.email || "").toLowerCase()
         const assignedTickets = normalizedTickets.filter(t => String(t?.assignedTo || "").toLowerCase() === email && String(t?.status || "") !== "done")
+        const ticketBreakdown = assignedTickets.map(t => {
+          const ticketEntries = Array.isArray(t?.timeTracking?.monthlyFolders?.[monthKey]?.entries) ? t.timeTracking.monthlyFolders[monthKey].entries : []
+          const ticketMinutes = ticketEntries.reduce((acc,e)=> acc + Math.max(0, Number(e?.minutes || Number(e?.hours || 0) * 60 || 0)), 0)
+          const ticketWeekEntries = ticketEntries.filter(e => {
+            const dt = new Date(String(e?.loggedDate || e?.date || e?.createdAt || ""))
+            return !Number.isNaN(dt.getTime()) && dt >= weekStart
+          })
+          const ticketWeekMinutes = ticketWeekEntries.reduce((acc,e)=> acc + Math.max(0, Number(e?.minutes || Number(e?.hours || 0) * 60 || 0)), 0)
+          const turns = countAnalystConsultorTurns(t.comments || {}, email)
+          return {
+            id: String(t?.id || "-"),
+            title: String(t?.title || ""),
+            status: String(t?.status || ""),
+            monthMinutes: ticketMinutes,
+            weekMinutes: ticketWeekMinutes,
+            weekEntriesCount: ticketWeekEntries.length,
+            turns
+          }
+        })
         const entries = assignedTickets.flatMap(t => Array.isArray(t?.timeTracking?.monthlyFolders?.[monthKey]?.entries) ? t.timeTracking.monthlyFolders[monthKey].entries : [])
         const weekEntries = entries.filter(e => {
           const dt = new Date(String(e?.loggedDate || e?.date || e?.createdAt || ""))
@@ -8878,7 +8898,24 @@ Cliente B`)
         const commWeight = Math.min(140, pingPong * 4)
         const timeUse = Math.min(180, (minutes / theoreticalWeekMins) * 100)
         const saturation = Math.max(0, Math.min(200, (timeUse * 0.45) + (taskWeight * 0.25) + (taskVolume * 0.2) + (commWeight * 0.1)))
-        return { email, minutes, assignedTickets, pingPong, saturation }
+        return {
+          email,
+          minutes,
+          assignedTickets,
+          pingPong,
+          saturation,
+          detail: {
+            monthKey,
+            weekStartIso: weekStart.toISOString(),
+            adjustedHours: Number(capacity.adjustedHours || 0),
+            theoreticalWeekMins,
+            weekEntriesCount: weekEntries.length,
+            avgTicketMinutes,
+            factors: { timeUse, taskWeight, taskVolume, commWeight },
+            thresholds: { overloaded: 110, underloaded: 85 },
+            ticketBreakdown: ticketBreakdown.sort((a,b)=>b.weekMinutes-a.weekMinutes)
+          }
+        }
       }).sort((a,b)=>b.saturation-a.saturation)
 
       const overloaded = byAnalyst.filter(a => a.saturation >= 110)
@@ -8947,9 +8984,10 @@ Cliente B`)
       if(!panel || !summary) return
       const validRecs = (data.recommendations || []).filter(r => !adminReassignIgnoredIds[String(r.id || "")])
       adminReassignRecommendationCache = validRecs
+      adminReassignAnalystCache = data.byAnalyst || []
       summary.textContent = validRecs.length ? `${validRecs.length} sugerencia(s)` : "Sin sugerencias"
       const rows = data.byAnalyst || []
-      panel.innerHTML = `<div class="card" style="padding:10px;margin:0"><div class="small" style="margin-bottom:8px">Saturación semanal = tiempo registrado + peso promedio de tarea + cantidad de tickets activos + ida/vuelta con consultor.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Saturación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo semana</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tickets activos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ida/Vuelta</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.email)||r.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openAdminRecommendationDetailByAnalyst('${htmlEscape(r.email)}')"><strong>${r.saturation.toFixed(1)}%</strong></button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(r.minutes/60).toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.assignedTickets.length}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.pingPong}</td></tr>`).join("") || `<tr><td colspan="5" class="small" style="padding:8px">Sin datos suficientes.</td></tr>`}</tbody></table></div><h4 style="margin:12px 0 8px">Detalle de recomendaciones</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mover de</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">A</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${validRecs.length ? validRecs.map(rec => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(rec.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(rec.from)||rec.from)} (${rec.fromSaturation.toFixed(1)}%)</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(rec.to)||rec.to)} (${rec.toSaturation.toFixed(1)}%)</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openAdminRecommendationDetail('${htmlEscape(rec.id)}')">Ver cálculo</button><div class="small" style="margin-top:4px">${htmlEscape(rec.reason)}</div></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div class="inline" style="gap:6px"><button class="ghost" onclick="applyAdminReassignment('${htmlEscape(rec.ticketId)}','${htmlEscape(rec.from)}','${htmlEscape(rec.to)}')">Aceptar reasignación</button><button class="danger" onclick="rejectAdminReassignment('${htmlEscape(rec.id)}')">Rechazar</button></div></td></tr>`).join("") : `<tr><td colspan="5" class="small" style="padding:8px">Sin recomendaciones accionables en este período.</td></tr>`}</tbody></table></div></div>`
+      panel.innerHTML = `<div class="card" style="padding:10px;margin:0"><div class="small" style="margin-bottom:8px">Saturación semanal = tiempo registrado + peso promedio de tarea + cantidad de tickets activos + ida/vuelta con consultor.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Saturación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo semana</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tickets activos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ida/Vuelta</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openAdminRecommendationDetailByAnalyst('${htmlEscape(r.email)}')">${htmlEscape(userDisplayNameByEmail(r.email)||r.email)}</button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openAdminRecommendationDetailByAnalyst('${htmlEscape(r.email)}')"><strong>${r.saturation.toFixed(1)}%</strong></button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${(r.minutes/60).toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.assignedTickets.length}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.pingPong}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openAdminRecommendationDetailByAnalyst('${htmlEscape(r.email)}')">Ver análisis completo</button></td></tr>`).join("") || `<tr><td colspan="6" class="small" style="padding:8px">Sin datos suficientes.</td></tr>`}</tbody></table></div><h4 style="margin:12px 0 8px">Detalle de recomendaciones</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mover de</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">A</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${validRecs.length ? validRecs.map(rec => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(rec.ticketId)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(rec.from)||rec.from)} (${rec.fromSaturation.toFixed(1)}%)</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(rec.to)||rec.to)} (${rec.toSaturation.toFixed(1)}%)</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openAdminRecommendationDetail('${htmlEscape(rec.id)}')">Ver cálculo</button><div class="small" style="margin-top:4px">${htmlEscape(rec.reason)}</div></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div class="inline" style="gap:6px"><button class="ghost" onclick="applyAdminReassignment('${htmlEscape(rec.ticketId)}','${htmlEscape(rec.from)}','${htmlEscape(rec.to)}')">Aceptar reasignación</button><button class="danger" onclick="rejectAdminReassignment('${htmlEscape(rec.id)}')">Rechazar</button></div></td></tr>`).join("") : `<tr><td colspan="5" class="small" style="padding:8px">Sin recomendaciones accionables en este período.</td></tr>`}</tbody></table></div></div>`
     }
 
     function closeAdminRecommendationDetailModal(){
@@ -8959,6 +8997,8 @@ Cliente B`)
     function openAdminRecommendationDetail(recId){
       const rec = (adminReassignRecommendationCache || []).find(r => String(r.id || "") === String(recId || ""))
       if(!rec) return
+      const title = document.getElementById("adminRecommendationDetailTitle")
+      if(title) title.textContent = "Detalle de recomendación"
       const body = document.getElementById("adminRecommendationDetailBody")
       if(!body) return
       const saturationGap = Math.max(0, Number(rec.fromSaturation || 0) - Number(rec.toSaturation || 0)).toFixed(1)
@@ -8984,9 +9024,65 @@ Cliente B`)
 
     function openAdminRecommendationDetailByAnalyst(email){
       const target = String(email || "").toLowerCase()
-      const rec = (adminReassignRecommendationCache || []).find(r => String(r.from || "").toLowerCase() === target || String(r.to || "").toLowerCase() === target)
-      if(rec) return openAdminRecommendationDetail(rec.id)
-      showToast("Este analista no tiene recomendación activa para el período.", "info", 1800)
+      const analyst = (adminReassignAnalystCache || []).find(r => String(r.email || "").toLowerCase() === target)
+      if(!analyst){
+        showToast("Este analista no tiene datos activos para el período.", "info", 1800)
+        return
+      }
+      const detail = analyst.detail || {}
+      const factors = detail.factors || {}
+      const breakdown = Array.isArray(detail.ticketBreakdown) ? detail.ticketBreakdown : []
+      const formulaRows = [
+        { label: "Uso de tiempo (45%)", raw: Number(factors.timeUse || 0), weighted: Number(factors.timeUse || 0) * 0.45, source: `${Math.max(0, Number(analyst.minutes || 0)).toFixed(1)} min / ${Math.max(1, Number(detail.theoreticalWeekMins || 1)).toFixed(1)} min teóricos` },
+        { label: "Peso promedio por tarea (25%)", raw: Number(factors.taskWeight || 0), weighted: Number(factors.taskWeight || 0) * 0.25, source: `${Math.max(0, Number(detail.avgTicketMinutes || 0)).toFixed(1)} min promedio por ticket` },
+        { label: "Volumen de tickets activos (20%)", raw: Number(factors.taskVolume || 0), weighted: Number(factors.taskVolume || 0) * 0.2, source: `${analyst.assignedTickets?.length || 0} tickets activos` },
+        { label: "Ida/Vuelta consultor (10%)", raw: Number(factors.commWeight || 0), weighted: Number(factors.commWeight || 0) * 0.1, source: `${Math.max(0, Number(analyst.pingPong || 0))} cambios de turno` }
+      ]
+      const classification = analyst.saturation >= Number(detail.thresholds?.overloaded || 110)
+        ? "Sobrecargado"
+        : analyst.saturation <= Number(detail.thresholds?.underloaded || 85)
+          ? "Con disponibilidad"
+          : "Balanceado"
+      const title = document.getElementById("adminRecommendationDetailTitle")
+      if(title) title.textContent = `Análisis completo · ${userDisplayNameByEmail(analyst.email) || analyst.email}`
+      const body = document.getElementById("adminRecommendationDetailBody")
+      if(!body) return
+      body.innerHTML = `
+        <div class="small">
+          <div><strong>Analista:</strong> ${htmlEscape(userDisplayNameByEmail(analyst.email) || analyst.email)}</div>
+          <div><strong>Saturación final:</strong> ${Number(analyst.saturation || 0).toFixed(1)}% (${classification})</div>
+          <div><strong>Período de horas:</strong> ${htmlEscape(detail.monthKey || "-")} · <strong>Inicio semana evaluada:</strong> ${htmlEscape(toLocalDateOnly(new Date(detail.weekStartIso || new Date().toISOString())))}</div>
+          <hr style="border-color:rgba(148,163,184,.2);margin:10px 0">
+          <div><strong>Insumos base considerados</strong></div>
+          <ul style="margin:6px 0 0 18px;padding:0">
+            <li>Horas ajustadas por día: ${Number(detail.adjustedHours || 0).toFixed(2)} h.</li>
+            <li>Capacidad teórica semanal: ${(Number(detail.theoreticalWeekMins || 0)/60).toFixed(2)} h.</li>
+            <li>Tiempo registrado en la semana: ${(Number(analyst.minutes || 0)/60).toFixed(2)} h en ${Number(detail.weekEntriesCount || 0)} carga(s).</li>
+            <li>Tickets activos evaluados: ${analyst.assignedTickets?.length || 0}.</li>
+            <li>Interacciones ida/vuelta analista-consultor: ${Math.max(0, Number(analyst.pingPong || 0))}.</li>
+          </ul>
+          <div style="margin-top:10px"><strong>Desglose de fórmula de saturación</strong></div>
+          <div style="overflow:auto;margin-top:6px">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Factor</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Valor</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Aporte</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead>
+              <tbody>
+                ${formulaRows.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.label}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.raw.toFixed(1)}%</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.weighted.toFixed(1)} pp</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.source)}</td></tr>`).join("")}
+                <tr><td style="padding:6px"><strong>Total saturación</strong></td><td style="padding:6px">-</td><td style="padding:6px"><strong>${Number(analyst.saturation || 0).toFixed(1)} pp</strong></td><td style="padding:6px">Clasificación: ${classification}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:10px"><strong>Detalle por ticket analizado</strong></div>
+          <div style="overflow:auto;margin-top:6px">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Tiempo semana</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Entradas semana</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Ida/Vuelta</th></tr></thead>
+              <tbody>
+                ${breakdown.length ? breakdown.map(t => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id)}${t.title ? `<div class="small" style="margin-top:2px">${htmlEscape(t.title)}</div>` : ""}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${(Number(t.weekMinutes || 0)/60).toFixed(2)} h</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${Number(t.weekEntriesCount || 0)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${Number(t.turns || 0)}</td></tr>`).join("") : `<tr><td colspan="5" style="padding:6px" class="small">No hay tickets activos para este analista en el período.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `
+      document.getElementById("adminRecommendationDetailModal")?.classList.remove("hidden")
     }
 
     function renderDashboardList(label, tickets, containerId = "dashboardTicketList"){
@@ -9229,6 +9325,7 @@ Cliente B`)
             `
             const reassignmentData = buildAdminReassignmentData(normalizedTickets, users, selectedMonth)
             adminReassignRecommendationCache = reassignmentData.recommendations || []
+            adminReassignAnalystCache = reassignmentData.byAnalyst || []
             renderAdminReassignmentPanel(reassignmentData)
           }
           return
