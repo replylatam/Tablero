@@ -193,7 +193,9 @@
     }
     .ticketsFiltersBar .filterField { min-width: 170px; flex: 1; }
     .ticketsFiltersBar .searchWrap { min-width: 260px; flex: 1.4; }
-    .ticketsFiltersBar > div { display: flex; flex-direction: column; justify-content: flex-end; }
+    .ticketsFiltersBar > div { display: flex; flex-direction: column; justify-content: flex-start; }
+    .ticketsFiltersBar > div > label { min-height: 18px; display: inline-flex; align-items: center; }
+    .ticketsFiltersBar .searchWrap::before { top: 32px; }
     .activityTabs { border-bottom: 1px solid var(--stroke); margin: 8px 0 0; padding-bottom: 8px; }
     .activityTabs button { border-radius: 999px; }
     .moodBtn.active {
@@ -210,6 +212,7 @@
       .sideNavItem { justify-content: flex-start; }
       .sideQualityWrap { justify-content: flex-start; padding-left: 10px; }
     }
+    @media (max-width: 1100px){ .kpiGrid.analystDashRow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
     /* ── Cards ─────────────────────────────────────────────────────── */
     .card {
@@ -471,6 +474,10 @@
     .kpiGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .kpiGrid.adminRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .kpiGrid.singleRow { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+    .kpiGrid.analystDashRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .kpiGrid.analystDashRow .kpi { padding: 8px 10px; }
+    .kpiGrid.analystDashRow .label { font-size: 11px; }
+    .kpiGrid.analystDashRow .value { font-size: 19px; }
     @media (max-width: 900px) { .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
     .kpi {
@@ -863,6 +870,14 @@
     @keyframes toastIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
     .toast.ok    { border-color: rgba(34,199,122,.55); }
     .toast.error { border-color: rgba(224,64,64,.55); }
+    body.light .toast {
+      background: rgba(255,255,255,.96);
+      color: #0f172a;
+      border-color: rgba(148,163,184,.45);
+      box-shadow: 0 12px 28px rgba(15,23,42,.14);
+    }
+    body.light .toast.ok { border-color: rgba(22,163,74,.45); }
+    body.light .toast.error { border-color: rgba(220,38,38,.45); }
 
     /* ── Ticket List View ──────────────────────────────────────────── */
     .ticketListWrap {
@@ -874,7 +889,7 @@
     }
     .ticketListHeader, .ticketListRow {
       display: grid;
-      grid-template-columns: 110px 1.2fr 0.9fr 140px 210px 130px 100px 88px;
+      grid-template-columns: 110px 1.2fr 0.85fr 150px 220px 130px 100px 88px;
       gap: 8px;
       align-items: center;
       padding: 11px 16px;
@@ -898,8 +913,9 @@
     .ticketListRow:last-child { border-bottom: none; }
     .ticketListRow:hover { background: rgba(61,110,245,.07); }
     .ticketListRowTitle { font-weight: 600; }
+    .ticketListHeader .assignedColHeader, .ticketListRow .assignedCol { margin-left: 12px; }
 
-    @media (max-width: 1280px) { .ticketListHeader, .ticketListRow { grid-template-columns: 100px 1.1fr .8fr 132px 180px 110px 86px 80px; font-size: 12px; } }
+    @media (max-width: 1280px) { .ticketListHeader, .ticketListRow { grid-template-columns: 100px 1.1fr .75fr 138px 190px 110px 86px 80px; font-size: 12px; } }
     @media (max-width: 1120px) { .ticketListWrap { overflow-x: auto; } .ticketListHeader, .ticketListRow { min-width: 1040px; } }
 
     body.light .ticketListWrap { background: rgba(255,255,255,.9); }
@@ -4826,7 +4842,7 @@ Cliente B`)
               <div class="agendaFilterField"><label>Título</label><input id="analystAgendaFilterTitle" oninput="updateAnalystAgendaFilter('title', this.value)" placeholder="Título"></div>
               <div class="agendaFilterField"><label>Cliente</label><input id="analystAgendaFilterClient" oninput="updateAnalystAgendaFilter('client', this.value)" placeholder="Cliente"></div>
               <div class="agendaFilterField"><label>Consultor</label><input id="analystAgendaFilterConsultor" oninput="updateAnalystAgendaFilter('consultor', this.value)" placeholder="Consultor"></div>
-              <div class="agendaFilterField"><label>Ocultar estados</label><div id="analystAgendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<label class=\"switchWrap\"><label class=\"switch\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAnalystAgendaCheckboxFilter('status', this.value, this.checked)\"><span class=\"slider\"></span></label><span>${htmlEscape(v)}</span></label>`).join("")}</div></div>
+              <div class="agendaFilterField"><label>Ocultar estados</label><details class="ticketFilterDropdown"><summary>Filtrar estados</summary><div id="analystAgendaFilterStatusChecks" class="agendaChecks">${Object.entries(STATUS).map(([k,v]) => `<label class=\"switchWrap\"><label class=\"switch\"><input type=\"checkbox\" value=\"${htmlEscape(k)}\" onchange=\"updateAnalystAgendaCheckboxFilter('status', this.value, this.checked)\"><span class=\"slider\"></span></label><span>${htmlEscape(v)}</span></label>`).join("")}</div></details></div>
             </div>
             <div id="analystAgendaTableWrap" style="margin-top:10px"></div>
           </div>` : showAnalystGuidelines ? `
@@ -4853,10 +4869,7 @@ Cliente B`)
           </div>` : `
           <div class="grid ${(currentRole === "admin" || currentRole === "analista") ? "adminFull" : ""}">
             <div class="card ${currentRole === "admin" ? "dashboardAdmin" : ""}">
-              <div class="inline" style="justify-content:space-between; align-items:center; margin-bottom:14px; min-height:45px;">
-                <h3 style="margin:0">Dashboard</h3>
-                
-              </div>
+              ${currentRole !== "analista" ? `<div class="inline" style="justify-content:space-between; align-items:center; margin-bottom:14px; min-height:45px;"><h3 style="margin:0">Dashboard</h3></div>` : ""}
               ${currentRole !== "analista" ? `<div class="kpiGrid ${currentRole === "consultor" ? "singleRow" : currentRole === "admin" ? "adminRow" : ""}">
                 ${currentRole !== "consultor"
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
@@ -4871,19 +4884,19 @@ Cliente B`)
               </div>` : ""}
               ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
-              ${currentRole === "analista" ? `<div style="margin-top:12px;display:grid;grid-template-columns:1fr 240px;gap:12px"><div class="card" style="margin:0"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="${analystSummaryTab==='dashboard'?'':'hidden'}" style="margin-top:10px"><div class="kpiGrid"><div class="kpi"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="setAnalystTab('agenda')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div></div></div><div id="recentActivity" class="${analystSummaryTab === 'comments' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystSummaryTab === 'alerts' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystSummaryTab === 'deadlines' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="card" style="margin:0;height:max-content"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div>` : ""}
+              ${currentRole === "analista" ? `<div style="margin-top:0;display:grid;grid-template-columns:1fr 240px;gap:12px"><div class="card" style="margin:0"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="${analystSummaryTab==='dashboard'?'':'hidden'}" style="margin-top:10px"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div></div></div><div id="recentActivity" class="${analystSummaryTab === 'comments' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystSummaryTab === 'alerts' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystSummaryTab === 'deadlines' ? '' : 'hidden'}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div><div class="card" style="margin:0;height:max-content"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div>` : ""}
             </div>
             ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
 
           <div class="card ticketsShell">
             <div class="ticketsFiltersBar">
-              <div class="searchWrap"><label>Buscador</label><input id="ticketsSearchInput" value="${htmlEscape(ticketSearchTerm)}" oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div>
+              <div class="filterField searchWrap"><label>Buscador</label><input id="ticketsSearchInput" value="${htmlEscape(ticketSearchTerm)}" oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div>
               <div class="filterField"><label>Cliente</label><select id="filterClient" onchange="updateClientFilter()"></select></div>
               <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
-              <div><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
+              <div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
@@ -6075,7 +6088,7 @@ Cliente B`)
             <div>Nombre del ticket</div>
             <div>Cliente</div>
             <div>Estado</div>
-            <div>Analista asignado</div>
+            <div class="assignedColHeader">Analista asignado</div>
             <div>Ayudantes</div>
             <div>Deadline</div>
             <div>Sin leer</div>
@@ -6087,10 +6100,10 @@ Cliente B`)
             return `
               <div class="ticketListRow ${t.hasProblem ? "problemFlag" : ""}" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')">
                 <div><span class="ticketCode clickable" onclick="event.stopPropagation();openTicketDetailModal('${t.id}')">${htmlEscape(t.id||"-")}</span></div>
-                <div class="ticketListRowTitle">${htmlEscape(t.title||"-")}</div>
+                <div class="ticketListRowTitle">${ticketHasRunningTimer(t) ? "🕒 " : ""}${htmlEscape(t.title||"-")}</div>
                 <div>${htmlEscape(t.client||"-")}</div>
                 <div>${canEditStatusInline ? `<select class="statusPill statusSelect ${normalizedStatus}" onclick="event.stopPropagation()" onchange="handleAnalystListStatusChange(this, '${t.id}', event)">${Object.entries(STATUS).map(([k,v]) => `<option value="${k}" ${k===normalizedStatus?'selected':''}>${htmlEscape(v)}</option>`).join("")}</select>` : `<span class="statusPill ${normalizedStatus}">${htmlEscape(STATUS[normalizedStatus])}</span>`}</div>
-                <div class="assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
+                <div class="assignedCol assignedAvatarRow">${String(t.assignedTo||"").trim() ? `<img class="assignedAvatar" src="${htmlEscape(userAvatarByEmail(t.assignedTo) || buildInitialAvatar(t.assignedTo||'A'))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(t.assignedTo||'A'))}" onerror="handleAvatarError(this)">` : ""}<div>${htmlEscape(t.assignedTo ? analystDisplayNameWithTeam(t.assignedTo) : "Sin asignar")}</div></div>
                 <div>${helpers.length ? helpers.map(h => htmlEscape(userDisplayNameByEmail(h))).join(", ") : "-"}</div>
                 <div class="${t.deadline ? "deadline" : ""}">${t.deadline ? formatDateDMY(t.deadline) : "Sin fecha"}</div>
                 <div class="inline" style="justify-content:space-between;gap:8px"><span class="unreadBubble">${unreadCount}</span></div>
@@ -6212,6 +6225,7 @@ Cliente B`)
           <div class="inline" style="gap:8px">
             ${(currentRole === "admin" || currentRole === "analista") && ticketWithRead.urgentRequested ? `<span class="urgentTopFlag">🚨 URGENTE</span>` : ''}
             ${ticketWithRead.hasProblem ? `<span class="urgentTopFlag">🛑 CON PROBLEMAS</span>` : ''}
+            ${ticketHasRunningTimer(ticketWithRead) ? `<span class="badge">🕒 ${ticketRunningTimerElapsed(ticketWithRead)}</span>` : ""}
             ${ticketWithRead.plannedWorkDate && String(ticketWithRead.plannedWorkDate) >= toLocalDateOnly(new Date()) ? `<span class="badge ok">Planificado para trabajar: ${htmlEscape(plannedWorkLabel(ticketWithRead.plannedWorkDate))}</span>` : ""}
           </div>
           <div class="inline" style="gap:8px">${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}</div>
@@ -6780,12 +6794,14 @@ Cliente B`)
       if(currentRole !== "analista" || !analystBoardSettings.autoTimerOnStatusChange) return
       const prevStatus = String(ticket?.status || "")
       const next = String(nextStatus || "")
-      const analystEmail = String(ticket?.assignedTo || currentUser?.email || "").toLowerCase()
-      if(emailKey(analystEmail) !== emailKey(currentUser?.email || "")) return
-      const userKey = emailKey(analystEmail)
+      const me = String(currentUser?.email || "").toLowerCase()
+      const isAssignedToMe = emailKey(String(ticket?.assignedTo || "").toLowerCase()) === emailKey(me)
+      const isHelper = Array.isArray(ticket?.helpers) && ticket.helpers.some(h => emailKey(String(h || "").toLowerCase()) === emailKey(me))
+      if(!isAssignedToMe && !isHelper) return
+      const userKey = emailKey(me)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
       try{
-        if(prevStatus === "todo" && next === "doing"){
+        if(next === "doing" && prevStatus !== "doing"){
           await startTicketTimerForUser(ticket.id, userKey)
         }else if(prevStatus === "doing" && next !== "doing"){
           const users = ticket?.timeTracking?.users || {}
@@ -8486,7 +8502,11 @@ Cliente B`)
         near_deadline: "Tickets a 3 días de deadline",
         unassigned: "Pendientes por asignar",
         doing: "Tickets en curso",
-        pending_messages: "Tickets con mensajes pendientes"
+        pending_messages: "Tickets con mensajes pendientes",
+        analyst_urgent: "Mis tickets urgentes",
+        analyst_near_deadline: "Mis tickets a 3 días de deadline",
+        analyst_unread: "Mis tickets con comentarios sin leer",
+        analyst_planned_today: "Mis tickets asignados para hoy"
       }
       const label = map[type] || "Tickets"
       renderDashboardList(label, dashboardListCache[type] || [], "dashboardListModalContent")
@@ -8797,13 +8817,22 @@ Cliente B`)
           const dashNear = document.getElementById("analystDashNearDeadline")
           const dashUnread = document.getElementById("analystDashUnread")
           const dashPlanned = document.getElementById("analystDashPlanned")
-          if(dashUrgent) dashUrgent.textContent = String(urgentTickets.length)
-          if(dashNear) dashNear.textContent = String(nearDeadlineTickets.length)
-          if(dashUnread) dashUnread.textContent = String(sorted.length || 0)
-          if(dashPlanned){
-            const plannedToday = myTickets.filter(t => String(t.plannedWorkDate || "") === toLocalDateOnly(new Date()))
-            dashPlanned.textContent = String(plannedToday.length)
-          }
+          const myUrgentTickets = myTickets.filter(t => !!t.urgentRequested)
+          const myNearDeadlineTickets = myTickets.filter(t => {
+            if(!t.deadline) return false
+            const businessDays = businessDaysBetweenArg(new Date(), new Date(`${t.deadline}T00:00:00`))
+            return businessDays >= 0 && businessDays <= 3
+          })
+          const myUnreadTickets = myTickets.filter(t => unreadCommentsCount(t) > 0)
+          const plannedToday = myTickets.filter(t => String(t.plannedWorkDate || "") === toLocalDateOnly(new Date()))
+          dashboardListCache.analyst_urgent = myUrgentTickets
+          dashboardListCache.analyst_near_deadline = myNearDeadlineTickets
+          dashboardListCache.analyst_unread = myUnreadTickets
+          dashboardListCache.analyst_planned_today = plannedToday
+          if(dashUrgent) dashUrgent.textContent = String(myUrgentTickets.length)
+          if(dashNear) dashNear.textContent = String(myNearDeadlineTickets.length)
+          if(dashUnread) dashUnread.textContent = String(myUnreadTickets.length)
+          if(dashPlanned) dashPlanned.textContent = String(plannedToday.length)
           if(analystSummaryTab === "states") loadAnalystMovedStatesToday()
           return
         }
