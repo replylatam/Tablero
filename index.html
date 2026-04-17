@@ -7156,6 +7156,10 @@ Cliente B`)
         if(!u.timerStartAt) u.timerStartAt = new Date().toISOString()
         tracking.users[userKey] = u
       })
+      const ticket = cachedTickets.find(t => String(t.id||"") === String(ticketId||""))
+      if(ticket){
+        postEncuentroMessage(`🛠️ ${userDisplayNameByEmail(currentUser?.email||"-")} comenzó a trabajar en ${ticket.id || "-"} · ${ticket.title || "-"}. ¡Que tengas un gran trabajo!`, "trabajo_inicio").catch(()=>{})
+      }
       showToast('Timer iniciado','ok')
     }
 
