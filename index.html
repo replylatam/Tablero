@@ -107,12 +107,21 @@
       border-right: 1px solid rgba(110, 152, 228, 0.24);
       transition: width .24s ease;
       overflow: hidden;
-      z-index: 20;
+      z-index: 280;
       display: flex;
       flex-direction: column;
       min-height: 100vh;
     }
     .leftSidebar.expanded { width: 220px; }
+    .sideBrand {
+      padding: 14px 12px 8px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      font-size: 15px;
+      color: #f3f7ff;
+      text-align: center;
+      border-bottom: 1px solid rgba(148,163,184,.18);
+    }
     .sideToggle {
       width: 100%;
       background: rgba(255,255,255,.06);
@@ -163,6 +172,14 @@
       margin: 0;
     }
     .leftSidebar .qualityOrb #qualityOrbValue { font-size: 16px; }
+    body.light .leftSidebar{
+      background: linear-gradient(180deg, #dbe7fb 0%, #cbdcf8 55%, #bfd2f3 100%);
+      border-right-color: rgba(42, 72, 133, 0.18);
+    }
+    body.light .sideBrand,
+    body.light .sideNavItem,
+    body.light .sideNavLabel { color: #1f325c; }
+    body.light .sideToggle{ background: rgba(255,255,255,.55); }
     .ticketsShell { padding: 0; overflow: hidden; }
     .ticketsFiltersBar {
       display: flex;
@@ -294,7 +311,7 @@
       gap: 12px;
     }
     .topbarUserInfo { min-width: 0; }
-    .topbarAvatar { width: 63px; height: 63px; margin-right: 0; }
+    .topbarAvatar { width: 78px; height: 78px; margin-right: 0; }
     .topbarCenter { text-align: center; }
     .topbarActions { justify-self: end; }
     @media (max-width: 1080px) {
@@ -1286,6 +1303,17 @@
     </div>
   </div>
 
+  <div id="moodStatsModal" class="modalBack hidden" onclick="if(event.target===this) closeMoodStatsModal()">
+    <div class="card modal" style="max-width:620px">
+      <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="margin:0">Resumen de ánimo</h3>
+        <button class="secondary" onclick="closeMoodStatsModal()">Cerrar</button>
+      </div>
+      <div id="moodStatsSummary" class="small" style="margin-bottom:8px"></div>
+      <div id="moodStatsHistory" class="small" style="max-height:320px;overflow:auto"></div>
+    </div>
+  </div>
+
   <script>
     firebase.initializeApp({
       apiKey: "AIzaSyA4-yTeI0CemnlROxF9hIgj_HxiDLvYZTY",
@@ -1320,6 +1348,7 @@
     var analystPanelTab = "panel"
     var sidebarExpanded = false
     var analystActivityTab = "comments"
+    var analystSummaryTab = "dashboard"
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = []
     var ticketFilterStatus = []
@@ -1341,6 +1370,7 @@
     var cachedUsersByEmail = {}
     var draggedTicketId = ""
     var ticketDragReleasedAt = 0
+    var analystMoodModalOpen = false
     var ticketTimerIntervals = {}
     var realtimeStreamsStarted = false
     var latestActivityLogs = []
@@ -1588,6 +1618,10 @@
 
     function setMainViewTab(tab){
       mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","support","consultor_guidelines","hoja_vida"].includes(tab) ? tab : "tickets"
+      if(mainViewTab === "tickets"){
+        if(currentRole === "analista") analystPanelTab = "panel"
+        if(currentRole === "admin") adminPanelTab = "panel"
+      }
       closeHeaderMenu()
       renderApp()
     }
@@ -1639,7 +1673,14 @@
       if(nd) nd.classList.add("hidden")
     }
 
-    document.addEventListener("click", () => closeHeaderMenu())
+    document.addEventListener("click", (ev) => {
+      closeHeaderMenu()
+      const sidebar = document.querySelector(".leftSidebar")
+      if(sidebarExpanded && sidebar && !sidebar.contains(ev.target)){
+        sidebarExpanded = false
+        renderApp()
+      }
+    })
 
 
     function formatAgo(iso){
@@ -4625,6 +4666,7 @@ Cliente B`)
       document.getElementById("app").innerHTML = `
         <div class="layoutShell">
           <aside class="leftSidebar ${sidebarExpanded ? "expanded" : ""}">
+            <div class="sideBrand">NOVA</div>
             <button class="sideToggle" onclick="toggleSidebar()"><span class="sideNavIcon">☰</span><span class="sideNavLabel">Menú</span></button>
             <div class="sideNavList">
               ${sidebarItems.map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}
@@ -4798,9 +4840,9 @@ Cliente B`)
               </div>
               ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
-              
+              ${currentRole === "analista" ? `<div style="margin-top:12px;border-top:1px solid var(--stroke);padding-top:10px"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-resumen" class="${analystSummaryTab==='summary'?'':'ghost'}" onclick="setAnalystSummaryTab('summary')">Resumen general</button><button id="analyst-summary-states" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div></div><div class="feedItem" style="min-width:230px;max-width:260px;margin:0"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px"><button class="ghost" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button class="ghost" title="Meh" onclick="setMoodVote('meh')">😐</button><button class="ghost" title="Triste" onclick="setMoodVote('triste')">😔</button><button class="ghost" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button></div></div><div id="analyst-summary-panel" class="${analystSummaryTab==='summary'?'':'hidden'}"><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div><div id="analyst-states-panel" class="${analystSummaryTab==='states'?'':'hidden'}" style="margin-top:10px"><div id="recentActivityStates" class="small"></div></div></div>` : ""}
             </div>
-            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : currentRole === "analista" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Actividad reciente</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-tab-comments" class="${analystActivityTab==='comments'?'':'ghost'}" onclick="setAnalystActivityTab('comments')">Comentarios recientes</button><button id="analyst-tab-alerts" class="${analystActivityTab==='alerts'?'':'ghost'}" onclick="setAnalystActivityTab('alerts')">Alertas</button><button id="analyst-tab-deadlines" class="${analystActivityTab==='deadlines'?'':'ghost'}" onclick="setAnalystActivityTab('deadlines')">Deadlines</button></div><div id="recentActivity" class="${analystActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityAlerts" class="${analystActivityTab === "alerts" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="recentActivityDeadlines" class="${analystActivityTab === "deadlines" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
+            ${currentRole === "consultor" ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Comentarios recientes</h3><button class="ghost" title="Actualizar" onclick="loadDashboard()">🔄</button></div><div class="inline activityTabs" style="margin-top:8px"><button id="consultor-tab-comments" class="${consultorActivityTab==='comments'?'':'ghost'}" onclick="setConsultorActivityTab('comments')">Comentarios recientes</button><button id="consultor-tab-requests" class="${consultorActivityTab==='requests'?'':'ghost'}" onclick="setConsultorActivityTab('requests')">Solicitud de cambio de deadline</button><button id="consultor-tab-surveys" class="${consultorActivityTab==='surveys'?'':'ghost'}" onclick="setConsultorActivityTab('surveys')">Encuestas pendientes</button></div><div id="consultorCommentsActivity" class="${consultorActivityTab !== "comments" ? "hidden" : ""}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorDeadlineRequests" class="${consultorActivityTab === "requests" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div><div id="consultorPendingSurveys" class="${consultorActivityTab === "surveys" ? "" : "hidden"}" style="margin-top:10px;max-height:260px;overflow-y:auto;padding-right:4px"></div></div>` : ``}
           </div>
 
           <div class="card ticketsShell">
@@ -5629,7 +5671,7 @@ Cliente B`)
     }
 
     function getTicketMissingFields(ticket){
-      const publicationCount = Number(ticket?.publicationCount)
+      const publicationCount = Number(ticket?.publicationCountAnalyst ?? ticket?.publicationCount ?? 0)
       const worksheet = String(ticket?.workSheet || "").trim()
       const tracking = ticket?.timeTracking || {}
       const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
@@ -5853,6 +5895,8 @@ Cliente B`)
       const ticket = {
         id: code,
         title, description, priority, client, deadline,
+        publicationCountConsultor: currentRole === "consultor" ? publicationCount : 0,
+        publicationCountAnalyst: currentRole === "analista" ? publicationCount : 0,
         publicationCount,
         workSheet,
         status: "unassigned",
@@ -6145,7 +6189,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${String(ticketWithRead.status||"")==="done" ? `<button class="ghost" onclick="reopenTicketAsConsultor('${ticketWithRead.id}')">Reabrir ticket</button>` : ""}${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones</label><input id="detail-publication-count-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados.</div>`}</div></div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados.</div>`}</div></div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -6245,7 +6289,15 @@ Cliente B`)
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
         customFields: canEditFields ? nextCustomFields : (ticket.customFields || {}),
-        publicationCount: canEditAnalystFields ? Math.max(0, Number(document.getElementById(`detail-publication-count-${id}`)?.value || 0) || 0) : Number(ticket.publicationCount || 0),
+        publicationCountConsultor: (currentRole === "admin" || currentRole === "consultor")
+          ? Math.max(0, Number(document.getElementById(`detail-publication-count-consultor-${id}`)?.value || 0) || 0)
+          : Number(ticket.publicationCountConsultor ?? ticket.publicationCount ?? 0),
+        publicationCountAnalyst: (currentRole === "admin" || currentRole === "analista")
+          ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0)
+          : Number(ticket.publicationCountAnalyst ?? ticket.publicationCount ?? 0),
+        publicationCount: (currentRole === "admin" || currentRole === "analista")
+          ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0)
+          : Number(ticket.publicationCountAnalyst ?? ticket.publicationCount ?? 0),
         workSheet: canEditAnalystFields ? normalizeUrlLike(document.getElementById(`detail-work-sheet-${id}`)?.value || "") : String(ticket.workSheet || ""),
         assignedTo: nextAssignedTo,
         deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
@@ -6284,7 +6336,7 @@ Cliente B`)
 
     async function logTicketFieldChanges(prevTicket, nextTicket){
       if(!prevTicket || !nextTicket) return
-      const tracked = ["title","description","priority","client","informer","assignedTo","deadline","status","publicationCount","workSheet"]
+      const tracked = ["title","description","priority","client","informer","assignedTo","deadline","status","publicationCountConsultor","publicationCountAnalyst","publicationCount","workSheet"]
       const changes = tracked
         .filter(key => String(prevTicket?.[key] ?? "") !== String(nextTicket?.[key] ?? ""))
         .map(key => `${key}: "${String(prevTicket?.[key] ?? "")}" → "${String(nextTicket?.[key] ?? "")}"`)
@@ -7588,6 +7640,80 @@ Cliente B`)
       if(btnDeadlines) btnDeadlines.classList.toggle("ghost", analystActivityTab !== "deadlines")
     }
 
+    function setAnalystSummaryTab(tab){
+      analystSummaryTab = ["dashboard","summary","states"].includes(tab) ? tab : "dashboard"
+      const summary = document.getElementById("analyst-summary-panel")
+      const states = document.getElementById("analyst-states-panel")
+      const btnDashboard = document.getElementById("analyst-summary-dashboard")
+      const btnSummary = document.getElementById("analyst-summary-resumen")
+      const btnStates = document.getElementById("analyst-summary-states")
+      if(summary) summary.classList.toggle("hidden", analystSummaryTab !== "summary")
+      if(states) states.classList.toggle("hidden", analystSummaryTab !== "states")
+      if(btnDashboard) btnDashboard.classList.toggle("ghost", analystSummaryTab !== "dashboard")
+      if(btnSummary) btnSummary.classList.toggle("ghost", analystSummaryTab !== "summary")
+      if(btnStates) btnStates.classList.toggle("ghost", analystSummaryTab !== "states")
+      if(analystSummaryTab === "states") loadAnalystMovedStatesToday()
+    }
+
+    async function setMoodVote(mood){
+      if(currentRole !== "analista") return
+      const allowed = ["feliz","meh","triste","enojado"]
+      if(!allowed.includes(String(mood || "").toLowerCase())) return
+      const today = toLocalDateOnly(new Date())
+      const key = emailKey(currentUser?.email || "")
+      await db.ref("analyst_mood_votes").child(key).child(today).set({
+        mood: String(mood || "").toLowerCase(),
+        votedAt: new Date().toISOString()
+      })
+      showToast("Estado de ánimo guardado", "ok", 1200)
+    }
+
+    async function openMoodStatsModal(){
+      if(currentRole !== "analista") return
+      const key = emailKey(currentUser?.email || "")
+      const data = (await db.ref("analyst_mood_votes").child(key).once("value")).val() || {}
+      const list = Object.entries(data).map(([date, row]) => ({ date, mood: String(row?.mood || ""), votedAt: String(row?.votedAt || "") }))
+        .filter(row => row.mood)
+        .sort((a,b)=>new Date(b.votedAt || `${b.date}T00:00:00`) - new Date(a.votedAt || `${a.date}T00:00:00`))
+      const summary = document.getElementById("moodStatsSummary")
+      const history = document.getElementById("moodStatsHistory")
+      const labels = { feliz: "😄 Feliz", meh: "😐 Meh", triste: "😔 Triste", enojado: "😠 Enojado" }
+      const counts = { feliz: 0, meh: 0, triste: 0, enojado: 0 }
+      list.forEach(item => { if(counts[item.mood] !== undefined) counts[item.mood]++ })
+      const total = list.length || 1
+      const avg = Object.entries(counts).map(([k,v]) => `${labels[k]}: ${Math.round((v/total)*100)}%`).join(" · ")
+      if(summary) summary.innerHTML = list.length ? `<strong>Promedio histórico:</strong> ${avg}` : "Todavía no hay votos cargados."
+      if(history){
+        history.innerHTML = list.length
+          ? list.map(item => `<div class="feedItem"><div class="feedType">${htmlEscape(labels[item.mood] || item.mood)}</div><div class="feedMeta">${htmlEscape(item.date)} ${item.votedAt ? "· " + htmlEscape(formatDateTime24(item.votedAt)) : ""}</div></div>`).join("")
+          : `<div class="small">Sin historial.</div>`
+      }
+      document.getElementById("moodStatsModal")?.classList.remove("hidden")
+      analystMoodModalOpen = true
+    }
+
+    function closeMoodStatsModal(){
+      document.getElementById("moodStatsModal")?.classList.add("hidden")
+      analystMoodModalOpen = false
+    }
+
+    async function loadAnalystMovedStatesToday(){
+      const wrap = document.getElementById("recentActivityStates")
+      if(!wrap || currentRole !== "analista") return
+      const allLogs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
+      const email = String(currentUser?.email || "").toLowerCase()
+      const today = toLocalDateOnly(new Date())
+      const moved = allLogs.filter(log => {
+        const iso = String(log?.timestampIso || "")
+        return String(log?.eventType || "") === "ticket_movido"
+          && String(log?.email || "").toLowerCase() === email
+          && iso.slice(0,10) === today
+      }).sort((a,b)=>new Date(b.timestampIso||0)-new Date(a.timestampIso||0))
+      wrap.innerHTML = moved.length
+        ? moved.map(log => `<div class="feedItem"><div class="feedType">${htmlEscape(log.ticketId || "-")} · ${htmlEscape((cachedTickets.find(t => t.id === log.ticketId)?.title) || "-")}</div><div class="feedMeta">Cliente: ${htmlEscape((cachedTickets.find(t => t.id === log.ticketId)?.client) || "-")} · ${htmlEscape(formatDateTime24(log.timestampIso || ""))} · Estado: ${htmlEscape(STATUS[log.nextStatus] || log.nextStatus || "-")}</div></div>`).join("")
+        : `<div class="small">Hoy no moviste tickets de estado.</div>`
+    }
+
     function toggleAnalystPendingRequests(){
       analystPendingRequestsExpanded = !analystPendingRequestsExpanded
       loadDashboard()
@@ -8540,6 +8666,7 @@ Cliente B`)
             await checkAndShowMyCapacityLowHoursAlert(capacityAlertsRealtimeCache)
           }catch(_){}
           setAnalystActivityTab(analystActivityTab)
+          setAnalystSummaryTab(analystSummaryTab)
           return
         }
         if(!sorted.length){
