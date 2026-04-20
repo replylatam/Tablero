@@ -1722,7 +1722,7 @@
 
     function startAnalystNotifRefreshTimer(){
       stopAnalystNotifRefreshTimer()
-      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       analystNotifRefreshTimer = setInterval(async () => {
         await refreshAnalystNotificationBadge()
         if(analystNotificationsOpen){
@@ -4605,7 +4605,17 @@ Cliente B`)
         answers,
         createdAt: new Date().toISOString()
       }
-      const updated = { ...nextTicketData, status: "done", closeSurvey: survey, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      const consultorTarget = String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase()
+      const updated = {
+        ...nextTicketData,
+        status: "done",
+        closeSurvey: survey,
+        consultorSurveyPending: !!consultorTarget,
+        consultorSurveyPendingFor: consultorTarget,
+        consultorSurveyPendingAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email
+      }
       await db.ref("tickets").child(updated.dbKey || emailKey(updated.id)).update(updated)
       await db.ref("quality_surveys").child(generateId()).set(survey)
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
@@ -4664,6 +4674,18 @@ Cliente B`)
       }
       if(!survey.analystEmail) return alert("Este ticket no tiene analista asignado para evaluar.")
       await db.ref("quality_surveys").child(generateId()).set(survey)
+      const updatedTicket = {
+        ...ticket,
+        consultorSurveyPending: false,
+        consultorSurveyPendingFor: "",
+        consultorSurveyAnsweredAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(currentUser?.email || "").toLowerCase()
+      }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updatedTicket)
+      const ix = cachedTickets.findIndex(t => String(t.id || "") === String(ticket.id || ""))
+      if(ix >= 0) cachedTickets[ix] = updatedTicket
+      mirrorToSheet("updateTicket", { id: ticket.id, ...updatedTicket })
       closeConsultorSurveyModal()
       showToast("Encuesta del consultor guardada.", "ok")
       await loadDashboard()
@@ -5024,9 +5046,10 @@ Cliente B`)
             </div>
             <div class="topbarCenter"></div>
             <div class="inline topbarActions">
-              ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor") ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" title="Notificaciones" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
+              ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor" || isAdmin) ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" title="Notificaciones" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
+              ${isAdmin ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
               ${isAnalyst ? `<button class="ghost" title="Configuración del tablero" onclick="setAnalystTab('board_settings')">⚙️</button>` : ""}
               <button id="themeToggleBtn" class="ghost" onclick="toggleTheme();closeHeaderMenu()">${uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"}</button>
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
@@ -5253,7 +5276,7 @@ Cliente B`)
         setupRealtimeStreams()
         if(!showAdminPanel) loadDashboard()
         if(!showAdminPanel) loadTickets()
-        if(isAnalyst || currentRole === "consultor"){
+        if(isAnalyst || currentRole === "consultor" || isAdmin){
           refreshAnalystNotificationBadge()
           startAnalystNotifRefreshTimer()
         }else{
@@ -5314,6 +5337,12 @@ Cliente B`)
       )
       return tickets
         .filter(t => t.status === "done" && !!String(t.assignedTo||"").trim())
+        .filter(t => {
+          const pendingFor = String(t?.consultorSurveyPendingFor || "").toLowerCase()
+          const isExplicitPending = t?.consultorSurveyPending === true && (!pendingFor || pendingFor === myEmail)
+          if(t?.consultorSurveyPending === undefined || t?.consultorSurveyPending === null) return true
+          return isExplicitPending
+        })
         .filter(t => !surveyKeys.has(`${String(t.id||"")}::${myEmail}`))
         .sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
     }
@@ -6561,10 +6590,10 @@ Cliente B`)
     }
 
     async function refreshAnalystNotificationBadge(){
-      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       const badge = document.getElementById("analystNotifBadge")
       if(!badge) return
-      const items = await fetchAnalystNotifications()
+      const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
       const seenAt = localStorage.getItem(seenKey) || ""
       const unread = items.filter(i => String(i.ts||"") > seenAt).length
@@ -6578,7 +6607,7 @@ Cliente B`)
 
     async function toggleAnalystNotifications(ev){
       ev?.stopPropagation?.()
-      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       analystNotificationsOpen = !analystNotificationsOpen
       const dd = document.getElementById("analystNotifDropdown")
       if(!dd) return
@@ -6591,7 +6620,7 @@ Cliente B`)
     async function renderAnalystNotificationsDropdown(){
       const dd = document.getElementById("analystNotifDropdown")
       if(!dd) return
-      const items = await fetchAnalystNotifications()
+      const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
       dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:pointer;min-height:54px" onclick="${i.ticketId ? `openTicketDetailModal('${i.ticketId}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
@@ -6600,6 +6629,18 @@ Cliente B`)
         const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
         localStorage.setItem(seenKey, String(newest))
       }
+    }
+
+    async function fetchAdminNotifications(){
+      if(currentRole !== "admin") return []
+      const logs = Object.values((await db.ref("activity_logs").limitToLast(150).once("value")).val() || {})
+        .sort((a,b)=>new Date(b.timestampIso||0)-new Date(a.timestampIso||0))
+      return logs.map(l => ({
+        text: `🧾 ${String(l?.eventType || "evento").replaceAll("_"," ")}`,
+        detail: `${l.ticketId ? `${l.ticketId} · ` : ""}${l.email || "sistema"}`,
+        ts: String(l?.timestampIso || ""),
+        ticketId: String(l?.ticketId || "")
+      })).filter(x => x.ts)
     }
 
     async function openTicketModal(){
