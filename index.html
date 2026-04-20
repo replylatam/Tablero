@@ -1451,6 +1451,7 @@
     var analystMoodToday = ""
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = []
+    var ticketFilterInformer = []
     var ticketFilterStatus = []
     var ticketFilterActivity = []
     var manualsSearchTerm = ""
@@ -1729,7 +1730,7 @@
     }
 
     function setMainViewTab(tab){
-      mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
+      mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
       if(mainViewTab === "tickets"){
         if(currentRole === "analista") analystPanelTab = "panel"
         if(currentRole === "admin") adminPanelTab = "panel"
@@ -1750,6 +1751,7 @@
       ticketFilterStatus = []
       ticketFilterActivity = []
       ticketFilterAnalyst = []
+      ticketFilterInformer = []
       globalThis.ticketSearchTerm = ticketSearchTerm
       globalThis.ticketFilterClient = ticketFilterClient
       const searchInput = document.getElementById("ticketsSearchInput")
@@ -2776,6 +2778,8 @@ Cliente B`)
         cachedUsersByEmail = snap.val() || {}
         const analysts = Object.values(cachedUsersByEmail).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
         renderTicketFilterChecks("filterAnalyst", analysts, ticketFilterAnalyst, "updateAnalystFilter", (a) => userDisplayNameByEmail(a))
+        const informers = buildInformerEmailList(cachedUsersByEmail)
+        renderTicketFilterChecks("filterInformer", informers, ticketFilterInformer, "updateInformerFilter", (a) => userDisplayNameByEmail(a))
         if(cachedTickets && cachedTickets.length){
           const boardContainer = document.getElementById("boardContainer")
           if(boardContainer) renderTicketsFromData(cachedTickets)
@@ -2826,6 +2830,11 @@ Cliente B`)
       coreTicketFieldSettings = (await db.ref("app_settings/core_ticket_fields").once("value")).val() || {}
 
       const analystFilterSelect = document.getElementById("filterAnalyst")
+      const informerFilterSelect = document.getElementById("filterInformer")
+      if(informerFilterSelect){
+        const informers = buildInformerEmailList(usersByEmailData)
+        renderTicketFilterChecks("filterInformer", informers, ticketFilterInformer, "updateInformerFilter", (a) => userDisplayNameByEmail(a))
+      }
       if(analystFilterSelect){
         const analysts = Object.values(usersByEmailData).filter(u => u && u.role === "analista" && u.active !== false).map(u => (u.email||"").toLowerCase())
         if(currentRole === "analista" && (!Array.isArray(ticketFilterAnalyst) || !ticketFilterAnalyst.length)){
@@ -4919,10 +4928,11 @@ Cliente B`)
       const showConsultorPortfolio = currentRole === "consultor" && mainViewTab === "portfolio"
       const showPortfolioOverview = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "portfolio_overview"
       const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
+      const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showSupportCasesView || showConsultorGuidelines || showEncuentro
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro
       const sidebarItems = [
         { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
         ...(["analista","consultor","admin"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
@@ -4935,6 +4945,7 @@ Cliente B`)
         ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
         ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
         ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+        ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
         ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
         ...(isAdmin ? [{ icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
         ...(isAdmin ? [{ icon: "🧮", label: "Capacidad Instalada del área", action: "setAdminTab('capacity')" }] : []),
@@ -5023,6 +5034,12 @@ Cliente B`)
           <div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Hoja de vida</h3><button onclick="openAnalystCvModal()">Crear hoja de vida</button></div><div id="adminAnalystCvGrid" style="margin-top:10px"></div></div>
         ` : (currentRole==='analista' && mainViewTab==='my_ticket_status') ? `
           <div class="card"><h3 style="margin-top:0">Estado de mis tickets</h3><div id="myTicketStatusContainer" class="small"></div></div>
+        ` : showAnalystHoursLog ? `
+          <div class="card">
+            <h3 style="margin-top:0">Registro de horas</h3>
+            <p class="small" style="margin-bottom:10px">Esta planilla te ayuda a registrar de forma clara y consistente el tiempo invertido en cada actividad. Un registro prolijo mejora la planificación interna, permite estimaciones más confiables y le da al cliente trazabilidad real del esfuerzo dedicado, fortaleciendo la confianza en el servicio y la calidad de la gestión.</p>
+            <div id="analystHoursLogTable" class="small"></div>
+          </div>
         ` : showPortfolioOverview ? `
           <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
         ` : showAdminPanel ? (adminPanelTab==='config_home' ? `
@@ -5042,7 +5059,7 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:8px"><input placeholder="Buscar manual" style="margin:0;min-width:220px" oninput="updateAdminManualsSearch(this.value)"></div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select id="adminManualFolderFilterTop" style="margin:0;min-width:220px" onchange="setAdminManualFolderFilter(this.value)"><option value="">Todas las carpetas</option></select></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3><div class="small"><h4 style="margin:10px 0 6px">1) Flujo general de tickets</h4><p>El ticket nace desde Admin/Analista/Consultor. Se define cliente, informador, deadline y campos de negocio (incluye tipo de actividad si está configurado). Luego se gestiona por estados (pendiente, en curso, recurrente, finalizada), con comentarios y tiempos.</p><p><strong>Consecuencia:</strong> toda modificación impacta dashboard, agenda, actividad reciente, notificaciones y trazabilidad histórica.</p><h4 style="margin:10px 0 6px">2) Roles y consecuencias por usuario</h4><p><strong>Admin:</strong> configura usuarios, clientes, campos, lineamientos, comunicados, agenda por equipo y permisos de edición por rol. Puede apagar/encender comunicados y decidir qué ve cada rol.</p><p><strong>Analista:</strong> gestiona tickets asignados, solicita cambios de deadline, registra tiempos, colabora con ayudantes y completa encuesta al cerrar. Si el admin desactiva su switch de edición, no puede modificar detalle/estado/asignaciones.</p><p><strong>Consultor:</strong> crea tickets, comenta, marca urgentes, aprueba/rechaza solicitudes de deadline y responde encuesta pendiente al cierre. Si su switch de edición está apagado, ve detalle sin editar.</p><h4 style="margin:10px 0 6px">3) Comentarios, lectura y notificaciones</h4><p>Cada comentario actualiza actividad. El sistema diferencia internos y visibles, calcula pendientes de lectura y muestra alertas en paneles. Los íconos de lectura y badges dependen del autor, rol y marca de leído por usuario.</p><p><strong>Consecuencia:</strong> comentar o mover tickets impacta indicadores y puede disparar recordatorios, alertas de urgencia y pendientes.</p><h4 style="margin:10px 0 6px">4) Tiempos y ayudantes</h4><p>El ticket guarda tiempo consolidado y por usuario (analista/ayudantes). Esto afecta reportes, vista "Estado de mis tickets" y control operativo del equipo.</p><p><strong>Consecuencia:</strong> si no se carga tiempo, el analista puede quedar con advertencias de gestión incompleta.</p><h4 style="margin:10px 0 6px">5) Lineamientos y calidad</h4><p>Lineamientos: el admin publica por cliente; analista puede proponer para aprobación. Calidad: analista evalúa consultor al cierre y luego consultor evalúa analista; cada uno ve resultados propios con recomendaciones.</p><p><strong>Consecuencia:</strong> las encuestas alimentan puntaje visible y sirven para detectar brechas de recepción, comunicación y satisfacción.</p><h4 style="margin:10px 0 6px">6) Comunicados</h4><p>El admin puede publicar, programar fecha/hora y apagar comunicados. Los usuarios reciben únicamente comunicados activos y ya vigentes por horario.</p><p><strong>Consecuencia:</strong> permite coordinar anuncios operativos sin saturar ni mostrar mensajes fuera de ventana.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:8px"><input placeholder="Buscar manual" style="margin:0;min-width:220px" oninput="updateAdminManualsSearch(this.value)"></div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select id="adminManualFolderFilterTop" style="margin:0;min-width:220px" onchange="setAdminManualFolderFilter(this.value)"><option value="">Todas las carpetas</option></select></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección detalla el flujo bidireccional: al cerrar ticket, el analista califica al consultor; luego el consultor ve “encuestas pendientes” y califica al analista. El puntaje visible al iniciar sesión siempre es el recibido por cada persona desde la contraparte.</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3><div class="small"><h4 style="margin:10px 0 6px">1) Flujo completo del ticket (de punta a punta)</h4><p>Un ticket puede crearse desde Admin, Analista o Consultor. Al crearlo se definen: cliente, informador, prioridad, deadline y campos de negocio. Después entra en un circuito de estados: <strong>Sin asignar</strong> → <strong>Por hacer</strong> → <strong>En curso</strong> → <strong>Finalizada</strong> (o <strong>Recurrente/Reabierta</strong> según el caso).</p><p>Cuando cambia de estado, se actualizan métricas, actividad reciente, agenda y alertas. Si pasa a <strong>Finalizada</strong> desde Analista, el sistema exige encuesta de calidad previa al cierre. Si el Consultor tiene encuestas pendientes, no puede crear tickets nuevos hasta completarlas.</p><h4 style="margin:10px 0 6px">2) Por qué algunas cosas aparecen en rojo</h4><p>El color rojo se usa como señal de riesgo operativo: tickets urgentes, tickets con problemas, alertas de atención máxima y elementos pendientes críticos (por ejemplo, comentarios o situaciones de bloqueo). No es decorativo: representa prioridades reales para evitar desvíos de SLA y demoras al cliente.</p><h4 style="margin:10px 0 6px">3) Permisos por rol y gobernanza</h4><p><strong>Admin:</strong> gobierno total: usuarios, clientes, campos, permisos de edición por rol, comunicados, agenda por equipo, soporte, calidad, lineamientos y configuración general.</p><p><strong>Analista:</strong> ejecuta y gestiona operación diaria de tickets asignados/colaborados, agenda, tiempos y cierre con encuesta obligatoria. Puede quedar limitado si Admin desactiva permisos de edición.</p><p><strong>Consultor:</strong> crea y sigue tickets de su cartera/información, comenta, marca urgencia y responde encuestas pendientes. Si tiene encuestas sin responder, se bloquea la creación de tickets nuevos hasta regularizar.</p><h4 style="margin:10px 0 6px">4) Comentarios, lectura y trazabilidad</h4><p>Todos los comentarios alimentan historial y actividad. Existen comentarios internos y visibles, con menciones, reacciones, adjuntos y estados de lectura. Este circuito permite ver quién dijo qué, cuándo y a quién impactó, dejando una auditoría operativa completa.</p><h4 style="margin:10px 0 6px">5) Agenda y organización del trabajo</h4><p>La agenda permite filtrar por ticket, cliente, analista, consultor/informador y estado. Además permite planificación diaria, comentarios operativos y control de tickets sin atención. En Admin se muestra ordenada por analista para visualizar bloques de trabajo y carga por persona.</p><h4 style="margin:10px 0 6px">6) Gestión de tiempos, ayudantes y registro de horas</h4><p>El sistema registra tiempos por usuario (responsable/ayudante), con timer y cargas manuales, consolidando horas por ticket y por período. Esta información impacta indicadores, capacidad instalada, reportes por cliente y decisiones de reasignación.</p><p>En la sección <strong>Registro de horas</strong> del Analista se centraliza la carga operativa para mejorar precisión y consistencia de datos frente al cliente.</p><h4 style="margin:10px 0 6px">7) Encuesta de calidad (doble vía)</h4><p>Al cerrar, el Analista evalúa al Consultor. Luego el Consultor recibe su encuesta pendiente para evaluar al Analista. Ambas alimentan indicadores de calidad, recomendaciones y mejora continua.</p><h4 style="margin:10px 0 6px">8) Lineamientos, manuales y comunicados</h4><p>Lineamientos y manuales ordenan el conocimiento operativo; comunicados administran anuncios vigentes con control de fecha/hora y activación. Todo está pensado para escalar operación sin perder consistencia.</p></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -5158,6 +5175,7 @@ Cliente B`)
               <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
+              ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Informador</label><select id="filterInformer" onchange="updateInformerFilter()"></select></div>`:""}
               <div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
@@ -5221,6 +5239,9 @@ Cliente B`)
       }else if(currentRole === "analista" && mainViewTab === "my_ticket_status"){
         setupRealtimeStreams()
         loadTickets().then(()=>loadMyTicketStatus())
+      }else if(currentRole === "analista" && mainViewTab === "registro_horas"){
+        setupRealtimeStreams()
+        loadTickets().then(()=>loadAnalystHoursLog())
       }else{
         loadMyProfileForm()
       }
@@ -5247,6 +5268,7 @@ Cliente B`)
     function updateTicketSearch(value){ ticketSearchTerm = (value||"").trim().toLowerCase(); globalThis.ticketSearchTerm = ticketSearchTerm; loadTickets(); loadDashboard() }
     function updateClientFilter(){ ticketFilterClient = selectedValuesFromChecks("filterClient"); globalThis.ticketFilterClient = ticketFilterClient; loadTickets(); loadDashboard() }
     function updateAnalystFilter(){ ticketFilterAnalyst = selectedValuesFromChecks("filterAnalyst"); loadTickets(); loadDashboard() }
+    function updateInformerFilter(){ ticketFilterInformer = selectedValuesFromChecks("filterInformer"); loadTickets(); loadDashboard() }
     function updateStatusFilter(){ ticketFilterStatus = selectedValuesFromChecks("filterStatus"); loadTickets(); loadDashboard() }
     function updateActivityFilter(){ ticketFilterActivity = selectedValuesFromChecks("filterActivityType"); loadTickets(); loadDashboard() }
     function updateManualsSearch(value){ manualsSearchTerm = String(value || "").trim().toLowerCase(); loadManualsAnalyst() }
@@ -6214,6 +6236,147 @@ Cliente B`)
       return missing
     }
 
+    function parseDateTimeLocalInput(value){
+      const raw = String(value || "").trim()
+      if(!raw) return null
+      const date = new Date(raw)
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+
+    function formatDateTimeLocalInput(value){
+      if(!value) return ""
+      const date = value instanceof Date ? value : new Date(value)
+      if(Number.isNaN(date.getTime())) return ""
+      const y = date.getFullYear()
+      const m = String(date.getMonth() + 1).padStart(2, "0")
+      const d = String(date.getDate()).padStart(2, "0")
+      const hh = String(date.getHours()).padStart(2, "0")
+      const mm = String(date.getMinutes()).padStart(2, "0")
+      return `${y}-${m}-${d}T${hh}:${mm}`
+    }
+
+    function getAnalystWorklogDraft(ticket, analystEmail){
+      const drafts = ticket?.analystWorklogDrafts || {}
+      return drafts?.[emailKey(analystEmail)] || {}
+    }
+
+    function calcDraftMinutes(startIso, endIso){
+      if(!startIso || !endIso) return 0
+      const start = new Date(startIso)
+      const end = new Date(endIso)
+      if(Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+      return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
+    }
+
+    async function loadAnalystHoursLog(){
+      if(currentRole !== "analista" || mainViewTab !== "registro_horas") return
+      const wrap = document.getElementById("analystHoursLogTable")
+      if(!wrap) return
+      const myEmail = String(currentUser?.email || "").toLowerCase()
+      const tickets = (cachedTickets || [])
+        .filter(t => String(t?.status || "") !== "done")
+        .filter(t => String(t?.assignedTo || "").toLowerCase() === myEmail || (Array.isArray(t?.helpers) && t.helpers.some(h => String(h || "").toLowerCase() === myEmail)))
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+
+      if(!tickets.length){
+        wrap.innerHTML = `<div class="small">No tenés tickets activos asignados o en colaboración.</div>`
+        return
+      }
+
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Número</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Informador</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rol</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Inicio</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fin</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cargar</th>
+        </tr></thead>
+        <tbody>
+        ${tickets.map(t => {
+          const draft = getAnalystWorklogDraft(t, myEmail)
+          const startVal = String(draft.startAt || "")
+          const endVal = String(draft.endAt || "")
+          const minutes = calcDraftMinutes(startVal, endVal)
+          const roleTag = String(t.assignedTo || "").toLowerCase() === myEmail ? "Responsable" : "Ayudante"
+          const statusOptions = Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}" ${String(t.status||"")===k?"selected":""}>${htmlEscape(v)}</option>`).join("")
+          return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || "-")}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || "-")}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || "-")}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t) || "-"))}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleTag}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><select style="margin:0;min-width:150px" class="${htmlEscape(String(t.status || ""))}" onchange="updateAnalystHoursLogStatus('${t.id}', this.value, event)">${statusOptions}</select></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(startVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','startAt', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(endVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','endAt', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(minutes))}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><button class="ghost" onclick="submitAnalystHoursLog('${t.id}')">Cargar</button></td>
+          </tr>`
+        }).join("")}
+        </tbody></table></div>`
+    }
+
+    async function updateAnalystHoursLogStatus(ticketId, nextStatus, ev){
+      if(ev?.stopPropagation) ev.stopPropagation()
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      if(!ticket) return
+      const prevStatus = String(ticket.status || "")
+      const next = String(nextStatus || "").trim()
+      if(!next || prevStatus === next) return
+      await updateTicketStatusFromList(ticketId, next, ev)
+      if(prevStatus === "doing" && next !== "doing"){
+        const now = new Date().toISOString()
+        const draft = getAnalystWorklogDraft(ticket, String(currentUser?.email || "").toLowerCase())
+        if(!draft?.endAt){
+          await updateAnalystHoursLogDraft(ticketId, "endAt", formatDateTimeLocalInput(now))
+        }
+      }
+    }
+
+    async function updateAnalystHoursLogDraft(ticketId, field, value){
+      if(currentRole !== "analista") return
+      if(!["startAt", "endAt"].includes(String(field || ""))) return
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      if(!ticket) return
+      const myEmail = String(currentUser?.email || "").toLowerCase()
+      const parsed = parseDateTimeLocalInput(value)
+      const drafts = { ...(ticket.analystWorklogDrafts || {}) }
+      const key = emailKey(myEmail)
+      const current = { ...(drafts[key] || {}) }
+      current[field] = parsed ? parsed.toISOString() : ""
+      drafts[key] = current
+      const updated = { ...ticket, analystWorklogDrafts: drafts, updatedAt: new Date().toISOString(), updatedBy: myEmail }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticketId, ...updated })
+      const ix = cachedTickets.findIndex(t => String(t.id || "") === String(ticketId || ""))
+      if(ix >= 0) cachedTickets[ix] = updated
+      loadAnalystHoursLog()
+    }
+
+    async function submitAnalystHoursLog(ticketId){
+      if(currentRole !== "analista") return
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      if(!ticket) return
+      const myEmail = String(currentUser?.email || "").toLowerCase()
+      const userKey = emailKey(myEmail)
+      const draft = getAnalystWorklogDraft(ticket, myEmail)
+      const minutes = calcDraftMinutes(draft?.startAt, draft?.endAt)
+      if(minutes <= 0) return alert("Completá inicio y fin válidos para cargar tiempo.")
+      const monthKey = monthFolderKey(new Date(draft.endAt || new Date().toISOString()))
+      await applyTimeUpdate(ticketId, (tracking)=>{
+        const u = tracking.users[userKey] || { email: myEmail, totalMinutes: 0, timerStartAt: "" }
+        u.totalMinutes = Number(u.totalMinutes || 0) + minutes
+        tracking.users[userKey] = u
+      }, { monthKey, minutes, analyst: myEmail, note: "Registro de horas" })
+      showToast("Tiempo cargado desde registro de horas.", "ok", 1600)
+      await updateAnalystHoursLogDraft(ticketId, "startAt", "")
+      await updateAnalystHoursLogDraft(ticketId, "endAt", "")
+    }
+
     async function publishAnnouncement(){
       if(currentRole !== "admin") return
       const title = String(document.getElementById("announcementTitle")?.value || "").trim()
@@ -6503,6 +6666,7 @@ Cliente B`)
         }
         if(ticketFilterClient.length && !ticketFilterClient.some(c => String(t.client||"").toLowerCase().includes(c))) return false
         if(ticketFilterAnalyst.length && !ticketFilterAnalyst.some(a => String(t.assignedTo||"").toLowerCase().includes(a))) return false
+        if(ticketFilterInformer.length && !ticketFilterInformer.some(i => String(resolveInformerEmail(t)||"").toLowerCase().includes(i))) return false
         if(ticketFilterStatus.length && !ticketFilterStatus.includes(String(t.status||"").toLowerCase())) return false
         if(ticketFilterActivity.length && !ticketFilterActivity.some(filter => ticketMatchesActivityFilter(t, filter))) return false
         return true
@@ -7814,6 +7978,9 @@ Cliente B`)
       const next = String(nextStatus || "")
       if(!next || next === String(ticket.status || "")) return
       const updated = { ...ticket, status: next, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
+      if(currentRole === "analista" && String(ticket.status || "") !== "done" && next === "done"){
+        return openCloseSurveyModal(id, updated)
+      }
       await handleAnalystAutoTimerByStatus(ticket, next)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
@@ -8492,7 +8659,12 @@ Cliente B`)
       if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(resolveInformerEmail(t)||"").toLowerCase().includes(consultorQ) || resolveInformerEmail(t).includes(consultorQ))
       if(analystQ.length) scoped = scoped.filter(t => !analystQ.includes(String(t.assignedTo||"").toLowerCase()))
       if(statusQ.length) scoped = scoped.filter(t => !statusQ.includes(String(t.status||"").toLowerCase()))
-      scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
+      scoped.sort((a,b)=>{
+        const aa = String(a.assignedTo || "zzzz").toLowerCase()
+        const bb = String(b.assignedTo || "zzzz").toLowerCase()
+        if(aa !== bb) return aa.localeCompare(bb)
+        return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0)
+      })
 
       const analystChecks = document.getElementById("agendaFilterAnalystChecks")
       const ticketInput = document.getElementById("agendaFilterTicketId")
