@@ -4512,7 +4512,7 @@ Cliente B`)
       if(qualityAdminAnalystFilter){
         surveys = surveys.filter(s => String(s.analystEmail || "").toLowerCase() === qualityAdminAnalystFilter)
       }
-      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p>`; return }
+      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p><h4 style="margin:14px 0 8px">Calidad interna (analista)</h4>${await renderInternalQualityAdminSection()}`; return }
       const byAnalyst = {}
       const byConsultor = {}
       surveys.forEach(s => {
@@ -4564,6 +4564,7 @@ Cliente B`)
         <h4 style="margin:14px 0 8px">Promedios generales por rol evaluado</h4><div class="qualityRoleTabs"><button class="${qualityAdminRoleView==='analista'?'':'ghost'}" onclick="setAdminQualityRoleView('analista')">Analista</button><button class="${qualityAdminRoleView==='consultor'?'':'ghost'}" onclick="setAdminQualityRoleView('consultor')">Consultor</button></div><div class="qualitySummaryGrid">${metricCards}</div><h4 style="margin:14px 0 8px">Promedio recibido por analista</h4>${averages}
         <h4 style="margin:14px 0 8px">Promedio recibido por consultor</h4>${consultorAverages}
         <h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}
+        <h4 style="margin:14px 0 8px">Calidad interna (analista)</h4>${await renderInternalQualityAdminSection()}
       `
     }
 
