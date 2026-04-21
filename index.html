@@ -4589,7 +4589,13 @@ Cliente B`)
     async function loadAdminInternalQualityTab(){
       const container = document.getElementById("adminInternalQualityList")
       if(!container || currentRole !== "admin") return
-      container.innerHTML = await renderInternalQualityAdminSection()
+      try{
+        const html = await renderInternalQualityAdminSection()
+        container.innerHTML = String(html || "").trim() ? html : `<div class="small">Sin datos para mostrar en este momento.</div>`
+      }catch(err){
+        console.error("Error cargando Calidad interna (admin):", err)
+        container.innerHTML = `<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos. Si persiste, revisá permisos de lectura de Firebase para: users_by_email, tickets, activity_logs y quality_internal_config.</div></div>`
+      }
     }
 
     async function loadQualitySurveyAdmin(){
@@ -4662,7 +4668,13 @@ Cliente B`)
 
     async function getInternalQualityConfig(){
       if(internalQualityConfig) return internalQualityConfig
-      const cfg = (await db.ref("quality_internal_config").once("value")).val() || {}
+      let cfg = {}
+      try{
+        cfg = (await db.ref("quality_internal_config").once("value")).val() || {}
+      }catch(err){
+        console.error("No se pudo leer quality_internal_config, usando default:", err)
+        cfg = {}
+      }
       internalQualityConfig = { ...DEFAULT_INTERNAL_QUALITY_CONFIG, ...cfg }
       return internalQualityConfig
     }
