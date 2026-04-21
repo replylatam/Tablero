@@ -6041,26 +6041,26 @@ Cliente B`)
 
     async function loadManualTypeSelectors(){
       await getTicketCustomFields()
-      const microSelect = document.getElementById("manualMicroserviceType")
-      if(microSelect){
-        const options = getMicroserviceOptions()
-        microSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      const microserviceSelect = document.getElementById("manualMicroserviceType")
+      if(microserviceSelect){
+        const microserviceOptions = getMicroserviceOptions()
+        microserviceSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${microserviceOptions.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       }
-      const activitySelect = document.getElementById("manualActivityType")
-      if(activitySelect){
-        activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>`
+      const manualTaskSelect = document.getElementById("manualActivityType")
+      if(manualTaskSelect){
+        manualTaskSelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>`
       }
       updateManualDynamicTypeOptions()
     }
 
     function updateManualDynamicTypeOptions(){
-      const microservice = String(document.getElementById("manualMicroserviceType")?.value || "").trim()
-      const activitySelect = document.getElementById("manualActivityType")
-      if(!activitySelect) return
-      const current = String(activitySelect.value || "")
+      const manualTaskSelectEl = document.getElementById("manualActivityType")
+      if(!manualTaskSelectEl) return
+      const microservice = String(document.getElementById("manualMicroserviceType")?.value || "")
+      const current = String(manualTaskSelectEl.value || "")
       const options = getDependentActivityOptions(microservice)
-      activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
-      if(options.includes(current)) activitySelect.value = current
+      manualTaskSelectEl.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      if(options.includes(current)) manualTaskSelectEl.value = current
     }
 
     async function openManualModal(){
