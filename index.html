@@ -1543,6 +1543,7 @@
     var internalQualityConfig = null
     var internalQualitySelectedPeriod = "month"
     var internalQualityHistoryWindow = 6
+    var qualityResultsMode = "satisfaction"
     var adminGuidelinesClient = ""
     var analystNotificationsOpen = false
     var analystNotifRefreshTimer = null
@@ -4489,7 +4490,7 @@ Cliente B`)
       const analystCards = rows.map(row => {
         const periodKey = `${period}_${String(row.now.periodStart).slice(0,10)}`
         const adminFb = String(feedbackMap?.[emailKey(row.email)]?.[periodKey]?.feedback || "")
-        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(h.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
+        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(h.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.agenda}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
       }).join("")
       return cfgHtml + `<div class="inline" style="margin-bottom:8px"><label style="margin:0">Histórico</label><select onchange="internalQualitySelectedPeriod=this.value;loadAdminInternalQualityTab()" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select></div>` + analystCards
     }
@@ -4512,7 +4513,7 @@ Cliente B`)
       if(qualityAdminAnalystFilter){
         surveys = surveys.filter(s => String(s.analystEmail || "").toLowerCase() === qualityAdminAnalystFilter)
       }
-      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p><h4 style="margin:14px 0 8px">Calidad interna (analista)</h4>${await renderInternalQualityAdminSection()}`; return }
+      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p>`; return }
       const byAnalyst = {}
       const byConsultor = {}
       surveys.forEach(s => {
@@ -4564,7 +4565,6 @@ Cliente B`)
         <h4 style="margin:14px 0 8px">Promedios generales por rol evaluado</h4><div class="qualityRoleTabs"><button class="${qualityAdminRoleView==='analista'?'':'ghost'}" onclick="setAdminQualityRoleView('analista')">Analista</button><button class="${qualityAdminRoleView==='consultor'?'':'ghost'}" onclick="setAdminQualityRoleView('consultor')">Consultor</button></div><div class="qualitySummaryGrid">${metricCards}</div><h4 style="margin:14px 0 8px">Promedio recibido por analista</h4>${averages}
         <h4 style="margin:14px 0 8px">Promedio recibido por consultor</h4>${consultorAverages}
         <h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}
-        <h4 style="margin:14px 0 8px">Calidad interna (analista)</h4>${await renderInternalQualityAdminSection()}
       `
     }
 
@@ -4603,16 +4603,26 @@ Cliente B`)
       const email = String(analystEmail||"").toLowerCase()
       const start = startOfPeriod(anchorDate, period)
       const end = endOfPeriod(start, period)
-      const tickets = (cachedTickets || []).filter(t => String(t?.assignedTo||"").toLowerCase() === email)
+      let ticketsSource = cachedTickets || []
+      if(!ticketsSource.length){
+        try{ ticketsSource = await fetchTicketsFromDb() }catch(_){ ticketsSource = [] }
+      }
+      const tickets = ticketsSource.filter(t => String(t?.assignedTo||"").toLowerCase() === email)
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
-      const usersByEmail = cachedUsersByEmail || {}
+      let usersByEmail = cachedUsersByEmail || {}
+      if(!Object.keys(usersByEmail).length){
+        try{ usersByEmail = (await db.ref("users_by_email").once("value")).val() || {} }catch(_){ usersByEmail = {} }
+      }
 
       const ticketIds = new Set(tickets.map(t => String(t.id||"")))
       const relevantLogs = logs.filter(l => ticketIds.has(String(l.ticketId||"")) && inRangeIso(l.timestampIso, start, end))
       const statusMoves = relevantLogs.filter(l => String(l.eventType||"") === "ticket_movido" && String(l.email||"").toLowerCase() === email)
 
-      const timeEntries = tickets.flatMap(t => Object.values(t?.timeTracking?.monthlyFolders || {}).flatMap(folder => Array.isArray(folder?.entries) ? folder.entries : []))
-        .filter(e => String(e?.analyst||"").toLowerCase() === email && inRangeIso(e.createdAt || e.loggedDate, start, end))
+      const timeEntries = tickets.flatMap(t => {
+        const fromFolders = Object.values(t?.timeTracking?.monthlyFolders || {}).flatMap(folder => Array.isArray(folder?.entries) ? folder.entries : [])
+        const fromLegacy = Array.isArray(t?.timeTracking?.entries) ? t.timeTracking.entries : []
+        return [...fromFolders, ...fromLegacy]
+      }).filter(e => String(e?.analyst||"").toLowerCase() === email && inRangeIso(e.createdAt || e.loggedDate || e.date, start, end))
 
       const responsePairs = []
       tickets.forEach(t => {
@@ -5281,7 +5291,7 @@ Cliente B`)
             <div class="sideNavList">
               ${sidebarItems.map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}
             </div>
-            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden" onclick="openInternalQualityModal()" style="cursor:pointer" title="Ver cómo se calcula"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad interna</div></div></div>` : ""}
+            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden" onclick="setMainViewTab('quality_results')" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">-</div><div class="smallLabel">Satisfacción</div></div></div>` : ""}
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -5337,7 +5347,7 @@ Cliente B`)
             <div id="savedItemsContainer" class="small"></div>
           </div>
         ` : showQualityResults ? `
-          <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3><div id="qualityResultsContainer" class="small"></div></div>
+          <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3>${currentRole === "analista" ? `<div class="inline" style="gap:8px;margin-bottom:10px"><button class="${qualityResultsMode==='satisfaction'?'':'ghost'}" onclick="setQualityResultsMode('satisfaction')">Encuesta de satisfacción</button><button class="${qualityResultsMode==='internal'?'':'ghost'}" onclick="setQualityResultsMode('internal')">Calidad interna</button></div>` : ""}<div id="qualityResultsContainer" class="small"></div></div>
         ` : showSupportCasesView ? `
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
         ` : showConsultorGuidelines ? `
@@ -6403,9 +6413,23 @@ Cliente B`)
       document.getElementById("analystGuidelineModal").classList.add("hidden")
     }
 
+    function setQualityResultsMode(mode){
+      qualityResultsMode = mode === "internal" ? "internal" : "satisfaction"
+      loadQualityResultsView()
+    }
+
     async function loadQualityResultsView(){
       const wrap = document.getElementById("qualityResultsContainer")
       if(!wrap) return
+      if(currentRole === "analista" && qualityResultsMode === "internal"){
+        const myEmail = String(currentUser?.email || "").toLowerCase()
+        const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
+        const history = await buildInternalQualityHistory(myEmail, period, internalQualityHistoryWindow)
+        const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,fields:0,agenda:0 } }
+        const scoreDeg = Math.max(0, Math.min(360, (Number(current.score || 0) / 10) * 360))
+        wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
+        return
+      }
       const myEmail = String(currentUser?.email || "").toLowerCase()
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
       const mine = surveys.filter(s => String(s?.ratedEmail || "").toLowerCase() === myEmail)
@@ -6538,7 +6562,11 @@ Cliente B`)
       }
     }
 
-    function setInternalQualityPeriod(value){ internalQualitySelectedPeriod = value === "week" ? "week" : "month"; if(currentRole === "analista") loadMyTicketStatus() }
+    function setInternalQualityPeriod(value){
+      internalQualitySelectedPeriod = value === "week" ? "week" : "month"
+      if(currentRole === "analista" && mainViewTab === "my_ticket_status") loadMyTicketStatus()
+      if(currentRole === "analista" && mainViewTab === "quality_results" && qualityResultsMode === "internal") loadQualityResultsView()
+    }
 
     function openMyTicketStatusDetail(title, ids){
       const modal = document.getElementById("dashboardListModal")
@@ -9857,7 +9885,11 @@ Cliente B`)
         try{
           const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
           let surveys = Object.values(surveyMap)
-          if(currentRole === "analista") { const iq = await computeInternalQualityForAnalyst(String(currentUser?.email||"").toLowerCase(), internalQualitySelectedPeriod === "week" ? "week" : "month", new Date()); surveys = [{ overall: iq.score, createdAt: new Date().toISOString() }] }
+          if(currentRole === "analista") surveys = surveys.filter(s => {
+            const ratedRole = String(s.ratedRole || "analista")
+            const ratedEmail = String(s.ratedEmail || s.analystEmail || "").toLowerCase()
+            return ratedRole === "analista" && ratedEmail === String(currentUser?.email||"").toLowerCase()
+          })
           else if(currentRole === "consultor") surveys = surveys.filter(s => {
             const ratedRole = String(s.ratedRole || "consultor")
             const ratedEmail = String(s.ratedEmail || s.consultorEmail || "").toLowerCase()
@@ -9880,7 +9912,7 @@ Cliente B`)
         }catch(_){
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
-          if(orb && orbValue && currentRole === "analista"){
+          if(orb && orbValue && (currentRole === "analista" || currentRole === "consultor")){
             orb.classList.remove("hidden")
             orb.style.setProperty("--quality-deg", "0deg")
             orbValue.textContent = "0.0"
