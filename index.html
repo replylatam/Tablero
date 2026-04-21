@@ -858,6 +858,7 @@
       scrollbar-width: thin;
       scrollbar-color: var(--stroke) transparent;
     }
+    .modal.memoModal { width: min(560px, 100%); }
     .modal::-webkit-scrollbar { width: 5px; }
     .modal::-webkit-scrollbar-thumb { background: var(--stroke); border-radius: 99px; }
 
@@ -1319,7 +1320,7 @@
   </div>
 
   <div id="memoCreateModal" class="modalBack hidden" onclick="if(event.target===this) closeMemoCreateModal()">
-    <div class="modal" style="max-width:560px">
+    <div class="modal memoModal card">
       <div class="modalHead">
         <h3 style="margin:0">Crear memo</h3>
         <button class="ghost" onclick="closeMemoCreateModal()">✕</button>
@@ -5350,7 +5351,6 @@ Cliente B`)
         ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-        ...(currentRole === "analista" ? [{ icon: "🛟", label: "Casos con soporte", action: "setMainViewTab('support')" }] : []),
         ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
         ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
         ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
@@ -5588,8 +5588,8 @@ Cliente B`)
             <div class="ticketsFiltersBar">
               <div class="filterField searchWrap"><label>Buscador</label><input id="ticketsSearchInput" value="${htmlEscape(ticketSearchTerm)}" oninput="updateTicketSearch(this.value)" placeholder="Buscar por código, título, cliente o descripción"></div>
               <div class="filterField"><label>Cliente</label><select id="filterClient" onchange="updateClientFilter()"></select></div>
-              <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()">${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
-              <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
+              <div class="filterField"><label>Estado</label><select id="filterStatus" onchange="updateStatusFilter()"><option value="">Todos</option>${Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}">${htmlEscape(v)}</option>`).join("")}</select></div>
+              <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()"><option value="">Todos</option>${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Informador</label><select id="filterInformer" onchange="updateInformerFilter()"></select></div>`:""}
               ${currentRole !== "analista" ? `<div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>` : ""}
@@ -7204,6 +7204,22 @@ Cliente B`)
     function unreadCommentsCount(ticket){
       if(!ticket?.comments) return 0
       const myKey = emailKey(currentUser?.email || "")
+      if(currentRole === "analista"){
+        return Object.values(ticket.comments).filter(c => {
+          const comment = c || {}
+          const author = String(comment.author || "").toLowerCase()
+          if(!author || author === String(currentUser?.email || "").toLowerCase()) return false
+          const authorRole = String(cachedUsersByEmail?.[emailKey(author)]?.role || "").toLowerCase()
+          if(authorRole !== "consultor") return false
+          const readBy = comment.readBy || {}
+          const readByAnyAnalyst = Object.values(readBy).some(entry => {
+            const readEmail = String(entry?.email || "").toLowerCase()
+            const readRole = String(entry?.role || cachedUsersByEmail?.[emailKey(readEmail)]?.role || "").toLowerCase()
+            return readRole === "analista"
+          })
+          return !readByAnyAnalyst
+        }).length
+      }
       return Object.values(ticket.comments).filter(c => {
         const comment = c || {}
         const author = String(comment.author || "").toLowerCase()
