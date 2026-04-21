@@ -317,6 +317,11 @@
       display: grid;
       gap: 6px;
     }
+    body.light .menuDropdown{
+      background: rgba(255, 255, 255, 0.96);
+      border-color: rgba(80, 110, 190, 0.22);
+      color: var(--text);
+    }
     .menuDropdown button { width: 100%; text-align: left; box-shadow: none; }
     .notifWrap { position: relative; }
     .notifBadge {
@@ -1361,8 +1366,7 @@
       <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
         <div><label>Título</label><input id="manualTitle" placeholder="Título"></div>
         <div><label>Tipo de microservicio</label><select id="manualMicroserviceType" onchange="updateManualDynamicTypeOptions()"><option value="">Seleccionar tipo de microservicio</option></select></div>
-        <div><label>Tipo de actividad</label><select id="manualActivityType"><option value="">Seleccionar tipo de actividad</option></select></div>
-        <div><label>Carpeta</label><select id="manualFolder"><option value="">Sin carpeta</option></select></div>
+        <div><label>Tipo de tarea</label><select id="manualActivityType"><option value="">Seleccionar tipo de tarea</option></select></div>
         <div style="grid-column:1/-1"><label>Detalle</label><textarea id="manualDetail" placeholder="Detalle del manual"></textarea></div>
         <div style="grid-column:1/-1"><label>Link del archivo</label><input id="manualLink" placeholder="https://..."></div>
       </div>
@@ -1464,6 +1468,7 @@
     var analystActivityTab = "comments"
     var analystSummaryTab = "comments"
     var analystMoodToday = ""
+    var analystMoodDateLoaded = ""
     var consultorActivityTab = "comments"
     var ticketFilterAnalyst = []
     var ticketFilterInformer = []
@@ -1580,13 +1585,14 @@
     ]
 
     const DEFAULT_INTERNAL_QUALITY_CONFIG = {
-      responseWeight: 20,
-      sameDayWeight: 20,
-      delayedWeight: 20,
-      fieldsWeight: 20,
-      agendaWeight: 20,
-      delayedHoursThreshold: 6,
-      agendaHourLimit: "16:30"
+      responseWeight: 15,
+      sameDayWeight: 15,
+      delayedWeight: 15,
+      closeLoadWeight: 15,
+      noTimeAfterMoveWeight: 15,
+      fieldsWeight: 15,
+      agendaTomorrowWeight: 10,
+      delayedHoursThreshold: 6
     }
 
     const DEFAULT_QUALITY_FORMS = {
@@ -1763,7 +1769,14 @@
 
     function setMainViewTab(tab){
       const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
-      if(mainViewTab === nextTab) return
+      if(mainViewTab === nextTab){
+        if(nextTab === "tickets"){
+          if(currentRole === "analista" && analystPanelTab !== "panel") analystPanelTab = "panel"
+          if(currentRole === "admin" && adminPanelTab !== "panel") adminPanelTab = "panel"
+          renderApp()
+        }
+        return
+      }
       mainViewTab = nextTab
       if(mainViewTab === "tickets"){
         if(currentRole === "analista") analystPanelTab = "panel"
@@ -2312,6 +2325,12 @@
       if(/^https?:\/\//i.test(raw)) return raw
       if(raw.startsWith("www.")) return `https://${raw}`
       return raw
+    }
+
+    function isImageAttachment(attachment){
+      const url = String(attachment?.url || "").toLowerCase()
+      const name = String(attachment?.name || "").toLowerCase()
+      return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(url) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name)
     }
 
     function buildInitialAvatar(email){
@@ -4367,7 +4386,7 @@ Cliente B`)
     }
 
     function openSupportModal(){
-      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       document.getElementById("supportModal")?.classList.remove("hidden")
     }
 
@@ -4376,7 +4395,7 @@ Cliente B`)
     }
 
     async function submitSupportRequest(){
-      if(!(currentRole === "analista" || currentRole === "consultor")) return
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       const title = (document.getElementById("supportTitle")?.value || "").trim()
       const detail = (document.getElementById("supportDetail")?.value || "").trim()
       const file = document.getElementById("supportFile")?.files?.[0] || null
@@ -4562,13 +4581,13 @@ Cliente B`)
       const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
       const rows = await Promise.all(analysts.map(async email => ({ email, now: await computeInternalQualityForAnalyst(email, period, new Date()), history: await buildInternalQualityHistory(email, period, 4) })))
       const feedbackMap = (await db.ref("quality_internal_feedback").once("value")).val() || {}
-      const howItWorks = `<div class="feedItem"><div class="feedType">Qué analiza la calidad interna</div><div class="feedMeta">• Tiempos de respuesta a consultores.<br>• Carga de tiempo en el mismo día del cambio de estado.<br>• Demora entre cambio de estado y carga de tiempo.<br>• Completitud de campos de la actividad.<br>• Carga diaria de agenda antes de la hora objetivo.</div></div>`
-      const cfgHtml = `${howItWorks}<div class="feedItem"><div class="feedType">Configuración editable por admin</div><div class="settingsGrid" style="margin-top:8px"><div><label>Peso respuesta</label><input id="iqResponseWeight" type="number" min="0" value="${Number(cfg.responseWeight||20)}"></div><div><label>Peso mismo día</label><input id="iqSameDayWeight" type="number" min="0" value="${Number(cfg.sameDayWeight||20)}"></div><div><label>Peso demora</label><input id="iqDelayedWeight" type="number" min="0" value="${Number(cfg.delayedWeight||20)}"></div><div><label>Peso campos</label><input id="iqFieldsWeight" type="number" min="0" value="${Number(cfg.fieldsWeight||20)}"></div><div><label>Peso agenda</label><input id="iqAgendaWeight" type="number" min="0" value="${Number(cfg.agendaWeight||20)}"></div><div><label>Tope demora (hs)</label><input id="iqDelayedHours" type="number" min="1" value="${Number(cfg.delayedHoursThreshold||6)}"></div><div><label>Hora límite agenda</label><input id="iqAgendaLimit" type="time" value="${htmlEscape(cfg.agendaHourLimit||'16:30')}"></div><div style="display:flex;align-items:flex-end"><button onclick="saveInternalQualityConfig()">Guardar configuración</button></div></div></div>`
+      const howItWorks = `<div class="feedItem"><div class="feedType">Qué analiza la calidad interna</div><div class="feedMeta">• Tiempo de respuesta del responsable a comentarios del consultor (si responde un ayudante, no suma).<br>• Si al mover estado se carga tiempo en el mismo día.<br>• Demora entre mover estado y cargar horas.<br>• Si al finalizar el ticket carga horas en el día o al día siguiente.<br>• Penalización si mueve estado pero no carga tiempo.<br>• Completitud de “Cantidad de publicaciones” y “Planilla de trabajo”.<br>• Completitud de la columna “Agenda de mañana?”.</div></div>`
+      const cfgHtml = `${howItWorks}<div class="feedItem"><div class="feedType">Configuración editable por admin</div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Variable</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Peso</th></tr></thead><tbody><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Respuesta a consultor</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqResponseWeight" type="number" min="0" value="${Number(cfg.responseWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Carga de tiempo mismo día</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqSameDayWeight" type="number" min="0" value="${Number(cfg.sameDayWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Demora estado → carga</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqDelayedWeight" type="number" min="0" value="${Number(cfg.delayedWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Carga al cerrar ticket</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqCloseLoadWeight" type="number" min="0" value="${Number(cfg.closeLoadWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Mover estado sin tiempo</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqNoTimeWeight" type="number" min="0" value="${Number(cfg.noTimeAfterMoveWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Campos obligatorios</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqFieldsWeight" type="number" min="0" value="${Number(cfg.fieldsWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Agenda de mañana</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqAgendaTomorrowWeight" type="number" min="0" value="${Number(cfg.agendaTomorrowWeight||10)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Tope demora (hs)</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqDelayedHours" type="number" min="1" value="${Number(cfg.delayedHoursThreshold||6)}"></td></tr></tbody></table></div><div class="inline" style="justify-content:flex-end;margin-top:8px"><button onclick="saveInternalQualityConfig()">Guardar configuración</button></div></div>`
       if(!rows.length) return cfgHtml + `<div class="small">No hay analistas activos.</div>`
       const analystCards = rows.map(row => {
         const periodKey = `${period}_${String(row.now.periodStart).slice(0,10)}`
         const adminFb = String(feedbackMap?.[emailKey(row.email)]?.[periodKey]?.feedback || "")
-        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(h.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.agenda}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
+        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cierre+tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Sin tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda mañana</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(h.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.closeLoad}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.noTimeAfterMove}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.agendaTomorrow}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
       }).join("")
       return cfgHtml + `<div class="inline" style="margin-bottom:8px"><label style="margin:0">Histórico</label><select onchange="internalQualitySelectedPeriod=this.value;loadAdminInternalQualityTab()" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select></div>` + analystCards
     }
@@ -4576,7 +4595,13 @@ Cliente B`)
     async function loadAdminInternalQualityTab(){
       const container = document.getElementById("adminInternalQualityList")
       if(!container || currentRole !== "admin") return
-      container.innerHTML = await renderInternalQualityAdminSection()
+      try{
+        const html = await renderInternalQualityAdminSection()
+        container.innerHTML = String(html || "").trim() ? html : `<div class="small">Sin datos para mostrar en este momento.</div>`
+      }catch(err){
+        console.error("Error cargando Calidad interna (admin):", err)
+        container.innerHTML = `<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos. Si persiste, revisá permisos de lectura de Firebase para: users_by_email, tickets, activity_logs y quality_internal_config.</div></div>`
+      }
     }
 
     async function loadQualitySurveyAdmin(){
@@ -4649,7 +4674,13 @@ Cliente B`)
 
     async function getInternalQualityConfig(){
       if(internalQualityConfig) return internalQualityConfig
-      const cfg = (await db.ref("quality_internal_config").once("value")).val() || {}
+      let cfg = {}
+      try{
+        cfg = (await db.ref("quality_internal_config").once("value")).val() || {}
+      }catch(err){
+        console.error("No se pudo leer quality_internal_config, usando default:", err)
+        cfg = {}
+      }
       internalQualityConfig = { ...DEFAULT_INTERNAL_QUALITY_CONFIG, ...cfg }
       return internalQualityConfig
     }
@@ -4702,6 +4733,17 @@ Cliente B`)
         return [...fromFolders, ...fromLegacy]
       }).filter(e => String(e?.analyst||"").toLowerCase() === email && inRangeIso(e.createdAt || e.loggedDate || e.date, start, end))
 
+      const entriesByTicket = {}
+      timeEntries.forEach(e => {
+        const ticketId = String(e?.ticketId || e?.ticket || "")
+        if(!ticketId) return
+        const ts = new Date(e.createdAt || e.loggedDate || e.date || "").getTime()
+        if(!Number.isFinite(ts)) return
+        if(!entriesByTicket[ticketId]) entriesByTicket[ticketId] = []
+        entriesByTicket[ticketId].push(ts)
+      })
+      Object.keys(entriesByTicket).forEach(k => entriesByTicket[k].sort((a,b)=>a-b))
+
       const responsePairs = []
       tickets.forEach(t => {
         const comments = Object.values(parseCommentsValue(t.comments||{})).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
@@ -4711,16 +4753,22 @@ Cliente B`)
           if(role !== "consultor") return
           const response = comments.slice(i+1).find(n => {
             const e = String(n?.author||"").toLowerCase()
-            return e === email || String(usersByEmail?.[emailKey(e)]?.role||"") === "admin"
+            return e === email
           })
-          if(response && inRangeIso(response.createdAt, start, end)){
+          if(inRangeIso(c.createdAt, start, end)){
+            const consultorTime = new Date(c.createdAt || "").getTime()
+            if(!Number.isFinite(consultorTime)) return
+            if(!response){
+              responsePairs.push(1440)
+              return
+            }
             const mins = Math.max(0, (new Date(response.createdAt) - new Date(c.createdAt)) / 60000)
             responsePairs.push(mins)
           }
         })
       })
-      const avgResponseMin = responsePairs.length ? responsePairs.reduce((a,b)=>a+b,0)/responsePairs.length : 240
-      const responseScore = Math.max(0, Math.min(10, 10 - (avgResponseMin/60)/4))
+      const avgResponseMin = responsePairs.length ? responsePairs.reduce((a,b)=>a+b,0)/responsePairs.length : 180
+      const responseScore = Math.max(0, Math.min(10, 10 - (avgResponseMin/60)/3))
 
       const entriesByDay = {}
       timeEntries.forEach(e => {
@@ -4734,50 +4782,68 @@ Cliente B`)
       let delayedOk = 0
       statusMoves.forEach(m => {
         const moveTime = new Date(m.timestampIso || 0).getTime()
-        const nextEntry = timeEntries
-          .map(e => new Date(e.createdAt || e.loggedDate || 0).getTime())
-          .filter(ts => ts >= moveTime)
-          .sort((a,b)=>a-b)[0]
+        const ticketId = String(m.ticketId || "")
+        const nextEntry = (entriesByTicket[ticketId] || []).find(ts => ts >= moveTime)
         if(nextEntry && (nextEntry - moveTime) <= delayedLimitMs) delayedOk += 1
       })
       const delayedScore = statusMoves.length ? (delayedOk / statusMoves.length) * 10 : 10
 
+      const closeMoves = statusMoves.filter(m => String(m.nextStatus || "") === "done")
+      const closeLoadPoints = closeMoves.map(m => {
+        const moveTime = new Date(m.timestampIso || 0).getTime()
+        const ticketId = String(m.ticketId || "")
+        const nextEntry = (entriesByTicket[ticketId] || []).find(ts => ts >= moveTime)
+        if(!nextEntry) return 0
+        const moveDay = new Date(new Date(m.timestampIso || 0).setHours(0,0,0,0))
+        const entryDay = new Date(new Date(nextEntry).setHours(0,0,0,0))
+        const dayDiff = Math.round((entryDay.getTime() - moveDay.getTime()) / 86400000)
+        if(dayDiff <= 0) return 10
+        if(dayDiff === 1) return 8
+        if(dayDiff === 2) return 5
+        return 2
+      })
+      const closeLoadScore = closeLoadPoints.length ? closeLoadPoints.reduce((a,b)=>a+b,0) / closeLoadPoints.length : 10
+
+      const noTimeMoves = statusMoves.filter(m => {
+        const moveDay = toLocalDateOnly(m.timestampIso || "")
+        return entriesByDay[moveDay] > 0 ? false : true
+      }).length
+      const noTimeAfterMoveScore = statusMoves.length ? Math.max(0, 10 - (noTimeMoves / statusMoves.length) * 10) : 10
+
       const periodTickets = tickets.filter(t => inRangeIso(t.updatedAt || t.createdAt, start, end))
-      const completeCount = periodTickets.filter(t => getTicketMissingFields(t).length === 0).length
+      const completeCount = periodTickets.filter(t => {
+        const publicationCount = Number(t?.publicationCountAnalyst ?? t?.publicationCount ?? 0)
+        const worksheet = String(t?.workSheet || "").trim()
+        return Number.isFinite(publicationCount) && publicationCount > 0 && !!worksheet
+      }).length
       const fieldsScore = periodTickets.length ? (completeCount / periodTickets.length) * 10 : 10
 
-      const [limitH, limitM] = String(cfg.agendaHourLimit || "16:30").split(":").map(v=>Number(v||0))
-      const dailyFirstEntries = {}
-      timeEntries.forEach(e => {
-        const d = new Date(e.createdAt || e.loggedDate || "")
-        if(Number.isNaN(d.getTime())) return
-        const key = toLocalDateOnly(d)
-        const mins = d.getHours()*60 + d.getMinutes()
-        if(dailyFirstEntries[key] == null || mins < dailyFirstEntries[key]) dailyFirstEntries[key] = mins
-      })
-      const agendaLimit = (Number(limitH)||16)*60 + (Number(limitM)||30)
-      const agendaDays = Object.keys(dailyFirstEntries)
-      const agendaOnTime = agendaDays.filter(day => dailyFirstEntries[day] <= agendaLimit).length
-      const agendaScore = agendaDays.length ? (agendaOnTime / agendaDays.length) * 10 : 10
+      const agendaTickets = tickets.filter(t => String(t.status || "") !== "done" && inRangeIso(t.updatedAt || t.createdAt, start, end))
+      const agendaCompleted = agendaTickets.filter(t => !!t.agendaTomorrowUpdatedAt).length
+      const agendaTomorrowScore = agendaTickets.length ? (agendaCompleted / agendaTickets.length) * 10 : 10
 
-      const totalWeight = [cfg.responseWeight,cfg.sameDayWeight,cfg.delayedWeight,cfg.fieldsWeight,cfg.agendaWeight].reduce((a,b)=>a+Number(b||0),0) || 1
+      const totalWeight = [cfg.responseWeight,cfg.sameDayWeight,cfg.delayedWeight,cfg.closeLoadWeight,cfg.noTimeAfterMoveWeight,cfg.fieldsWeight,cfg.agendaTomorrowWeight].reduce((a,b)=>a+Number(b||0),0) || 1
       const weighted = (
         responseScore * Number(cfg.responseWeight||0) +
         sameDayScore * Number(cfg.sameDayWeight||0) +
         delayedScore * Number(cfg.delayedWeight||0) +
+        closeLoadScore * Number(cfg.closeLoadWeight||0) +
+        noTimeAfterMoveScore * Number(cfg.noTimeAfterMoveWeight||0) +
         fieldsScore * Number(cfg.fieldsWeight||0) +
-        agendaScore * Number(cfg.agendaWeight||0)
+        agendaTomorrowScore * Number(cfg.agendaTomorrowWeight||0)
       ) / totalWeight
 
       const metrics = {
         response: Number(responseScore.toFixed(2)),
         sameDay: Number(sameDayScore.toFixed(2)),
         delayed: Number(delayedScore.toFixed(2)),
+        closeLoad: Number(closeLoadScore.toFixed(2)),
+        noTimeAfterMove: Number(noTimeAfterMoveScore.toFixed(2)),
         fields: Number(fieldsScore.toFixed(2)),
-        agenda: Number(agendaScore.toFixed(2))
+        agendaTomorrow: Number(agendaTomorrowScore.toFixed(2))
       }
       const weakest = Object.entries(metrics).sort((a,b)=>a[1]-b[1])[0]?.[0] || "response"
-      const labelByMetric = { response: "tiempos de respuesta", sameDay: "carga de tiempo en el mismo día", delayed: "demora entre cambio de estado y carga", fields: "campos de actividad", agenda: "agenda antes de las 16:30" }
+      const labelByMetric = { response: "tiempos de respuesta", sameDay: "carga de tiempo en el mismo día", delayed: "demora entre cambio de estado y carga", closeLoad: "carga de tiempo al cerrar tickets", noTimeAfterMove: "movimientos de estado sin carga de tiempo", fields: "cantidad de publicaciones y planilla", agendaTomorrow: "agenda de mañana" }
       const autoFeedback = weighted >= 8
         ? "Excelente gestión interna. Mantené la consistencia diaria."
         : weighted >= 6
@@ -4788,11 +4854,11 @@ Cliente B`)
         score: Number(weighted.toFixed(2)),
         metrics,
         autoFeedback,
-        analyzed: ["tiempos de respuesta a consultores","carga de tiempo al cambiar estado","demora de carga posterior","completitud de campos de actividad","agenda diaria antes de hora objetivo"],
+        analyzed: ["tiempos de respuesta a consultores","carga de tiempo al cambiar estado","demora de carga posterior","cierre del ticket vs carga de tiempo","movimientos sin tiempo cargado","cantidad de publicaciones + planilla de trabajo","completitud de agenda de mañana"],
         period,
         periodStart: start.toISOString(),
         periodEnd: end.toISOString(),
-        counts: { statusMoves: statusMoves.length, entries: timeEntries.length, tickets: periodTickets.length }
+        counts: { statusMoves: statusMoves.length, entries: timeEntries.length, tickets: periodTickets.length, closeMoves: closeMoves.length, noTimeMoves }
       }
     }
 
@@ -4819,7 +4885,7 @@ Cliente B`)
       const feedbackMap = (await db.ref("quality_internal_feedback").child(emailKey(email)).once("value")).val() || {}
       const periodKey = `${period}_${String(data.periodStart).slice(0,10)}`
       const adminFeedback = String(feedbackMap?.[periodKey]?.feedback || "")
-      body.innerHTML = `<div class="feedItem"><div class="feedType">Qué se analiza</div><div class="feedMeta">${data.analyzed.map(it => `• ${htmlEscape(it)}`).join("<br>")}</div></div><div class="feedItem"><div class="feedType">Puntaje ${period === 'week' ? 'semanal' : 'mensual'}: ${data.score.toFixed(2)} / 10</div><div class="feedMeta">Respuesta: ${data.metrics.response} · Mismo día: ${data.metrics.sameDay} · Demora: ${data.metrics.delayed} · Campos: ${data.metrics.fields} · Agenda: ${data.metrics.agenda}</div></div><div class="feedItem"><div class="feedType">Feedback automático</div><div class="feedMeta">${htmlEscape(data.autoFeedback)}</div>${adminFeedback ? `<div class="feedMeta" style="margin-top:6px"><strong>Feedback del admin:</strong> ${htmlEscape(adminFeedback)}</div>` : ""}</div>`
+      body.innerHTML = `<div class="feedItem"><div class="feedType">Qué se analiza</div><div class="feedMeta">${data.analyzed.map(it => `• ${htmlEscape(it)}`).join("<br>")}</div></div><div class="feedItem"><div class="feedType">Puntaje ${period === 'week' ? 'semanal' : 'mensual'}: ${data.score.toFixed(2)} / 10</div><div class="feedMeta">Respuesta: ${data.metrics.response} · Mismo día: ${data.metrics.sameDay} · Demora: ${data.metrics.delayed} · Cierre+tiempo: ${data.metrics.closeLoad} · Sin tiempo: ${data.metrics.noTimeAfterMove} · Campos: ${data.metrics.fields} · Agenda mañana: ${data.metrics.agendaTomorrow}</div></div><div class="feedItem"><div class="feedType">Feedback automático</div><div class="feedMeta">${htmlEscape(data.autoFeedback)}</div>${adminFeedback ? `<div class="feedMeta" style="margin-top:6px"><strong>Feedback del admin:</strong> ${htmlEscape(adminFeedback)}</div>` : ""}</div>`
       document.getElementById("internalQualityModal")?.classList.remove("hidden")
     }
 
@@ -4830,13 +4896,14 @@ Cliente B`)
     async function saveInternalQualityConfig(){
       if(currentRole !== "admin") return
       const payload = {
-        responseWeight: Number(document.getElementById("iqResponseWeight")?.value || 20),
-        sameDayWeight: Number(document.getElementById("iqSameDayWeight")?.value || 20),
-        delayedWeight: Number(document.getElementById("iqDelayedWeight")?.value || 20),
-        fieldsWeight: Number(document.getElementById("iqFieldsWeight")?.value || 20),
-        agendaWeight: Number(document.getElementById("iqAgendaWeight")?.value || 20),
+        responseWeight: Number(document.getElementById("iqResponseWeight")?.value || 15),
+        sameDayWeight: Number(document.getElementById("iqSameDayWeight")?.value || 15),
+        delayedWeight: Number(document.getElementById("iqDelayedWeight")?.value || 15),
+        closeLoadWeight: Number(document.getElementById("iqCloseLoadWeight")?.value || 15),
+        noTimeAfterMoveWeight: Number(document.getElementById("iqNoTimeWeight")?.value || 15),
+        fieldsWeight: Number(document.getElementById("iqFieldsWeight")?.value || 15),
+        agendaTomorrowWeight: Number(document.getElementById("iqAgendaTomorrowWeight")?.value || 10),
         delayedHoursThreshold: Number(document.getElementById("iqDelayedHours")?.value || 6),
-        agendaHourLimit: String(document.getElementById("iqAgendaLimit")?.value || "16:30"),
         updatedAt: new Date().toISOString(),
         updatedBy: String(currentUser?.email || "").toLowerCase()
       }
@@ -4900,14 +4967,14 @@ Cliente B`)
         const items = qualitySurveyForms?.[role] || []
         return `<div class="card" style="padding:10px;margin:0 0 8px"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">${title}</h4><button class="ghost" onclick="addQualityQuestion('${role}')">+ Pregunta</button></div><div class="small" style="margin:6px 0 10px">1) Escribí la pregunta.<br>2) En opciones, separá respuestas por coma.<br>3) Guardá formularios.</div>${items.length ? items.map((q, idx) => `<div class="row"><div><label>Pregunta</label><input value="${htmlEscape(q.label || '')}" onchange="updateQualityQuestion('${role}',${idx},'label',this.value)"></div><div><label>Opciones (coma)</label><input value="${htmlEscape((q.options||[]).join(', '))}" onchange="updateQualityQuestion('${role}',${idx},'options',this.value)"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="removeQualityQuestion('${role}',${idx})">Quitar</button></div></div>`).join("") : `<p class="small">Sin preguntas.</p>`}</div>`
       }
-      return `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Admin puede modificar, agregar y quitar preguntas; y definir formularios diferentes para analista y consultor.</div><div class="small" style="margin:8px 0">Importante: la encuesta al <strong>cerrar ticket</strong> usa el formulario <strong>consultor</strong> (la completa el analista para evaluar al consultor).</div><div style="margin-top:8px">${renderRole("consultor","Encuesta de cierre de ticket (analista evalúa consultor)")}${renderRole("analista","Encuesta pendiente del consultor (consultor evalúa analista)")}<div class="inline" style="justify-content:flex-end"><button onclick="saveQualityForms()">Guardar formularios</button></div></div></div>`
+      return `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Admin puede modificar, agregar y quitar preguntas; y definir formularios diferentes para analista y consultor.</div><div class="small" style="margin:8px 0">Importante: la encuesta al <strong>cerrar ticket</strong> usa el formulario <strong>analista</strong> (la completa el analista).</div><div style="margin-top:8px">${renderRole("analista","Encuesta de cierre de ticket (analista)")}${renderRole("consultor","Encuesta pendiente del consultor")}<div class="inline" style="justify-content:flex-end"><button onclick="saveQualityForms()">Guardar formularios</button></div></div></div>`
     }
 
     async function openCloseSurveyModal(ticketId, nextTicketData){
       const current = (cachedTickets || []).find(t => String(t.id||"") === String(ticketId||""))
       pendingCloseSurvey = { ticketId, nextTicketData, previousStatus: String(current?.status || nextTicketData?.status || "todo") }
       await ensureQualityFormsLoaded()
-      renderQualityQuestions("closeSurveyFields", "consultor")
+      renderQualityQuestions("closeSurveyFields", "analista")
       const obs = document.getElementById("closeSurveyObservation")
       if(obs) obs.value = ""
       document.getElementById("closeSurveyModal")?.classList.remove("hidden")
@@ -4971,7 +5038,6 @@ Cliente B`)
       if(ix >= 0) cachedTickets[ix] = updated
       closeCloseSurveyModal()
       showToast("Ticket cerrado y encuesta enviada.", "ok")
-      openTicketDetailModal(ticketId)
       loadDashboard()
     }
 
@@ -5321,6 +5387,9 @@ Cliente B`)
       const isAdmin = currentRole === "admin"
       const isAnalyst = currentRole === "analista"
       if(isAnalyst) loadAnalystBoardSettings()
+      if(isAnalyst && analystMoodDateLoaded && analystMoodDateLoaded !== toLocalDateOnly(new Date())){
+        analystMoodToday = ""
+      }
       const currentProfile = cachedUsersByEmail[emailKey(currentUser?.email || "")] || {}
       const currentDisplayName = userDisplayNameByEmail(currentUser?.email || "")
       const currentWelcome = `${welcomeBySex(currentProfile)} ${currentDisplayName}`
@@ -5473,7 +5542,7 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div><div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:8px"><input placeholder="Buscar manual" style="margin:0;min-width:220px" oninput="updateAdminManualsSearch(this.value)"></div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select id="adminManualFolderFilterTop" style="margin:0;min-width:220px" onchange="setAdminManualFolderFilter(this.value)"><option value="">Todas las carpetas</option></select></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-end;margin-top:10px"><button onclick="saveGuideline()">Guardar lineamiento</button></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -5597,7 +5666,7 @@ Cliente B`)
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
         `}
-        ${(currentRole === "analista" || currentRole === "consultor") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
+            ${(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
           </div>
         </div>
       `
@@ -5868,7 +5937,13 @@ Cliente B`)
     function normalizeGifAssetUrl(url){
       const raw = String(url || "").trim()
       if(!raw) return ""
-      return raw.replace(/\.webp(?=(\?|$))/i, ".gif")
+      const normalizedRaw = raw.replace(/\.webp(?=(\?|$))/i, ".gif")
+      if(/giphy\.com\/gifs\//i.test(normalizedRaw)){
+        const slug = normalizedRaw.split("/gifs/")[1]?.split(/[?#]/)[0] || ""
+        const id = slug.split("-").pop() || ""
+        if(id) return `https://media.giphy.com/media/${id}/giphy.gif`
+      }
+      return normalizedRaw
     }
 
     function selectEncuentroGif(url){
@@ -5971,6 +6046,10 @@ Cliente B`)
         const options = getMicroserviceOptions()
         microSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       }
+      const activitySelect = document.getElementById("manualActivityType")
+      if(activitySelect){
+        activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>`
+      }
       updateManualDynamicTypeOptions()
     }
 
@@ -5980,7 +6059,7 @@ Cliente B`)
       if(!activitySelect) return
       const current = String(activitySelect.value || "")
       const options = getDependentActivityOptions(microservice)
-      activitySelect.innerHTML = `<option value="">Seleccionar tipo de actividad</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       if(options.includes(current)) activitySelect.value = current
     }
 
@@ -5994,11 +6073,6 @@ Cliente B`)
       await loadManualTypeSelectors()
       document.getElementById("manualMicroserviceType").value = ""
       document.getElementById("manualActivityType").value = ""
-      getManualFolders().then(folders => {
-        const folderSelect = document.getElementById("manualFolder")
-        if(!folderSelect) return
-        folderSelect.innerHTML = `<option value="">Sin carpeta</option>${folders.map(f => `<option value="${htmlEscape(f.id)}">${htmlEscape(f.name)}</option>`).join("")}`
-      })
       document.getElementById("manualModal")?.classList.remove("hidden")
     }
 
@@ -6013,10 +6087,9 @@ Cliente B`)
       const link = String(document.getElementById("manualLink")?.value || "").trim()
       const microserviceType = String(document.getElementById("manualMicroserviceType")?.value || "").trim()
       const activityType = String(document.getElementById("manualActivityType")?.value || "").trim()
-      const folderId = String(document.getElementById("manualFolder")?.value || "").trim()
-      if(!title || !detail || !link || !microserviceType) return alert("Completá título, detalle, link y tipo de microservicio.")
+      if(!title || !detail || !link || !microserviceType || !activityType) return alert("Completá título, detalle, link, tipo de microservicio y tipo de tarea.")
       const id = manualEditId || db.ref("manuals").push().key
-      const payload = { id, title, detail, link, microserviceType, activityType, folderId, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
+      const payload = { id, title, detail, link, microserviceType, activityType, folderId: "", updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
       if(manualEditId){
         await db.ref("manuals").child(id).update(payload)
       }else{
@@ -6040,7 +6113,6 @@ Cliente B`)
       document.getElementById("manualMicroserviceType").value = String(manual.microserviceType || "")
       updateManualDynamicTypeOptions()
       document.getElementById("manualActivityType").value = String(manual.activityType || "")
-      document.getElementById("manualFolder").value = String(manual.folderId || "")
     }
 
     async function deleteManual(id){
@@ -6064,11 +6136,6 @@ Cliente B`)
         const byFolder = !adminManualFolderFilter || String(m.folderId || "") === String(adminManualFolderFilter)
         return byText && byFolder
       })
-      const folderOptions = `<option value="">Todas las carpetas</option>${folders.map(f => `<option value="${htmlEscape(f.id)}" ${String(adminManualFolderFilter||"")===String(f.id)?"selected":""}>${htmlEscape(f.name)}</option>`).join("")}`
-      const topSelect = document.getElementById("adminManualFolderFilterTop")
-      if(topSelect) topSelect.innerHTML = folderOptions
-      const folderSearchInput = document.getElementById("adminManualFolderSearch")
-      if(folderSearchInput) folderSearchInput.value = adminManualFolderSearchTerm || ""
       const byFolder = filtered.reduce((acc,m)=>{ const k=String(m.folderId||""); if(!acc[k]) acc[k]=[]; acc[k].push(m); return acc }, {})
       const folderSearch = String(adminManualFolderSearchTerm || "").toLowerCase()
       const folderCards = folders
@@ -6078,6 +6145,10 @@ Cliente B`)
       const loose = byFolder[""] || []
       wrap.innerHTML = `
         <div class="inline" style="gap:10px;flex-wrap:wrap;margin-bottom:10px">${folderCards || `<div class="small">Sin carpetas.</div>`}</div>
+        <div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input placeholder="Buscar manual" style="margin:0;min-width:220px" value="${htmlEscape(adminManualsSearchTerm || "")}" oninput="updateAdminManualsSearch(this.value)">
+          <input placeholder="Buscar carpeta" style="margin:0;min-width:220px" value="${htmlEscape(adminManualFolderSearchTerm || "")}" oninput="updateAdminManualFolderSearch(this.value)">
+        </div>
         <h4 style="margin:0 0 8px">Documentos sueltos</h4>
         ${loose.length ? loose.map(m => renderAdminManualCard(m, folders, folderMap)).join("") : `<div class="small">Sin documentos sueltos.</div>`}
         ${adminManualFolderFilter ? `<h4 style="margin:12px 0 8px">Carpeta seleccionada</h4>${(byFolder[String(adminManualFolderFilter)] || []).map(m => renderAdminManualCard(m, folders, folderMap)).join("") || `<div class=\"small\">No hay manuales en esta carpeta.</div>`}` : ``}
@@ -6085,7 +6156,7 @@ Cliente B`)
     }
 
     function renderAdminManualCard(m, folders, folderMap){
-      return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">📄 ${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.microserviceType || "Sin tipo de microservicio")} · ${htmlEscape(m.activityType || "Sin tipo de actividad")} · Carpeta: ${htmlEscape(folderMap[String(m.folderId || "")] || "Sin carpeta")}</div></div><div class="inline"><select style="margin:0;max-width:200px" onchange="moveManualToFolder('${m.id}', this.value)"><option value="">Sin carpeta</option>${folders.map(f => `<option value="${htmlEscape(f.id)}" ${String(m.folderId||"")===String(f.id)?"selected":""}>${htmlEscape(f.name)}</option>`).join("")}</select><button class="ghost" onclick="editManual('${m.id}')">Editar</button><button class="danger" onclick="deleteManual('${m.id}')">Eliminar</button></div></div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`
+      return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">📄 ${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")} · Carpeta: ${htmlEscape(folderMap[String(m.folderId || "")] || "Sin carpeta")}</div></div><div class="inline"><button class="ghost" onclick="editManual('${m.id}')">Editar</button><button class="danger" onclick="deleteManual('${m.id}')">Eliminar</button></div></div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`
     }
 
     async function loadManualsAnalyst(){
@@ -6096,16 +6167,16 @@ Cliente B`)
       const wrap = document.getElementById("analystManualsList")
       if(!wrap) return
       const term = String(manualsSearchTerm || "").toLowerCase()
-      const visible = manuals.filter(m => !term || `${m.title || ""} ${m.detail || ""} ${m.activityType || ""} ${m.microserviceType || ""}`.toLowerCase().includes(term))
+      const visible = manuals.filter(m => !term || `${m.title || ""} ${m.detail || ""} ${m.activityType || ""}`.toLowerCase().includes(term))
       const grouped = visible.reduce((acc, m) => {
         const key = folderMap[String(m.folderId || "")] || "Sin carpeta"
         if(!acc[key]) acc[key] = []
         acc[key].push(m)
         return acc
       }, {})
-      const folderHtml = Object.entries(grouped).filter(([k]) => k !== "Sin carpeta").sort((a,b)=>a[0].localeCompare(b[0],'es')).map(([folderName, list]) => `<div class="feedItem"><div class="feedType">📁 ${htmlEscape(folderName)}</div><div class="small">${list.map(m => `<div style="margin-top:10px"><div class="feedType">${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.microserviceType || "Sin tipo de microservicio")} · ${htmlEscape(m.activityType || "Sin tipo de actividad")}</div><div style="margin-top:4px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:4px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("")}</div></div>`).join("")
+      const folderHtml = Object.entries(grouped).filter(([k]) => k !== "Sin carpeta").sort((a,b)=>a[0].localeCompare(b[0],'es')).map(([folderName, list]) => `<div class="feedItem"><div class="feedType">📁 ${htmlEscape(folderName)}</div><div class="small">${list.map(m => `<div style="margin-top:10px"><div class="feedType">${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")}</div><div style="margin-top:4px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:4px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("")}</div></div>`).join("")
       const loose = grouped["Sin carpeta"] || []
-      const looseHtml = loose.length ? `<div class="feedItem"><div class="feedType">📄 Documentos sueltos</div>${loose.map(m => `<div style="margin-top:10px"><div class="feedType">📄 ${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.microserviceType || "Sin tipo de microservicio")} · ${htmlEscape(m.activityType || "Sin tipo de actividad")}</div><div style="margin-top:4px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:4px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("")}</div>` : ""
+      const looseHtml = loose.length ? `<div class="feedItem"><div class="feedType">📄 Documentos sueltos</div>${loose.map(m => `<div style="margin-top:10px"><div class="feedType">📄 ${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")}</div><div style="margin-top:4px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:4px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`).join("")}</div>` : ""
       wrap.innerHTML = folderHtml || looseHtml ? `${folderHtml}${looseHtml}` : `<div class="small">Sin manuales para el filtro actual.</div>`
     }
 
@@ -6516,9 +6587,9 @@ Cliente B`)
           const myEmail = String(currentUser?.email || "").toLowerCase()
           const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
           const history = await buildInternalQualityHistory(myEmail, period, internalQualityHistoryWindow)
-          const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,fields:0,agenda:0 } }
+          const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,closeLoad:0,noTimeAfterMove:0,fields:0,agendaTomorrow:0 } }
           const scoreDeg = Math.max(0, Math.min(360, (Number(current.score || 0) / 10) * 360))
-          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div><div class="small" style="margin-top:6px">Variables evaluadas: ${(current.analyzed||[]).map(v => `• ${htmlEscape(v)}`).join(" ") || "Sin detalle"}</div><div class="small" style="margin-top:4px">Base del cálculo actual: ${Number(current.counts?.statusMoves||0)} cambios de estado · ${Number(current.counts?.entries||0)} cargas de tiempo · ${Number(current.counts?.tickets||0)} tickets.</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
+          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div><div class="small" style="margin-top:6px">Variables evaluadas: ${(current.analyzed||[]).map(v => `• ${htmlEscape(v)}`).join(" ") || "Sin detalle"}</div><div class="small" style="margin-top:4px">Base del cálculo actual: ${Number(current.counts?.statusMoves||0)} cambios de estado · ${Number(current.counts?.entries||0)} cargas de tiempo · ${Number(current.counts?.tickets||0)} tickets.</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cierre+tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Sin tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda mañana</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.closeLoad}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.noTimeAfterMove}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agendaTomorrow}</td></tr>`).join("")}</tbody></table></div>`
         }catch(_){
           wrap.innerHTML = "<p class='small'>No se pudo cargar la calidad interna en este momento. Reintentá en unos segundos.</p>"
         }
@@ -6657,9 +6728,9 @@ Cliente B`)
       if(historyWrap){
         const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
         const history = await buildInternalQualityHistory(myEmail, period, internalQualityHistoryWindow)
-        const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,fields:0,agenda:0 } }
+        const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,closeLoad:0,noTimeAfterMove:0,fields:0,agendaTomorrow:0 } }
         const scoreDeg = Math.max(0, Math.min(360, (Number(current.score || 0) / 10) * 360))
-        historyWrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
+        historyWrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cierre+tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Sin tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda mañana</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.closeLoad}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.noTimeAfterMove}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agendaTomorrow}</td></tr>`).join("")}</tbody></table></div>`
       }
     }
 
@@ -6846,6 +6917,7 @@ Cliente B`)
       if(minutes <= 0) return alert("Completá inicio y fin válidos para cargar tiempo.")
       const reason = String(draft?.reason || "").trim()
       if(!reason) return alert("Ingresá el motivo antes de cargar el tiempo.")
+      if(!confirm("¿Estás seguro que querés cargar el tiempo?")) return
       const monthKey = monthFolderKey(new Date(draft.endAt || new Date().toISOString()))
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: myEmail, totalMinutes: 0, timerStartAt: "" }
@@ -7368,14 +7440,8 @@ Cliente B`)
         const label = String(f?.label || "").toLowerCase()
         return key.includes("tipo") && (key.includes("actividad") || key.includes("tarea")) || label.includes("tipo de actividad") || label.includes("tipo de tarea")
       })
-      const microserviceDef = (customDefs || []).find(f => {
-        const key = String(f?.key || "").toLowerCase()
-        const label = String(f?.label || "").toLowerCase()
-        return key.includes("microservicio") || label.includes("microservicio")
-      })
       const normText = (v) => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim()
       const ticketActivityType = normText(activityDef ? (customValues?.[activityDef.key] || "") : "")
-      const ticketMicroserviceType = normText(microserviceDef ? (customValues?.[microserviceDef.key] || "") : "")
       const usefulManuals = manuals.filter(m => {
         const manualType = normText(m?.activityType || "")
         const typeMatches = !!manualType && ticketActivityType && (manualType === ticketActivityType || ticketActivityType.includes(manualType) || manualType.includes(ticketActivityType))
@@ -7433,7 +7499,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${String(ticketWithRead.status||"")==="done" ? `<button class="ghost" onclick="reopenTicketAsConsultor('${ticketWithRead.id}')">Reabrir ticket</button>` : ""}${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div><div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados.</div>`}</div></div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${ticketActivityType ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -7542,7 +7608,9 @@ Cliente B`)
           : Number(ticket.publicationCountAnalyst ?? ticket.publicationCount ?? 0),
         publicationCount: (currentRole === "admin" || currentRole === "analista")
           ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0)
-          : Number(ticket.publicationCountAnalyst ?? ticket.publicationCount ?? 0),
+          : (currentRole === "consultor"
+            ? Math.max(0, Number(document.getElementById(`detail-publication-count-consultor-${id}`)?.value || 0) || 0)
+            : Number(ticket.publicationCount ?? ticket.publicationCountAnalyst ?? ticket.publicationCountConsultor ?? 0)),
         workSheet: canEditAnalystFields ? normalizeUrlLike(document.getElementById(`detail-work-sheet-${id}`)?.value || "") : String(ticket.workSheet || ""),
         assignedTo: nextAssignedTo,
         deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
@@ -7821,7 +7889,7 @@ Cliente B`)
                 <button class="ghost" onclick="addComment('${id}')">Comentar</button>
               </div>
             </div>
-            <div style="margin-top:16px">${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${c.editedAt ? "· editado" : ""} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}</div>
+            <div style="margin-top:16px">${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${c.editedAt ? "· editado" : ""} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px">${isImageAttachment(c.attachment) ? `<img src="${htmlEscape(c.attachment.url)}" alt="${htmlEscape(c.attachment.name||"Imagen")}" style="max-width:280px;border-radius:8px;display:block;margin-bottom:6px">` : ""}<a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}</div>
           </div>
 
           <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">${currentRole !== "consultor" ? "Cargando..." : ""}</div>
@@ -8958,9 +9026,10 @@ Cliente B`)
     }
 
     function openAnalystSummaryActivity(tab){
-      analystSummaryTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
-      analystActivityTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
-      renderApp()
+      const selected = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
+      analystSummaryTab = selected
+      analystActivityTab = selected
+      setAnalystSummaryTab(selected)
     }
 
     async function setMoodVote(mood){
@@ -9017,6 +9086,7 @@ Cliente B`)
       const key = emailKey(currentUser?.email || "")
       const row = (await db.ref("analyst_mood_votes").child(key).child(today).once("value")).val() || {}
       analystMoodToday = String(row?.mood || "").toLowerCase()
+      analystMoodDateLoaded = today
     }
 
     async function loadAnalystMovedStatesToday(){
@@ -9252,7 +9322,10 @@ Cliente B`)
                 const helperMatch = (Array.isArray(t.helpers) ? t.helpers : []).find(h => teamSet.has(String(h||"").toLowerCase()))
                 const roleIcon = teamSet.has(owner) ? "👑" : (helperMatch ? "🤝" : "—")
                 const daysSince = lastComment ? Math.floor((Date.now() - new Date(lastComment).getTime()) / 86400000) : null
-                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
+                const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
+                const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
+                const rowBg = owner ? ownerColors[ownerHash % ownerColors.length] : "transparent"
+                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg}">
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
@@ -10209,7 +10282,7 @@ Cliente B`)
             const alerts = calculated.filter(x => x.ticket.urgentRequested)
             alertsContainer.innerHTML = alerts.length
               ? alerts.map(({ticket}) => `
-                  <div class="feedItem">
+                  <div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${ticket.id || "-"}')">
                     <div class="feedTop">
                       <div>
                         <div class="feedType">${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</div>
