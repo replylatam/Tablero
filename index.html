@@ -1543,6 +1543,7 @@
     var internalQualityConfig = null
     var internalQualitySelectedPeriod = "month"
     var internalQualityHistoryWindow = 6
+    var qualityResultsMode = "satisfaction"
     var adminGuidelinesClient = ""
     var analystNotificationsOpen = false
     var analystNotifRefreshTimer = null
@@ -2178,6 +2179,26 @@
       renderSavedItems()
     }
 
+    function editMyMemo(id){
+      if(currentRole !== "analista") return
+      const state = getSavedItemsState()
+      const memo = (state.memos || []).find(m => String(m?.id||"") === String(id||""))
+      if(!memo) return
+      const nextTitle = prompt("Editar título del memo", String(memo.title || ""))
+      if(nextTitle === null) return
+      const nextDetail = prompt("Editar detalle del memo", String(memo.detail || ""))
+      if(nextDetail === null) return
+      const cleanTitle = String(nextTitle || "").trim()
+      const cleanDetail = String(nextDetail || "").trim()
+      if(!cleanTitle || !cleanDetail) return alert("Título y detalle son obligatorios.")
+      state.memos = (state.memos || []).map(m => String(m?.id||"") === String(id||"")
+        ? { ...m, title: cleanTitle, detail: cleanDetail, updatedAt: new Date().toISOString() }
+        : m)
+      setSavedItemsState(state)
+      renderSavedItems()
+      showToast("Memo actualizado.", "ok", 1200)
+    }
+
     function refreshSaveButtonsState(){
       document.querySelectorAll("[data-save-ticket]").forEach(btn => {
         const id = String(btn.getAttribute("data-save-ticket") || "")
@@ -2334,6 +2355,15 @@
       return users.find(email => email.split("@")[0] === normalized) || ""
     }
 
+    function linkifyEscapedText(text){
+      const escaped = htmlEscape(text || "")
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
+      return escaped.replace(urlRegex, (raw) => {
+        const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+        return `<a href="${htmlEscape(href)}" target="_blank" rel="noopener noreferrer">${raw}</a>`
+      })
+    }
+
     function enhanceCommentHtmlWithMentions(html){
       const wrapper = document.createElement("div")
       wrapper.innerHTML = safeCommentHtml(html)
@@ -2368,6 +2398,20 @@
         }
         if(cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)))
         node.parentNode.replaceChild(frag, node)
+      })
+      wrapper.querySelectorAll("*").forEach(el => {
+        if(["A","IMG","VIDEO","IFRAME"].includes(String(el.tagName || ""))) return
+        if(!el.childNodes?.length) return
+      })
+      const urlWalker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT, null)
+      const urlNodes = []
+      while(urlWalker.nextNode()) urlNodes.push(urlWalker.currentNode)
+      urlNodes.forEach(node => {
+        const text = String(node.nodeValue || "")
+        if(!/(https?:\/\/|www\.)/i.test(text)) return
+        const temp = document.createElement("span")
+        temp.innerHTML = linkifyEscapedText(text)
+        node.parentNode.replaceChild(temp, node)
       })
       return wrapper.innerHTML
     }
@@ -4480,16 +4524,24 @@ Cliente B`)
 
     async function renderInternalQualityAdminSection(){
       const cfg = await getInternalQualityConfig()
-      const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role||"") === "analista" && u?.active !== false).map(u => String(u.email||"").toLowerCase())
+      let usersMap = cachedUsersByEmail || {}
+      if(!Object.keys(usersMap).length){
+        try{ usersMap = (await db.ref("users_by_email").once("value")).val() || {} }catch(_){ usersMap = {} }
+      }
+      const analysts = Object.entries(usersMap || {})
+        .map(([k,u]) => ({ key:k, ...(u||{}) }))
+        .filter(u => String(u?.role||"") === "analista" && u?.active !== false)
+        .map(u => String(u.email || String(u.key || "").replaceAll("_",".")).toLowerCase())
       const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
       const rows = await Promise.all(analysts.map(async email => ({ email, now: await computeInternalQualityForAnalyst(email, period, new Date()), history: await buildInternalQualityHistory(email, period, 4) })))
       const feedbackMap = (await db.ref("quality_internal_feedback").once("value")).val() || {}
-      const cfgHtml = `<div class="feedItem"><div class="feedType">Configuración editable por admin</div><div class="settingsGrid" style="margin-top:8px"><div><label>Peso respuesta</label><input id="iqResponseWeight" type="number" min="0" value="${Number(cfg.responseWeight||20)}"></div><div><label>Peso mismo día</label><input id="iqSameDayWeight" type="number" min="0" value="${Number(cfg.sameDayWeight||20)}"></div><div><label>Peso demora</label><input id="iqDelayedWeight" type="number" min="0" value="${Number(cfg.delayedWeight||20)}"></div><div><label>Peso campos</label><input id="iqFieldsWeight" type="number" min="0" value="${Number(cfg.fieldsWeight||20)}"></div><div><label>Peso agenda</label><input id="iqAgendaWeight" type="number" min="0" value="${Number(cfg.agendaWeight||20)}"></div><div><label>Tope demora (hs)</label><input id="iqDelayedHours" type="number" min="1" value="${Number(cfg.delayedHoursThreshold||6)}"></div><div><label>Hora límite agenda</label><input id="iqAgendaLimit" type="time" value="${htmlEscape(cfg.agendaHourLimit||'16:30')}"></div><div style="display:flex;align-items:flex-end"><button onclick="saveInternalQualityConfig()">Guardar configuración</button></div></div></div>`
+      const howItWorks = `<div class="feedItem"><div class="feedType">Qué analiza la calidad interna</div><div class="feedMeta">• Tiempos de respuesta a consultores.<br>• Carga de tiempo en el mismo día del cambio de estado.<br>• Demora entre cambio de estado y carga de tiempo.<br>• Completitud de campos de la actividad.<br>• Carga diaria de agenda antes de la hora objetivo.</div></div>`
+      const cfgHtml = `${howItWorks}<div class="feedItem"><div class="feedType">Configuración editable por admin</div><div class="settingsGrid" style="margin-top:8px"><div><label>Peso respuesta</label><input id="iqResponseWeight" type="number" min="0" value="${Number(cfg.responseWeight||20)}"></div><div><label>Peso mismo día</label><input id="iqSameDayWeight" type="number" min="0" value="${Number(cfg.sameDayWeight||20)}"></div><div><label>Peso demora</label><input id="iqDelayedWeight" type="number" min="0" value="${Number(cfg.delayedWeight||20)}"></div><div><label>Peso campos</label><input id="iqFieldsWeight" type="number" min="0" value="${Number(cfg.fieldsWeight||20)}"></div><div><label>Peso agenda</label><input id="iqAgendaWeight" type="number" min="0" value="${Number(cfg.agendaWeight||20)}"></div><div><label>Tope demora (hs)</label><input id="iqDelayedHours" type="number" min="1" value="${Number(cfg.delayedHoursThreshold||6)}"></div><div><label>Hora límite agenda</label><input id="iqAgendaLimit" type="time" value="${htmlEscape(cfg.agendaHourLimit||'16:30')}"></div><div style="display:flex;align-items:flex-end"><button onclick="saveInternalQualityConfig()">Guardar configuración</button></div></div></div>`
       if(!rows.length) return cfgHtml + `<div class="small">No hay analistas activos.</div>`
       const analystCards = rows.map(row => {
         const periodKey = `${period}_${String(row.now.periodStart).slice(0,10)}`
         const adminFb = String(feedbackMap?.[emailKey(row.email)]?.[periodKey]?.feedback || "")
-        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(h.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
+        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(h.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.agenda}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
       }).join("")
       return cfgHtml + `<div class="inline" style="margin-bottom:8px"><label style="margin:0">Histórico</label><select onchange="internalQualitySelectedPeriod=this.value;loadAdminInternalQualityTab()" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select></div>` + analystCards
     }
@@ -4512,7 +4564,7 @@ Cliente B`)
       if(qualityAdminAnalystFilter){
         surveys = surveys.filter(s => String(s.analystEmail || "").toLowerCase() === qualityAdminAnalystFilter)
       }
-      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p><h4 style="margin:14px 0 8px">Calidad interna (analista)</h4>${await renderInternalQualityAdminSection()}`; return }
+      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p>`; return }
       const byAnalyst = {}
       const byConsultor = {}
       surveys.forEach(s => {
@@ -4564,7 +4616,6 @@ Cliente B`)
         <h4 style="margin:14px 0 8px">Promedios generales por rol evaluado</h4><div class="qualityRoleTabs"><button class="${qualityAdminRoleView==='analista'?'':'ghost'}" onclick="setAdminQualityRoleView('analista')">Analista</button><button class="${qualityAdminRoleView==='consultor'?'':'ghost'}" onclick="setAdminQualityRoleView('consultor')">Consultor</button></div><div class="qualitySummaryGrid">${metricCards}</div><h4 style="margin:14px 0 8px">Promedio recibido por analista</h4>${averages}
         <h4 style="margin:14px 0 8px">Promedio recibido por consultor</h4>${consultorAverages}
         <h4 style="margin:14px 0 8px">Detalle de criterios por encuesta</h4>${details}
-        <h4 style="margin:14px 0 8px">Calidad interna (analista)</h4>${await renderInternalQualityAdminSection()}
       `
     }
 
@@ -4603,16 +4654,26 @@ Cliente B`)
       const email = String(analystEmail||"").toLowerCase()
       const start = startOfPeriod(anchorDate, period)
       const end = endOfPeriod(start, period)
-      const tickets = (cachedTickets || []).filter(t => String(t?.assignedTo||"").toLowerCase() === email)
+      let ticketsSource = cachedTickets || []
+      if(!ticketsSource.length){
+        try{ ticketsSource = await fetchTicketsFromDb() }catch(_){ ticketsSource = [] }
+      }
+      const tickets = ticketsSource.filter(t => String(t?.assignedTo||"").toLowerCase() === email)
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
-      const usersByEmail = cachedUsersByEmail || {}
+      let usersByEmail = cachedUsersByEmail || {}
+      if(!Object.keys(usersByEmail).length){
+        try{ usersByEmail = (await db.ref("users_by_email").once("value")).val() || {} }catch(_){ usersByEmail = {} }
+      }
 
       const ticketIds = new Set(tickets.map(t => String(t.id||"")))
       const relevantLogs = logs.filter(l => ticketIds.has(String(l.ticketId||"")) && inRangeIso(l.timestampIso, start, end))
       const statusMoves = relevantLogs.filter(l => String(l.eventType||"") === "ticket_movido" && String(l.email||"").toLowerCase() === email)
 
-      const timeEntries = tickets.flatMap(t => Object.values(t?.timeTracking?.monthlyFolders || {}).flatMap(folder => Array.isArray(folder?.entries) ? folder.entries : []))
-        .filter(e => String(e?.analyst||"").toLowerCase() === email && inRangeIso(e.createdAt || e.loggedDate, start, end))
+      const timeEntries = tickets.flatMap(t => {
+        const fromFolders = Object.values(t?.timeTracking?.monthlyFolders || {}).flatMap(folder => Array.isArray(folder?.entries) ? folder.entries : [])
+        const fromLegacy = Array.isArray(t?.timeTracking?.entries) ? t.timeTracking.entries : []
+        return [...fromFolders, ...fromLegacy]
+      }).filter(e => String(e?.analyst||"").toLowerCase() === email && inRangeIso(e.createdAt || e.loggedDate || e.date, start, end))
 
       const responsePairs = []
       tickets.forEach(t => {
@@ -5252,6 +5313,7 @@ Cliente B`)
         ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+        ...(currentRole === "analista" ? [{ icon: "🛟", label: "Casos con soporte", action: "setMainViewTab('support')" }] : []),
         ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
         ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
         ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
@@ -5281,7 +5343,7 @@ Cliente B`)
             <div class="sideNavList">
               ${sidebarItems.map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}
             </div>
-            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden" onclick="openInternalQualityModal()" style="cursor:pointer" title="Ver cómo se calcula"><div id="qualityOrbValue">-</div><div class="smallLabel">Calidad interna</div></div></div>` : ""}
+            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden" onclick="setMainViewTab('quality_results')" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">-</div><div class="smallLabel"></div></div></div>` : ""}
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -5337,7 +5399,7 @@ Cliente B`)
             <div id="savedItemsContainer" class="small"></div>
           </div>
         ` : showQualityResults ? `
-          <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3><div id="qualityResultsContainer" class="small"></div></div>
+          <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3>${currentRole === "analista" ? `<div class="inline" style="gap:8px;margin-bottom:10px"><button class="${qualityResultsMode==='satisfaction'?'':'ghost'}" onclick="setQualityResultsMode('satisfaction')">Encuesta de satisfacción</button><button class="${qualityResultsMode==='internal'?'':'ghost'}" onclick="setQualityResultsMode('internal')">Calidad interna</button></div>` : ""}<div id="qualityResultsContainer" class="small"></div></div>
         ` : showSupportCasesView ? `
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
         ` : showConsultorGuidelines ? `
@@ -5698,14 +5760,14 @@ Cliente B`)
       const feed = document.getElementById("encuentroFeed")
       const membersWrap = document.getElementById("encuentroMembers")
       if(!feed || !membersWrap) return
-      const rows = Object.values((await encuentroRef().once("value")).val() || {})
+      const rows = Object.entries((await encuentroRef().once("value")).val() || {}).map(([k,v]) => ({ id: k, ...(v||{}) }))
         .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
       const myEmail = String(currentUser?.email || "").toLowerCase()
       feed.innerHTML = rows.length
         ? rows.map(r => {
           const reactions = normalizeEncuentroReactions(r.reactions || {})
           const comments = Object.values(r.comments || {}).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
-          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${htmlEscape(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${htmlEscape(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
+          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${linkifyEscapedText(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${linkifyEscapedText(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
@@ -5823,7 +5885,7 @@ Cliente B`)
         ${tickets.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td>${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td>${htmlEscape(item.ticket.client||"-")}</td><td>${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}</div>
         <div class="savedBlock comments"><h4 style="margin:0 0 8px">Comentarios guardados</h4>
         ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><div class="savedActionBtns">${c.guidelineRequestStatus === "pending" ? `<button class="ghost" disabled>Pendiente de aprobación</button>` : `<button class="ghost" onclick="elevateSavedCommentAsGuideline('${c.ticketId}','${c.commentId}', event)">Elevar como lineamiento</button>`}<button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}</div>
-        ${currentRole === "analista" ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.createdAt||"")}</div></div><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
+        ${currentRole === "analista" ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.updatedAt || m.createdAt || "")}</div></div><div class="inline" style="gap:8px"><button class="ghost" onclick="editMyMemo('${m.id||""}')">Editar</button><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
       `
     }
 
@@ -6403,13 +6465,38 @@ Cliente B`)
       document.getElementById("analystGuidelineModal").classList.add("hidden")
     }
 
+    function setQualityResultsMode(mode){
+      qualityResultsMode = mode === "internal" ? "internal" : "satisfaction"
+      loadQualityResultsView()
+    }
+
     async function loadQualityResultsView(){
       const wrap = document.getElementById("qualityResultsContainer")
       if(!wrap) return
+      if(currentRole === "analista" && qualityResultsMode === "internal"){
+        try{
+          const myEmail = String(currentUser?.email || "").toLowerCase()
+          const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
+          const history = await buildInternalQualityHistory(myEmail, period, internalQualityHistoryWindow)
+          const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,fields:0,agenda:0 } }
+          const scoreDeg = Math.max(0, Math.min(360, (Number(current.score || 0) / 10) * 360))
+          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
+        }catch(_){
+          wrap.innerHTML = "<p class='small'>No se pudo cargar la calidad interna en este momento. Reintentá en unos segundos.</p>"
+        }
+        return
+      }
       const myEmail = String(currentUser?.email || "").toLowerCase()
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
       const mine = surveys.filter(s => String(s?.ratedEmail || "").toLowerCase() === myEmail)
-      if(!mine.length){ wrap.innerHTML = "<p class='small'>Sin resultados todavía.</p>"; return }
+      if(!mine.length){
+        if(currentRole === "analista"){
+          qualityResultsMode = "internal"
+          return loadQualityResultsView()
+        }
+        wrap.innerHTML = "<p class='small'>Sin resultados todavía.</p>"
+        return
+      }
       const avg = (arr, fn) => arr.reduce((a,b)=>a+fn(b),0) / arr.length
       const rows = [
         { label: "¿Cómo recibiste la solución?", score: avg(mine, s => normalizeQualityReceptionToTen(s.reception || 0)), answer: s => s.reception || "-" },
@@ -6538,7 +6625,11 @@ Cliente B`)
       }
     }
 
-    function setInternalQualityPeriod(value){ internalQualitySelectedPeriod = value === "week" ? "week" : "month"; if(currentRole === "analista") loadMyTicketStatus() }
+    function setInternalQualityPeriod(value){
+      internalQualitySelectedPeriod = value === "week" ? "week" : "month"
+      if(currentRole === "analista" && mainViewTab === "my_ticket_status") loadMyTicketStatus()
+      if(currentRole === "analista" && mainViewTab === "quality_results" && qualityResultsMode === "internal") loadQualityResultsView()
+    }
 
     function openMyTicketStatusDetail(title, ids){
       const modal = document.getElementById("dashboardListModal")
@@ -7134,6 +7225,7 @@ Cliente B`)
       const canDrag = currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets()) || (currentRole === "consultor" && canCurrentRoleEditTickets())
       const canOpenDetail = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const pulseClass = hasConsultorUnreadForCurrent(ticket) ? "consultorPulse" : ""
+      const unreadCount = unreadCommentsCount(ticket)
       const timerBadge = ticketHasRunningTimer(ticket) ? `<span class="small" title="Timer activo">🕒 ${ticketRunningTimerElapsed(ticket)}</span>` : ""
       const fieldSetting = (key, fallback) => {
         const row = coreTicketFieldSettings?.[key] || {}
@@ -7153,7 +7245,7 @@ Cliente B`)
           ${fDeadline.visible ? `<div class="meta deadline">${htmlEscape(fDeadline.label)}: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>` : ""}
           ${timerBadge}
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px">${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="inline" style="margin-top:8px;justify-content:space-between;align-items:center"><span class="unreadBubble">${unreadCount}</span>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -7161,7 +7253,14 @@ Cliente B`)
     async function openTicketDetailModal(id, preferredTab = ""){
       closeDashboardListModal()
       await getRoleTicketEditSettings()
-      const ticket = cachedTickets.find(t => t.id === id)
+      let ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket){
+        try{
+          const refreshed = await fetchTicketsFromDb()
+          cachedTickets = refreshed
+          ticket = refreshed.find(t => t.id === id)
+        }catch(_){}
+      }
       if(!ticket) return alert("No se encontró el ticket")
       const canEdit = canCurrentRoleEditTickets()
       const canEditDeadline = canCurrentRoleEditTickets()
@@ -7776,11 +7875,7 @@ Cliente B`)
         }
       }
       if(ev.key !== "Enter" || ev.shiftKey) return
-      const node = ev.target || document.activeElement
-      const inList = !!(node && node.closest && node.closest('li'))
-      if(inList) return
-      ev.preventDefault()
-      addComment(id)
+      return
     }
 
     function onTicketDragStart(event, ticketId){
@@ -9857,7 +9952,11 @@ Cliente B`)
         try{
           const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
           let surveys = Object.values(surveyMap)
-          if(currentRole === "analista") { const iq = await computeInternalQualityForAnalyst(String(currentUser?.email||"").toLowerCase(), internalQualitySelectedPeriod === "week" ? "week" : "month", new Date()); surveys = [{ overall: iq.score, createdAt: new Date().toISOString() }] }
+          if(currentRole === "analista") surveys = surveys.filter(s => {
+            const ratedRole = String(s.ratedRole || "analista")
+            const ratedEmail = String(s.ratedEmail || s.analystEmail || "").toLowerCase()
+            return ratedRole === "analista" && ratedEmail === String(currentUser?.email||"").toLowerCase()
+          })
           else if(currentRole === "consultor") surveys = surveys.filter(s => {
             const ratedRole = String(s.ratedRole || "consultor")
             const ratedEmail = String(s.ratedEmail || s.consultorEmail || "").toLowerCase()
@@ -9880,7 +9979,7 @@ Cliente B`)
         }catch(_){
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
-          if(orb && orbValue && currentRole === "analista"){
+          if(orb && orbValue && (currentRole === "analista" || currentRole === "consultor")){
             orb.classList.remove("hidden")
             orb.style.setProperty("--quality-deg", "0deg")
             orbValue.textContent = "0.0"
