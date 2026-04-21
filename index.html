@@ -6041,25 +6041,26 @@ Cliente B`)
 
     async function loadManualTypeSelectors(){
       await getTicketCustomFields()
-      const activitySelect = document.getElementById("manualActivityType")
-      if(activitySelect){
-        const options = getTaskTypeOptions()
-        activitySelect.innerHTML = `<option value="">Seleccionar tipo de actividad</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      const microserviceSelect = document.getElementById("manualMicroserviceType")
+      if(microserviceSelect){
+        const microserviceOptions = getMicroserviceOptions()
+        microserviceSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${microserviceOptions.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       }
-      const activitySelect = document.getElementById("manualActivityType")
-      if(activitySelect){
-        activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>`
+      const manualTaskSelect = document.getElementById("manualActivityType")
+      if(manualTaskSelect){
+        manualTaskSelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>`
       }
       updateManualDynamicTypeOptions()
     }
 
     function updateManualDynamicTypeOptions(){
-      const activitySelect = document.getElementById("manualActivityType")
-      if(!activitySelect) return
-      const current = String(activitySelect.value || "")
+      const manualTaskSelectEl = document.getElementById("manualActivityType")
+      if(!manualTaskSelectEl) return
+      const microservice = String(document.getElementById("manualMicroserviceType")?.value || "")
+      const current = String(manualTaskSelectEl.value || "")
       const options = getDependentActivityOptions(microservice)
-      activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
-      if(options.includes(current)) activitySelect.value = current
+      manualTaskSelectEl.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      if(options.includes(current)) manualTaskSelectEl.value = current
     }
 
     async function openManualModal(){
@@ -6083,6 +6084,7 @@ Cliente B`)
       const title = String(document.getElementById("manualTitle")?.value || "").trim()
       const detail = String(document.getElementById("manualDetail")?.value || "").trim()
       const link = String(document.getElementById("manualLink")?.value || "").trim()
+      const microserviceType = String(document.getElementById("manualMicroserviceType")?.value || "").trim()
       const activityType = String(document.getElementById("manualActivityType")?.value || "").trim()
       if(!title || !detail || !link || !microserviceType || !activityType) return alert("Completá título, detalle, link, tipo de microservicio y tipo de tarea.")
       const id = manualEditId || db.ref("manuals").push().key
@@ -6107,6 +6109,7 @@ Cliente B`)
       document.getElementById("manualTitle").value = String(manual.title || "")
       document.getElementById("manualDetail").value = String(manual.detail || "")
       document.getElementById("manualLink").value = String(manual.link || "")
+      document.getElementById("manualMicroserviceType").value = String(manual.microserviceType || "")
       updateManualDynamicTypeOptions()
       document.getElementById("manualActivityType").value = String(manual.activityType || "")
     }
@@ -10387,9 +10390,12 @@ Cliente B`)
       try{
         applyTheme()
         loadAdminAttendanceState()
-        await ensureDefaultUsers()
-        await ensureDefaultClients()
-        await getRoleTicketEditSettings()
+        renderLogin()
+        const startupWarmup = Promise.allSettled([
+          ensureDefaultUsers(),
+          ensureDefaultClients(),
+          getRoleTicketEditSettings()
+        ])
         const savedEmail = (localStorage.getItem("sessionUserEmail") || "").trim().toLowerCase()
         const savedRole = (localStorage.getItem("sessionUserRole") || "").trim().toLowerCase()
         if(savedEmail){
@@ -10403,9 +10409,8 @@ Cliente B`)
             clearSession()
             renderLogin()
           }
-        }else{
-          renderLogin()
         }
+        await startupWarmup
       }catch(err){
         console.error("Error en inicialización:", err)
         renderLogin()
