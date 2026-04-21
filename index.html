@@ -1565,6 +1565,7 @@
     var adminReassignAnalystCache = []
     var adminReassignIgnoredIds = {}
     var commentEditContext = null
+    var pendingCommentImageByTicket = {}
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
@@ -5671,7 +5672,7 @@ Cliente B`)
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()"><option value="">Todos</option>${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Informador</label><select id="filterInformer" onchange="updateInformerFilter()"></select></div>`:""}
-              ${currentRole !== "analista" ? `<div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>` : ""}
+              ${currentRole === "consultor" ? `<div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>` : ""}
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
@@ -6136,7 +6137,7 @@ Cliente B`)
     }
 
     async function loadManualsAdmin(){
-      if(currentRole !== "admin" || adminPanelTab !== "manuals") return
+      if(currentRole !== "admin" || !["manuals","continuous_improvement"].includes(adminPanelTab) || (adminPanelTab === "continuous_improvement" && adminContinuousTab !== "manuals")) return
       const manuals = await getManuals()
       const folders = await getManualFolders()
       const folderMap = Object.fromEntries(folders.map(f => [String(f.id), String(f.name)]))
@@ -6393,7 +6394,7 @@ Cliente B`)
     }
 
     async function loadGuidelinesAdmin(){
-      if(currentRole !== "admin" || adminPanelTab !== "guidelines") return
+      if(currentRole !== "admin" || !["guidelines","continuous_improvement"].includes(adminPanelTab) || (adminPanelTab === "continuous_improvement" && adminContinuousTab !== "guidelines")) return
       const composerGrid = document.querySelector("#guidelineClient")?.closest(".settingsGrid")
       const composerSaveWrap = document.querySelector("button[onclick='saveGuideline()']")?.parentElement
       if(composerGrid && composerSaveWrap){
@@ -7901,10 +7902,10 @@ Cliente B`)
               </div>
               <div id="comment-editor-${id}" class="commentEditor" contenteditable="true" data-placeholder="Escribí un comentario (podés mencionar con @usuario)" onkeydown="handleCommentKeydown(event,'${id}')" oninput="handleCommentMentionInput('${id}')" onclick="handleCommentMentionInput('${id}')"></div>
               <div id="mention-suggest-${id}" class="mentionSuggest hidden"></div>
-              <div class="inline" style="align-items:center;margin-top:8px">
+              <div id="comment-image-preview-${id}" class="small" style="margin-top:8px"></div><div class="inline" style="align-items:center;margin-top:8px">
                 ${currentRole !== "consultor" ? `<div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-internal-${id}"><span class="slider"></span></label><span>Interno</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="comment-max-attention-${id}"><span class="slider"></span></label><span>Atención máxima</span></div>` : ""}
                 <label class="ghost attachBtn" for="comment-file-${id}" title="Adjuntar archivo">📎</label>
-                <input id="comment-file-${id}" class="attachInput" type="file" accept="image/*" />
+                <input id="comment-file-${id}" class="attachInput" type="file" accept="image/*" onchange="handleCommentFileChange('${id}')" />
                 <button class="ghost" onclick="addComment('${id}')">Comentar</button>
                 <span class="small" style="margin-left:auto">Podés arrastrar y soltar imágenes aquí</span>
               </div>
@@ -8622,6 +8623,39 @@ Cliente B`)
       showToast("Ticket asignado correctamente", "ok")
     }
 
+    function clearCommentImagePreview(ticketId){
+      const key = String(ticketId || "")
+      const pending = pendingCommentImageByTicket[key]
+      if(pending?.previewUrl) URL.revokeObjectURL(pending.previewUrl)
+      delete pendingCommentImageByTicket[key]
+      const wrap = document.getElementById(`comment-image-preview-${key}`)
+      if(wrap) wrap.innerHTML = ""
+      const input = document.getElementById(`comment-file-${key}`)
+      if(input) input.value = ""
+    }
+
+    function renderCommentImagePreview(ticketId, file){
+      const wrap = document.getElementById(`comment-image-preview-${ticketId}`)
+      if(!wrap) return
+      if(!file){ wrap.innerHTML = ""; return }
+      const prev = pendingCommentImageByTicket[String(ticketId || "")]
+      if(prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
+      const previewUrl = URL.createObjectURL(file)
+      pendingCommentImageByTicket[String(ticketId || "")] = { file, previewUrl }
+      wrap.innerHTML = `<div class="feedItem" style="padding:8px"><div class="small" style="margin-bottom:6px">Vista previa de imagen</div><img src="${htmlEscape(previewUrl)}" alt="preview" style="max-width:220px;border-radius:8px;display:block;margin-bottom:6px"><div class="inline" style="justify-content:space-between"><span class="small">${htmlEscape(file.name || "imagen")}</span><button class="ghost" type="button" onclick="clearCommentImagePreview('${ticketId}')">Quitar</button></div></div>`
+    }
+
+    function handleCommentFileChange(ticketId){
+      const file = document.getElementById(`comment-file-${ticketId}`)?.files?.[0] || null
+      if(!file){ clearCommentImagePreview(ticketId); return }
+      if(!String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
+        clearCommentImagePreview(ticketId)
+        return
+      }
+      renderCommentImagePreview(ticketId, file)
+    }
+
     function handleCommentComposerDragOver(ev, ticketId){
       ev.preventDefault()
       const composer = document.getElementById(`comment-composer-${ticketId}`)
@@ -8650,6 +8684,7 @@ Cliente B`)
       const transfer = new DataTransfer()
       transfer.items.add(image)
       input.files = transfer.files
+      renderCommentImagePreview(ticketId, image)
       showToast(`Imagen lista para comentar: ${image.name}`, "ok", 1800)
     }
 
@@ -8658,7 +8693,7 @@ Cliente B`)
       const messageHtml = (editor?.innerHTML || "").trim()
       const message = commentPlainTextFromHtml(messageHtml)
       const hasInlineMedia = /<img[\s>]/i.test(messageHtml)
-      const file = document.getElementById(`comment-file-${id}`)?.files?.[0] || null
+      const file = pendingCommentImageByTicket[String(id || "")]?.file || document.getElementById(`comment-file-${id}`)?.files?.[0] || null
       const internal = currentRole !== "consultor" ? !!document.getElementById(`comment-internal-${id}`)?.checked : false
       const maximumAttention = currentRole !== "consultor" ? !!document.getElementById(`comment-max-attention-${id}`)?.checked : false
       if(!message && !file && !hasInlineMedia) return
@@ -8671,7 +8706,7 @@ Cliente B`)
         let attachment = null
         if(file){
           showToast("Subiendo archivo...", "info", 2000)
-          try{ attachment = await uploadAttachmentFile(file) }catch(err){ console.error("Fallo upload adjunto:", err); showToast(err?.message || "No se pudo subir adjunto, se enviará comentario sin archivo", "error", 3500) }
+          try{ attachment = await uploadAttachmentFile(file) }catch(err){ console.error("Fallo upload adjunto:", err); try{ const dataUrl = await readFileAsDataUrl(file); attachment = { name: file.name, url: dataUrl, fileId: "", inline: true } }catch(_){ showToast(err?.message || "No se pudo subir adjunto, se enviará comentario sin archivo", "error", 3500) } }
         }
         comments[generateId()] = { message, messageHtml, author: currentUser.email, createdAt: new Date().toISOString(), attachment, internal, maximumAttention }
         const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -8684,8 +8719,7 @@ Cliente B`)
         renderTicketsFromData(cachedTickets)
         if(editor) editor.innerHTML = ""
         hideMentionSuggestions(id)
-        const fileInput = document.getElementById(`comment-file-${id}`)
-        if(fileInput) fileInput.value = ""
+        clearCommentImagePreview(id)
         const internalInput = document.getElementById(`comment-internal-${id}`)
         if(internalInput) internalInput.checked = false
         const maxInput = document.getElementById(`comment-max-attention-${id}`)
@@ -10442,7 +10476,6 @@ Cliente B`)
       try{
         applyTheme()
         loadAdminAttendanceState()
-        renderLogin()
         const startupWarmup = Promise.allSettled([
           ensureDefaultUsers(),
           ensureDefaultClients(),
@@ -10461,6 +10494,8 @@ Cliente B`)
             clearSession()
             renderLogin()
           }
+        }else{
+          renderLogin()
         }
         await startupWarmup
       }catch(err){
