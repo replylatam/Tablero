@@ -5350,6 +5350,7 @@ Cliente B`)
         ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+        ...(currentRole === "analista" ? [{ icon: "🛟", label: "Casos con soporte", action: "setMainViewTab('support')" }] : []),
         ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
         ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
         ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
