@@ -6041,10 +6041,10 @@ Cliente B`)
 
     async function loadManualTypeSelectors(){
       await getTicketCustomFields()
-      const microSelect = document.getElementById("manualMicroserviceType")
-      if(microSelect){
-        const options = getMicroserviceOptions()
-        microSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      const activitySelect = document.getElementById("manualActivityType")
+      if(activitySelect){
+        const options = getTaskTypeOptions()
+        activitySelect.innerHTML = `<option value="">Seleccionar tipo de actividad</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       }
       const activitySelect = document.getElementById("manualActivityType")
       if(activitySelect){
@@ -6054,7 +6054,6 @@ Cliente B`)
     }
 
     function updateManualDynamicTypeOptions(){
-      const microservice = String(document.getElementById("manualMicroserviceType")?.value || "").trim()
       const activitySelect = document.getElementById("manualActivityType")
       if(!activitySelect) return
       const current = String(activitySelect.value || "")
@@ -6071,7 +6070,6 @@ Cliente B`)
       document.getElementById("manualDetail").value = ""
       document.getElementById("manualLink").value = ""
       await loadManualTypeSelectors()
-      document.getElementById("manualMicroserviceType").value = ""
       document.getElementById("manualActivityType").value = ""
       document.getElementById("manualModal")?.classList.remove("hidden")
     }
@@ -6085,7 +6083,6 @@ Cliente B`)
       const title = String(document.getElementById("manualTitle")?.value || "").trim()
       const detail = String(document.getElementById("manualDetail")?.value || "").trim()
       const link = String(document.getElementById("manualLink")?.value || "").trim()
-      const microserviceType = String(document.getElementById("manualMicroserviceType")?.value || "").trim()
       const activityType = String(document.getElementById("manualActivityType")?.value || "").trim()
       if(!title || !detail || !link || !microserviceType || !activityType) return alert("Completá título, detalle, link, tipo de microservicio y tipo de tarea.")
       const id = manualEditId || db.ref("manuals").push().key
@@ -6110,7 +6107,6 @@ Cliente B`)
       document.getElementById("manualTitle").value = String(manual.title || "")
       document.getElementById("manualDetail").value = String(manual.detail || "")
       document.getElementById("manualLink").value = String(manual.link || "")
-      document.getElementById("manualMicroserviceType").value = String(manual.microserviceType || "")
       updateManualDynamicTypeOptions()
       document.getElementById("manualActivityType").value = String(manual.activityType || "")
     }
