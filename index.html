@@ -211,9 +211,10 @@
     .encuentroReactionBtn { padding:5px 9px; border-radius:999px; font-size:13px; line-height:1; display:inline-flex; align-items:center; gap:5px; }
     .encuentroReactionBtn.active { border:1px solid var(--accent); box-shadow:0 0 0 1px rgba(61,110,245,.25) inset; }
     .encuentroCommentList { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
-    .encuentroCommentItem { border:1px solid var(--stroke); border-radius:10px; padding:7px 9px; background:rgba(255,255,255,.02); }
+    .encuentroCommentItem { border:1px solid var(--stroke); border-radius:10px; padding:10px 12px; background:rgba(255,255,255,.02); margin-bottom:8px; }
     .encuentroCommentInput { margin-top:8px; display:flex; gap:6px; }
     .encuentroCommentInput input { margin:0; }
+    .encuentroAuthorAvatar{ width:28px !important; height:28px !important; }
     @media (max-width: 980px){
       .layoutShell { flex-direction: column; }
       .mainShell { margin-left: 0; padding: 10px; }
@@ -1473,6 +1474,7 @@
     var adminManualCreateFolderVisible = false
     var adminManualFolderSearchTerm = ""
     var manualEditId = ""
+    var memoEditId = ""
     var analystCvFilter = ""
     var analystShowSentGuidelines = false
     var cachedManuals = []
@@ -1705,6 +1707,7 @@
     }
 
     function setAdminTab(tab){
+      if(adminPanelTab === tab && mainViewTab === "tickets") return
       adminPanelTab = tab
       if(tab !== "guidelines") adminGuidelinesClient = ""
       mainViewTab = "tickets"
@@ -1713,6 +1716,7 @@
     }
 
     function setAnalystTab(tab){
+      if(analystPanelTab === tab && mainViewTab === "tickets") return
       analystPanelTab = tab
       if(tab !== "guidelines") analystGuidelinesClient = ""
       mainViewTab = "tickets"
@@ -1757,7 +1761,9 @@
     }
 
     function setMainViewTab(tab){
-      mainViewTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
+      if(mainViewTab === nextTab) return
+      mainViewTab = nextTab
       if(mainViewTab === "tickets"){
         if(currentRole === "analista") analystPanelTab = "panel"
         if(currentRole === "admin") adminPanelTab = "panel"
@@ -2155,20 +2161,39 @@
       showToast("Memo guardado", "ok")
     }
 
-    function openMemoCreateModal(){
-      document.getElementById("memoTitleModal").value = ""
-      document.getElementById("memoDetailModal").value = ""
+    function openMemoCreateModal(editId = ""){
+      memoEditId = String(editId || "")
+      if(memoEditId){
+        const state = getSavedItemsState()
+        const memo = (state.memos || []).find(m => String(m?.id||"") === memoEditId)
+        document.getElementById("memoTitleModal").value = String(memo?.title || "")
+        document.getElementById("memoDetailModal").value = String(memo?.detail || "")
+      }else{
+        document.getElementById("memoTitleModal").value = ""
+        document.getElementById("memoDetailModal").value = ""
+      }
       document.getElementById("memoCreateModal")?.classList.remove("hidden")
     }
 
     function closeMemoCreateModal(){
+      memoEditId = ""
       document.getElementById("memoCreateModal")?.classList.add("hidden")
     }
 
     function saveMemoFromModal(){
       const title = String(document.getElementById("memoTitleModal")?.value || "").trim()
       const detail = String(document.getElementById("memoDetailModal")?.value || "").trim()
-      addMyMemo(title, detail)
+      if(memoEditId){
+        const state = getSavedItemsState()
+        state.memos = (state.memos || []).map(m => String(m?.id||"") === memoEditId
+          ? { ...m, title, detail, updatedAt: new Date().toISOString() }
+          : m)
+        setSavedItemsState(state)
+        renderSavedItems()
+        showToast("Memo actualizado.", "ok", 1200)
+      }else{
+        addMyMemo(title, detail)
+      }
       closeMemoCreateModal()
     }
 
@@ -2179,25 +2204,7 @@
       renderSavedItems()
     }
 
-    function editMyMemo(id){
-      if(currentRole !== "analista") return
-      const state = getSavedItemsState()
-      const memo = (state.memos || []).find(m => String(m?.id||"") === String(id||""))
-      if(!memo) return
-      const nextTitle = prompt("Editar título del memo", String(memo.title || ""))
-      if(nextTitle === null) return
-      const nextDetail = prompt("Editar detalle del memo", String(memo.detail || ""))
-      if(nextDetail === null) return
-      const cleanTitle = String(nextTitle || "").trim()
-      const cleanDetail = String(nextDetail || "").trim()
-      if(!cleanTitle || !cleanDetail) return alert("Título y detalle son obligatorios.")
-      state.memos = (state.memos || []).map(m => String(m?.id||"") === String(id||"")
-        ? { ...m, title: cleanTitle, detail: cleanDetail, updatedAt: new Date().toISOString() }
-        : m)
-      setSavedItemsState(state)
-      renderSavedItems()
-      showToast("Memo actualizado.", "ok", 1200)
-    }
+    function editMyMemo(id){ if(currentRole === "analista") openMemoCreateModal(id) }
 
     function refreshSaveButtonsState(){
       document.querySelectorAll("[data-save-ticket]").forEach(btn => {
@@ -2449,6 +2456,12 @@
       if(!(currentRole === 'analista' || currentRole === 'consultor' || currentRole === 'admin')) return ticket
       const comments = { ...(ticket.comments || {}) }
       const myKey = emailKey(currentUser.email)
+      const analystKeys = currentRole === "analista"
+        ? Object.values(usersByEmail || {})
+          .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+          .map(u => emailKey(String(u?.email || "")))
+          .filter(Boolean)
+        : []
       let changed = false
       Object.entries(comments).forEach(([cid,c]) => {
         const item = { ...(c || {}) }
@@ -2460,8 +2473,21 @@
         if(!shouldMark) return
 
         const readBy = { ...(item.readBy || {}) }
+        let localChanged = false
         if(!readBy[myKey]){
           readBy[myKey] = { email: currentUser.email, role: currentRole, at: new Date().toISOString() }
+          localChanged = true
+        }
+        if(currentRole === "analista"){
+          analystKeys.forEach(k => {
+            if(!k) return
+            if(!readBy[k]){
+              readBy[k] = { email: k.replaceAll("_","."), role: "analista", at: new Date().toISOString() }
+              localChanged = true
+            }
+          })
+        }
+        if(localChanged){
           item.readBy = readBy
           comments[cid] = item
           changed = true
@@ -4877,7 +4903,8 @@ Cliente B`)
     }
 
     async function openCloseSurveyModal(ticketId, nextTicketData){
-      pendingCloseSurvey = { ticketId, nextTicketData }
+      const current = (cachedTickets || []).find(t => String(t.id||"") === String(ticketId||""))
+      pendingCloseSurvey = { ticketId, nextTicketData, previousStatus: String(current?.status || nextTicketData?.status || "todo") }
       await ensureQualityFormsLoaded()
       renderQualityQuestions("closeSurveyFields", "consultor")
       const obs = document.getElementById("closeSurveyObservation")
@@ -4886,7 +4913,17 @@ Cliente B`)
     }
 
     function closeCloseSurveyModal(){
+      const ticketId = String(pendingCloseSurvey?.ticketId || "")
+      const previousStatus = String(pendingCloseSurvey?.previousStatus || "")
       pendingCloseSurvey = null
+      if(ticketId && previousStatus){
+        const detailStatus = document.getElementById(`detail-status-${ticketId}`)
+        if(detailStatus) detailStatus.value = previousStatus
+        const listStatus = document.getElementById(`list-status-${ticketId}`)
+        if(listStatus) listStatus.value = previousStatus
+        const nextStatus = document.getElementById(`next-${ticketId}`)
+        if(nextStatus) nextStatus.value = previousStatus
+      }
       const obs = document.getElementById("closeSurveyObservation")
       if(obs) obs.value = ""
       document.getElementById("closeSurveyModal")?.classList.add("hidden")
@@ -4900,13 +4937,14 @@ Cliente B`)
       if(!reception || !communication || !overall) return alert("Completá todos los campos de la encuesta.")
       const { ticketId, nextTicketData } = pendingCloseSurvey
       const observation = String(document.getElementById("closeSurveyObservation")?.value || "").trim()
+      const consultorTarget = String(resolveInformerEmail(nextTicketData) || "").toLowerCase()
       const survey = {
         ticketId,
-        consultorEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
+        consultorEmail: consultorTarget,
         analystEmail: String(nextTicketData.assignedTo || currentUser?.email || "").toLowerCase(),
         raterEmail: String(currentUser?.email || "").toLowerCase(),
         raterRole: "analista",
-        ratedEmail: String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase(),
+        ratedEmail: consultorTarget,
         ratedRole: "consultor",
         reception,
         communication,
@@ -4915,7 +4953,6 @@ Cliente B`)
         answers,
         createdAt: new Date().toISOString()
       }
-      const consultorTarget = String(nextTicketData.informer || nextTicketData.createdBy || "").toLowerCase()
       const updated = {
         ...nextTicketData,
         status: "done",
@@ -5332,7 +5369,8 @@ Cliente B`)
         ...(isAdmin ? [{ icon: "❓", label: "Ayuda", action: "setAdminTab('help')" }] : []),
         ...(isAdmin ? [{ icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }] : []),
         ...(isAdmin ? [{ icon: "🗓️", label: "Organizar agenda", action: "setAdminTab('agenda')" }] : []),
-        ...(isAdmin ? [{ icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" }] : [])
+        ...(isAdmin ? [{ icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" }] : []),
+        ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : [])
       ]
 
       document.getElementById("app").innerHTML = `
@@ -5554,7 +5592,7 @@ Cliente B`)
               <div class="filterField"><label>Actividad</label><select id="filterActivityType" onchange="updateActivityFilter()">${activityFilterOptionsHtml()}</select></div>
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Analista</label><select id="filterAnalyst" onchange="updateAnalystFilter()"></select></div>`:""}
               ${(isAnalyst || isAdmin)?`<div class="filterField"><label>Informador</label><select id="filterInformer" onchange="updateInformerFilter()"></select></div>`:""}
-              <div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>
+              ${currentRole !== "analista" ? `<div class="filterField"><label>&nbsp;</label><button type="button" class="secondary" title="Limpiar filtros" onclick="clearTicketFilters()">🧹</button></div>` : ""}
             </div>
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
@@ -5767,7 +5805,7 @@ Cliente B`)
         ? rows.map(r => {
           const reactions = normalizeEncuentroReactions(r.reactions || {})
           const comments = Object.values(r.comments || {}).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
-          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${linkifyEscapedText(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${linkifyEscapedText(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
+          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${linkifyEscapedText(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar encuentroAuthorAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${linkifyEscapedText(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
@@ -6480,7 +6518,7 @@ Cliente B`)
           const history = await buildInternalQualityHistory(myEmail, period, internalQualityHistoryWindow)
           const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,fields:0,agenda:0 } }
           const scoreDeg = Math.max(0, Math.min(360, (Number(current.score || 0) / 10) * 360))
-          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
+          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div><div class="small" style="margin-top:6px">Variables evaluadas: ${(current.analyzed||[]).map(v => `• ${htmlEscape(v)}`).join(" ") || "Sin detalle"}</div><div class="small" style="margin-top:4px">Base del cálculo actual: ${Number(current.counts?.statusMoves||0)} cambios de estado · ${Number(current.counts?.entries||0)} cargas de tiempo · ${Number(current.counts?.tickets||0)} tickets.</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
         }catch(_){
           wrap.innerHTML = "<p class='small'>No se pudo cargar la calidad interna en este momento. Reintentá en unos segundos.</p>"
         }
@@ -6977,12 +7015,18 @@ Cliente B`)
       const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
-      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:pointer;min-height:54px" onclick="${i.ticketId ? `openTicketDetailModal('${i.ticketId}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
       const newest = items[0]?.ts || ""
       if(newest){
         const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
         localStorage.setItem(seenKey, String(newest))
       }
+    }
+
+    async function openAlertTicket(ticketId, tab = "comments"){
+      analystNotificationsOpen = false
+      document.getElementById("analystNotifDropdown")?.classList.add("hidden")
+      await openTicketDetailModal(String(ticketId || ""), String(tab || "comments"))
     }
 
     async function fetchAdminNotifications(){
