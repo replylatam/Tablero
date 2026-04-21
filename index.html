@@ -6041,10 +6041,10 @@ Cliente B`)
 
     async function loadManualTypeSelectors(){
       await getTicketCustomFields()
-      const microserviceSelect = document.getElementById("manualMicroserviceType")
-      if(microserviceSelect){
-        const microserviceOptions = getMicroserviceOptions()
-        microserviceSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${microserviceOptions.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      const microSelect = document.getElementById("manualMicroserviceType")
+      if(microSelect){
+        const options = getMicroserviceOptions()
+        microSelect.innerHTML = `<option value="">Seleccionar tipo de microservicio</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       }
       const activitySelect = document.getElementById("manualActivityType")
       if(activitySelect){
@@ -6054,9 +6054,9 @@ Cliente B`)
     }
 
     function updateManualDynamicTypeOptions(){
+      const microservice = String(document.getElementById("manualMicroserviceType")?.value || "").trim()
       const activitySelect = document.getElementById("manualActivityType")
       if(!activitySelect) return
-      const microservice = String(document.getElementById("manualMicroserviceType")?.value || "")
       const current = String(activitySelect.value || "")
       const options = getDependentActivityOptions(microservice)
       activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
@@ -6071,6 +6071,7 @@ Cliente B`)
       document.getElementById("manualDetail").value = ""
       document.getElementById("manualLink").value = ""
       await loadManualTypeSelectors()
+      document.getElementById("manualMicroserviceType").value = ""
       document.getElementById("manualActivityType").value = ""
       document.getElementById("manualModal")?.classList.remove("hidden")
     }
