@@ -10391,9 +10391,12 @@ Cliente B`)
       try{
         applyTheme()
         loadAdminAttendanceState()
-        await ensureDefaultUsers()
-        await ensureDefaultClients()
-        await getRoleTicketEditSettings()
+        renderLogin()
+        const startupWarmup = Promise.allSettled([
+          ensureDefaultUsers(),
+          ensureDefaultClients(),
+          getRoleTicketEditSettings()
+        ])
         const savedEmail = (localStorage.getItem("sessionUserEmail") || "").trim().toLowerCase()
         const savedRole = (localStorage.getItem("sessionUserRole") || "").trim().toLowerCase()
         if(savedEmail){
@@ -10407,9 +10410,8 @@ Cliente B`)
             clearSession()
             renderLogin()
           }
-        }else{
-          renderLogin()
         }
+        await startupWarmup
       }catch(err){
         console.error("Error en inicialización:", err)
         renderLogin()
