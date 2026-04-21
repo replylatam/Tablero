@@ -2179,6 +2179,26 @@
       renderSavedItems()
     }
 
+    function editMyMemo(id){
+      if(currentRole !== "analista") return
+      const state = getSavedItemsState()
+      const memo = (state.memos || []).find(m => String(m?.id||"") === String(id||""))
+      if(!memo) return
+      const nextTitle = prompt("Editar título del memo", String(memo.title || ""))
+      if(nextTitle === null) return
+      const nextDetail = prompt("Editar detalle del memo", String(memo.detail || ""))
+      if(nextDetail === null) return
+      const cleanTitle = String(nextTitle || "").trim()
+      const cleanDetail = String(nextDetail || "").trim()
+      if(!cleanTitle || !cleanDetail) return alert("Título y detalle son obligatorios.")
+      state.memos = (state.memos || []).map(m => String(m?.id||"") === String(id||"")
+        ? { ...m, title: cleanTitle, detail: cleanDetail, updatedAt: new Date().toISOString() }
+        : m)
+      setSavedItemsState(state)
+      renderSavedItems()
+      showToast("Memo actualizado.", "ok", 1200)
+    }
+
     function refreshSaveButtonsState(){
       document.querySelectorAll("[data-save-ticket]").forEach(btn => {
         const id = String(btn.getAttribute("data-save-ticket") || "")
@@ -2335,6 +2355,15 @@
       return users.find(email => email.split("@")[0] === normalized) || ""
     }
 
+    function linkifyEscapedText(text){
+      const escaped = htmlEscape(text || "")
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
+      return escaped.replace(urlRegex, (raw) => {
+        const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+        return `<a href="${htmlEscape(href)}" target="_blank" rel="noopener noreferrer">${raw}</a>`
+      })
+    }
+
     function enhanceCommentHtmlWithMentions(html){
       const wrapper = document.createElement("div")
       wrapper.innerHTML = safeCommentHtml(html)
@@ -2369,6 +2398,20 @@
         }
         if(cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)))
         node.parentNode.replaceChild(frag, node)
+      })
+      wrapper.querySelectorAll("*").forEach(el => {
+        if(["A","IMG","VIDEO","IFRAME"].includes(String(el.tagName || ""))) return
+        if(!el.childNodes?.length) return
+      })
+      const urlWalker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT, null)
+      const urlNodes = []
+      while(urlWalker.nextNode()) urlNodes.push(urlWalker.currentNode)
+      urlNodes.forEach(node => {
+        const text = String(node.nodeValue || "")
+        if(!/(https?:\/\/|www\.)/i.test(text)) return
+        const temp = document.createElement("span")
+        temp.innerHTML = linkifyEscapedText(text)
+        node.parentNode.replaceChild(temp, node)
       })
       return wrapper.innerHTML
     }
@@ -4485,7 +4528,10 @@ Cliente B`)
       if(!Object.keys(usersMap).length){
         try{ usersMap = (await db.ref("users_by_email").once("value")).val() || {} }catch(_){ usersMap = {} }
       }
-      const analysts = Object.values(usersMap || {}).filter(u => String(u?.role||"") === "analista" && u?.active !== false).map(u => String(u.email||"").toLowerCase())
+      const analysts = Object.entries(usersMap || {})
+        .map(([k,u]) => ({ key:k, ...(u||{}) }))
+        .filter(u => String(u?.role||"") === "analista" && u?.active !== false)
+        .map(u => String(u.email || String(u.key || "").replaceAll("_",".")).toLowerCase())
       const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
       const rows = await Promise.all(analysts.map(async email => ({ email, now: await computeInternalQualityForAnalyst(email, period, new Date()), history: await buildInternalQualityHistory(email, period, 4) })))
       const feedbackMap = (await db.ref("quality_internal_feedback").once("value")).val() || {}
@@ -5267,6 +5313,7 @@ Cliente B`)
         ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
         ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+        ...(currentRole === "analista" ? [{ icon: "🛟", label: "Casos con soporte", action: "setMainViewTab('support')" }] : []),
         ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
         ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
         ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
@@ -5713,14 +5760,14 @@ Cliente B`)
       const feed = document.getElementById("encuentroFeed")
       const membersWrap = document.getElementById("encuentroMembers")
       if(!feed || !membersWrap) return
-      const rows = Object.values((await encuentroRef().once("value")).val() || {})
+      const rows = Object.entries((await encuentroRef().once("value")).val() || {}).map(([k,v]) => ({ id: k, ...(v||{}) }))
         .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
       const myEmail = String(currentUser?.email || "").toLowerCase()
       feed.innerHTML = rows.length
         ? rows.map(r => {
           const reactions = normalizeEncuentroReactions(r.reactions || {})
           const comments = Object.values(r.comments || {}).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
-          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${htmlEscape(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${htmlEscape(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
+          return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${linkifyEscapedText(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar" style="width:20px;height:20px"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${linkifyEscapedText(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
@@ -5838,7 +5885,7 @@ Cliente B`)
         ${tickets.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td>${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td>${htmlEscape(item.ticket.client||"-")}</td><td>${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}</div>
         <div class="savedBlock comments"><h4 style="margin:0 0 8px">Comentarios guardados</h4>
         ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><div class="savedActionBtns">${c.guidelineRequestStatus === "pending" ? `<button class="ghost" disabled>Pendiente de aprobación</button>` : `<button class="ghost" onclick="elevateSavedCommentAsGuideline('${c.ticketId}','${c.commentId}', event)">Elevar como lineamiento</button>`}<button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}</div>
-        ${currentRole === "analista" ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.createdAt||"")}</div></div><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
+        ${currentRole === "analista" ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.updatedAt || m.createdAt || "")}</div></div><div class="inline" style="gap:8px"><button class="ghost" onclick="editMyMemo('${m.id||""}')">Editar</button><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
       `
     }
 
@@ -6443,9 +6490,11 @@ Cliente B`)
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
       const mine = surveys.filter(s => String(s?.ratedEmail || "").toLowerCase() === myEmail)
       if(!mine.length){
-        wrap.innerHTML = currentRole === "analista"
-          ? "<p class='small'>Sin resultados de satisfacción todavía.</p><button class='ghost' onclick=\"setQualityResultsMode('internal')\">Ver calidad interna</button>"
-          : "<p class='small'>Sin resultados todavía.</p>"
+        if(currentRole === "analista"){
+          qualityResultsMode = "internal"
+          return loadQualityResultsView()
+        }
+        wrap.innerHTML = "<p class='small'>Sin resultados todavía.</p>"
         return
       }
       const avg = (arr, fn) => arr.reduce((a,b)=>a+fn(b),0) / arr.length
@@ -7176,6 +7225,7 @@ Cliente B`)
       const canDrag = currentRole === "admin" || (currentRole === "analista" && canCurrentRoleEditTickets()) || (currentRole === "consultor" && canCurrentRoleEditTickets())
       const canOpenDetail = currentRole === "admin" || currentRole === "analista" || currentRole === "consultor"
       const pulseClass = hasConsultorUnreadForCurrent(ticket) ? "consultorPulse" : ""
+      const unreadCount = unreadCommentsCount(ticket)
       const timerBadge = ticketHasRunningTimer(ticket) ? `<span class="small" title="Timer activo">🕒 ${ticketRunningTimerElapsed(ticket)}</span>` : ""
       const fieldSetting = (key, fallback) => {
         const row = coreTicketFieldSettings?.[key] || {}
@@ -7195,7 +7245,7 @@ Cliente B`)
           ${fDeadline.visible ? `<div class="meta deadline">${htmlEscape(fDeadline.label)}: ${ticket.deadline ? formatDateDMY(ticket.deadline) : "Sin fecha"}</div>` : ""}
           ${timerBadge}
           ${ticket.urgentRequested?`<div class="urgentFlag">Marcado como urgente</div>`:""}
-          <div class="inline" style="margin-top:8px">${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
+          <div class="inline" style="margin-top:8px;justify-content:space-between;align-items:center"><span class="unreadBubble">${unreadCount}</span>${currentRole === "admin" ? `<button class="danger" onclick="event.stopPropagation();deleteTicket('${ticket.id}')">Eliminar</button>` : ""}</div>
         </div>
       `
     }
@@ -7203,7 +7253,14 @@ Cliente B`)
     async function openTicketDetailModal(id, preferredTab = ""){
       closeDashboardListModal()
       await getRoleTicketEditSettings()
-      const ticket = cachedTickets.find(t => t.id === id)
+      let ticket = cachedTickets.find(t => t.id === id)
+      if(!ticket){
+        try{
+          const refreshed = await fetchTicketsFromDb()
+          cachedTickets = refreshed
+          ticket = refreshed.find(t => t.id === id)
+        }catch(_){}
+      }
       if(!ticket) return alert("No se encontró el ticket")
       const canEdit = canCurrentRoleEditTickets()
       const canEditDeadline = canCurrentRoleEditTickets()
@@ -7818,11 +7875,7 @@ Cliente B`)
         }
       }
       if(ev.key !== "Enter" || ev.shiftKey) return
-      const node = ev.target || document.activeElement
-      const inList = !!(node && node.closest && node.closest('li'))
-      if(inList) return
-      ev.preventDefault()
-      addComment(id)
+      return
     }
 
     function onTicketDragStart(event, ticketId){
