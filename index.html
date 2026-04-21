@@ -1365,8 +1365,8 @@
       </div>
       <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
         <div><label>Título</label><input id="manualTitle" placeholder="Título"></div>
-        <div><label>Tipo de actividad</label><select id="manualActivityType"><option value="">Seleccionar tipo de actividad</option></select></div>
-        <div><label>Carpeta</label><select id="manualFolder"><option value="">Sin carpeta</option></select></div>
+        <div><label>Tipo de microservicio</label><select id="manualMicroserviceType" onchange="updateManualDynamicTypeOptions()"><option value="">Seleccionar tipo de microservicio</option></select></div>
+        <div><label>Tipo de tarea</label><select id="manualActivityType"><option value="">Seleccionar tipo de tarea</option></select></div>
         <div style="grid-column:1/-1"><label>Detalle</label><textarea id="manualDetail" placeholder="Detalle del manual"></textarea></div>
         <div style="grid-column:1/-1"><label>Link del archivo</label><input id="manualLink" placeholder="https://..."></div>
       </div>
@@ -2325,6 +2325,12 @@
       if(/^https?:\/\//i.test(raw)) return raw
       if(raw.startsWith("www.")) return `https://${raw}`
       return raw
+    }
+
+    function isImageAttachment(attachment){
+      const url = String(attachment?.url || "").toLowerCase()
+      const name = String(attachment?.name || "").toLowerCase()
+      return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(url) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name)
     }
 
     function buildInitialAvatar(email){
@@ -5032,7 +5038,6 @@ Cliente B`)
       if(ix >= 0) cachedTickets[ix] = updated
       closeCloseSurveyModal()
       showToast("Ticket cerrado y encuesta enviada.", "ok")
-      openTicketDetailModal(ticketId)
       loadDashboard()
     }
 
@@ -6041,14 +6046,19 @@ Cliente B`)
         const options = getTaskTypeOptions()
         activitySelect.innerHTML = `<option value="">Seleccionar tipo de actividad</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       }
+      const activitySelect = document.getElementById("manualActivityType")
+      if(activitySelect){
+        activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>`
+      }
+      updateManualDynamicTypeOptions()
     }
 
     function updateManualDynamicTypeOptions(){
       const activitySelect = document.getElementById("manualActivityType")
       if(!activitySelect) return
       const current = String(activitySelect.value || "")
-      const options = getTaskTypeOptions()
-      activitySelect.innerHTML = `<option value="">Seleccionar tipo de actividad</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
+      const options = getDependentActivityOptions(microservice)
+      activitySelect.innerHTML = `<option value="">Seleccionar tipo de tarea</option>${options.map(opt => `<option value="${htmlEscape(opt)}">${htmlEscape(opt)}</option>`).join("")}`
       if(options.includes(current)) activitySelect.value = current
     }
 
@@ -6061,11 +6071,6 @@ Cliente B`)
       document.getElementById("manualLink").value = ""
       await loadManualTypeSelectors()
       document.getElementById("manualActivityType").value = ""
-      getManualFolders().then(folders => {
-        const folderSelect = document.getElementById("manualFolder")
-        if(!folderSelect) return
-        folderSelect.innerHTML = `<option value="">Sin carpeta</option>${folders.map(f => `<option value="${htmlEscape(f.id)}">${htmlEscape(f.name)}</option>`).join("")}`
-      })
       document.getElementById("manualModal")?.classList.remove("hidden")
     }
 
@@ -6079,10 +6084,9 @@ Cliente B`)
       const detail = String(document.getElementById("manualDetail")?.value || "").trim()
       const link = String(document.getElementById("manualLink")?.value || "").trim()
       const activityType = String(document.getElementById("manualActivityType")?.value || "").trim()
-      const folderId = String(document.getElementById("manualFolder")?.value || "").trim()
-      if(!title || !detail || !link || !activityType) return alert("Completá título, detalle, link y tipo de actividad.")
+      if(!title || !detail || !link || !microserviceType || !activityType) return alert("Completá título, detalle, link, tipo de microservicio y tipo de tarea.")
       const id = manualEditId || db.ref("manuals").push().key
-      const payload = { id, title, detail, link, activityType, folderId, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
+      const payload = { id, title, detail, link, microserviceType, activityType, folderId: "", updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
       if(manualEditId){
         await db.ref("manuals").child(id).update(payload)
       }else{
@@ -6105,7 +6109,6 @@ Cliente B`)
       document.getElementById("manualLink").value = String(manual.link || "")
       updateManualDynamicTypeOptions()
       document.getElementById("manualActivityType").value = String(manual.activityType || "")
-      document.getElementById("manualFolder").value = String(manual.folderId || "")
     }
 
     async function deleteManual(id){
@@ -6129,7 +6132,6 @@ Cliente B`)
         const byFolder = !adminManualFolderFilter || String(m.folderId || "") === String(adminManualFolderFilter)
         return byText && byFolder
       })
-      const folderOptions = `<option value="">Todas las carpetas</option>${folders.map(f => `<option value="${htmlEscape(f.id)}" ${String(adminManualFolderFilter||"")===String(f.id)?"selected":""}>${htmlEscape(f.name)}</option>`).join("")}`
       const byFolder = filtered.reduce((acc,m)=>{ const k=String(m.folderId||""); if(!acc[k]) acc[k]=[]; acc[k].push(m); return acc }, {})
       const folderSearch = String(adminManualFolderSearchTerm || "").toLowerCase()
       const folderCards = folders
@@ -6141,7 +6143,6 @@ Cliente B`)
         <div class="inline" style="gap:10px;flex-wrap:wrap;margin-bottom:10px">${folderCards || `<div class="small">Sin carpetas.</div>`}</div>
         <div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <input placeholder="Buscar manual" style="margin:0;min-width:220px" value="${htmlEscape(adminManualsSearchTerm || "")}" oninput="updateAdminManualsSearch(this.value)">
-          <select style="margin:0;min-width:220px" onchange="setAdminManualFolderFilter(this.value)">${folderOptions}</select>
           <input placeholder="Buscar carpeta" style="margin:0;min-width:220px" value="${htmlEscape(adminManualFolderSearchTerm || "")}" oninput="updateAdminManualFolderSearch(this.value)">
         </div>
         <h4 style="margin:0 0 8px">Documentos sueltos</h4>
@@ -6151,7 +6152,7 @@ Cliente B`)
     }
 
     function renderAdminManualCard(m, folders, folderMap){
-      return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">📄 ${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")} · Carpeta: ${htmlEscape(folderMap[String(m.folderId || "")] || "Sin carpeta")}</div></div><div class="inline"><select style="margin:0;max-width:200px" onchange="moveManualToFolder('${m.id}', this.value)"><option value="">Sin carpeta</option>${folders.map(f => `<option value="${htmlEscape(f.id)}" ${String(m.folderId||"")===String(f.id)?"selected":""}>${htmlEscape(f.name)}</option>`).join("")}</select><button class="ghost" onclick="editManual('${m.id}')">Editar</button><button class="danger" onclick="deleteManual('${m.id}')">Eliminar</button></div></div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`
+      return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">📄 ${htmlEscape(m.title || "-")}</div><div class="feedMeta">${htmlEscape(m.activityType || "Sin tipo de actividad")} · Carpeta: ${htmlEscape(folderMap[String(m.folderId || "")] || "Sin carpeta")}</div></div><div class="inline"><button class="ghost" onclick="editManual('${m.id}')">Editar</button><button class="danger" onclick="deleteManual('${m.id}')">Eliminar</button></div></div><div style="margin-top:6px">${htmlEscape(m.detail || "-")}</div><div class="small" style="margin-top:6px"><a href="${htmlEscape(m.link)}" target="_blank">Abrir manual</a></div></div>`
     }
 
     async function loadManualsAnalyst(){
@@ -7884,7 +7885,7 @@ Cliente B`)
                 <button class="ghost" onclick="addComment('${id}')">Comentar</button>
               </div>
             </div>
-            <div style="margin-top:16px">${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${c.editedAt ? "· editado" : ""} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}</div>
+            <div style="margin-top:16px">${list.length ? list.map(c=>`<div class="commentItem ${c.internal ? "internal" : ""} ${currentRole === "consultor" && c.maximumAttention ? "maximumAttention" : ""}"><div class="commentHead"><div class="commentHeadLeft"><img class="commentAvatar" src="${htmlEscape(userAvatarByEmail(c.author||""))}" alt="avatar" data-fallback="${htmlEscape(buildInitialAvatar(c.author||'U'))}" onerror="handleAvatarError(this)"><div><strong>${htmlEscape(commentDisplayName(c.author||"-"))}</strong>${c.internal ? `<span class="internalBadge">Interno</span>` : ""}${c.maximumAttention ? `<span class="attentionBadge">Atención máxima</span>` : ""}<span class="small" style="margin-left:8px">${formatAgo(c.createdAt)} ${c.editedAt ? "· editado" : ""} ${commentReadIcon(c, usersByEmail)}</span></div></div><button class="ghost saveToggle ${isCommentSaved(id, c.id||"") ? "active" : ""}" data-save-comment="${htmlEscape(`${id}::${c.id||""}`)}" title="Guardar comentario" onclick="toggleSaveComment('${id}','${c.id||""}', event)">${isCommentSaved(id, c.id||"") ? "🔖" : "📑"}</button></div>${c.messageHtml ? `<div class="commentBody formatted${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(c.messageHtml)}</div>` : `<div class="commentBody${String(usersByEmail?.[emailKey(String(c.author||"").toLowerCase())]?.role||"").toLowerCase()==="consultor"?" consultorTone":""}">${enhanceCommentHtmlWithMentions(htmlEscape(c.message||""))}</div>`}${c.attachment?.url ? `<div class="small" style="margin-top:6px">${isImageAttachment(c.attachment) ? `<img src="${htmlEscape(c.attachment.url)}" alt="${htmlEscape(c.attachment.name||"Imagen")}" style="max-width:280px;border-radius:8px;display:block;margin-bottom:6px">` : ""}<a href="${htmlEscape(c.attachment.url)}" target="_blank">📎 ${htmlEscape(c.attachment.name||"Archivo")}</a></div>`:""}<div class="commentFooter"><div class="commentActions">${renderReactionButtons(id, c.id||"", c.reactions||{})}</div><div class="commentActionLinks">${((currentRole === "admin" || currentRole === "analista") && String(c.author||"").toLowerCase() === String(currentUser?.email||"").toLowerCase()) ? `<button class="commentDeleteText" onclick="editComment('${id}','${c.id||""}')">Editar</button>` : ""}${currentRole !== "consultor" ? `<button class="commentDeleteText" onclick="deleteComment('${id}','${c.id||""}')">Eliminar</button>` : ""}</div></div></div>`).join("") : `<div class="small">Sin comentarios</div>`}</div>
           </div>
 
           <div id="ticket-history-tab-${id}" class="small ${(ticketActivityTabById[id] || "comments") === "history" ? "" : "hidden"}">${currentRole !== "consultor" ? "Cargando..." : ""}</div>
@@ -9021,9 +9022,10 @@ Cliente B`)
     }
 
     function openAnalystSummaryActivity(tab){
-      analystSummaryTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
-      analystActivityTab = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
-      renderApp()
+      const selected = ["comments","alerts","deadlines"].includes(tab) ? tab : "comments"
+      analystSummaryTab = selected
+      analystActivityTab = selected
+      setAnalystSummaryTab(selected)
     }
 
     async function setMoodVote(mood){
