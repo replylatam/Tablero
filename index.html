@@ -148,7 +148,7 @@
     .sideSectionTitle {
       color: rgba(219, 230, 251, 0.86);
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 500;
       letter-spacing: .08em;
       text-transform: uppercase;
       padding: 4px 12px 8px;
@@ -172,7 +172,7 @@
     .leftSidebar.expanded .sideNavItem,
     .leftSidebar.expanded .sideToggle { justify-content: flex-start; padding-left: 14px; }
     .sideNavIcon { font-size: 18px; min-width: 24px; text-align: center; }
-    .sideNavLabel { display: none; white-space: nowrap; font-weight: 600; color: #f5f8ff; }
+    .sideNavLabel { display: none; white-space: nowrap; font-weight: 400; color: #f5f8ff; }
     .leftSidebar.expanded .sideNavLabel { display: inline; }
     .sideQualityWrap {
       margin-top: auto;
@@ -1502,6 +1502,7 @@
     var ticketSearchTerm = globalThis.ticketSearchTerm || ""
     var ticketFilterClient = Array.isArray(globalThis.ticketFilterClient) ? globalThis.ticketFilterClient : []
     var cachedClients = globalThis.cachedClients || []
+    var pendingOpenTicketId = globalThis.pendingOpenTicketId || ""
     var consultorRefreshTimer = globalThis.consultorRefreshTimer || null
     var loginInProgress = false
     var uiTheme = localStorage.getItem("uiTheme") || "dark"
@@ -1607,6 +1608,10 @@
     var adminReassignRecommendationCache = []
     var adminReassignAnalystCache = []
     var adminReassignIgnoredIds = {}
+    var clientsPermissionWarningShown = false
+    var appRuntimeErrors = []
+    var runtimeErrorHooksReady = false
+    var adminConnectionsLastReport = null
     var commentEditContext = null
     var pendingCommentImageByTicket = {}
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
@@ -1862,7 +1867,8 @@
       firstGrid.setDate(firstGrid.getDate() - offset)
       const monthLabel = firstDay.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
       const today = toLocalDateOnly(new Date())
-      const ticketsWithDeadline = tickets
+      const ticketsSource = Array.isArray(cachedTickets) ? cachedTickets : []
+      const ticketsWithDeadline = ticketsSource
         .filter(t => String(t.deadline || "").match(/^\d{4}-\d{2}-\d{2}$/))
         .sort((a,b) => String(a.deadline||"").localeCompare(String(b.deadline||"")))
       const byDay = ticketsWithDeadline.reduce((acc, t) => {
@@ -3039,6 +3045,17 @@ Cliente B`)
         if(ticketClientSelect){
           ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
         }
+      }, err => {
+        console.error("Sin permisos para leer /clients:", err)
+        cachedClients = []
+        globalThis.cachedClients = []
+        renderTicketFilterChecks("filterClient", [], ticketFilterClient, "updateClientFilter")
+        const ticketClientSelect = document.getElementById("tClient")
+        if(ticketClientSelect) ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>`
+        if(!clientsPermissionWarningShown){
+          clientsPermissionWarningShown = true
+          showToast("Sin permisos en Firebase para /clients. Revisá reglas de lectura.", "warn")
+        }
       })
 
       db.ref("capacity_low_hours_alerts").off()
@@ -3049,9 +3066,15 @@ Cliente B`)
     }
 
     async function loadFilterOptions(){
-      const clients = Object.values((await db.ref("clients").once("value")).val() || {})
-      cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
-      globalThis.cachedClients = cachedClients
+      try{
+        const clients = Object.values((await db.ref("clients").once("value")).val() || {})
+        cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
+        globalThis.cachedClients = cachedClients
+      }catch(err){
+        console.error("No se pudo leer /clients en loadFilterOptions:", err)
+        cachedClients = []
+        globalThis.cachedClients = []
+      }
 
       const clientFilterSelect = document.getElementById("filterClient")
       if(clientFilterSelect) renderTicketFilterChecks("filterClient", cachedClients, ticketFilterClient, "updateClientFilter")
@@ -4712,6 +4735,110 @@ Cliente B`)
       return cfgHtml + `<div class="inline" style="margin-bottom:8px"><label style="margin:0">Histórico</label><select onchange="internalQualitySelectedPeriod=this.value;loadAdminInternalQualityTab()" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select></div>` + analystCards
     }
 
+    async function runInternalQualityFirebaseDiagnostics(){
+      const checks = [
+        { path: "users_by_email", label: "Lectura de usuarios" },
+        { path: "tickets", label: "Lectura de tickets" },
+        { path: "activity_logs", label: "Lectura de activity logs" },
+        { path: "quality_internal_config", label: "Lectura de configuración CI" },
+        { path: "quality_internal_feedback", label: "Lectura de feedback CI" }
+      ]
+      const results = await Promise.all(checks.map(async item => {
+        try{
+          await db.ref(item.path).once("value")
+          return { ...item, ok: true, detail: "OK" }
+        }catch(err){
+          const msg = String(err?.message || err || "Error desconocido")
+          const denied = /permission_denied/i.test(msg) || String(err?.code || "").toLowerCase().includes("permission")
+          return { ...item, ok: false, detail: denied ? "PERMISSION_DENIED" : msg }
+        }
+      }))
+      return results
+    }
+
+    async function renderInternalQualityDiagnostics(container){
+      if(!container) return
+      const target = container.querySelector("#internalQualityDiagResult")
+      if(!target) return
+      target.innerHTML = `<div class="small">Ejecutando diagnóstico de Firebase…</div>`
+      try{
+        const results = await runInternalQualityFirebaseDiagnostics()
+        const rows = results.map(r => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.label)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><code>${htmlEscape(r.path)}</code></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${r.ok ? "✅ OK" : "❌ " + htmlEscape(r.detail)}</td></tr>`).join("")
+        target.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Chequeo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Ruta</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resultado</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      }catch(err){
+        target.innerHTML = `<div class="small">No se pudo ejecutar el diagnóstico: ${htmlEscape(String(err?.message || err || "Error desconocido"))}</div>`
+      }
+    }
+
+    function setupRuntimeErrorCapture(){
+      if(runtimeErrorHooksReady) return
+      runtimeErrorHooksReady = true
+      const pushError = (source, message) => {
+        appRuntimeErrors.unshift({
+          at: new Date().toISOString(),
+          source: String(source || "runtime"),
+          message: String(message || "Error desconocido")
+        })
+        if(appRuntimeErrors.length > 30) appRuntimeErrors = appRuntimeErrors.slice(0, 30)
+      }
+      window.addEventListener("error", (event) => {
+        pushError(event?.filename || "window.error", event?.message || event?.error?.message || "Error sin detalle")
+      })
+      window.addEventListener("unhandledrejection", (event) => {
+        const reason = event?.reason
+        pushError("unhandledrejection", typeof reason === "string" ? reason : (reason?.message || JSON.stringify(reason || "Promise rechazada")))
+      })
+    }
+
+    async function runAdminConnectionsDiagnostics(){
+      const checks = [
+        { key: "Navegador online", run: async () => ({ ok: navigator.onLine !== false, detail: navigator.onLine ? "Conectado" : "Sin conexión de red" }) },
+        { key: "Firebase /tickets", run: async () => { await db.ref("tickets").limitToFirst(1).once("value"); return { ok: true, detail: "OK" } } },
+        { key: "Firebase /users_by_email", run: async () => { await db.ref("users_by_email").limitToFirst(1).once("value"); return { ok: true, detail: "OK" } } },
+        { key: "Firebase /clients", run: async () => { await db.ref("clients").limitToFirst(1).once("value"); return { ok: true, detail: "OK" } } },
+        { key: "Firebase /activity_logs", run: async () => { await db.ref("activity_logs").limitToFirst(1).once("value"); return { ok: true, detail: "OK" } } },
+        { key: "Firebase /quality_internal_config", run: async () => { await db.ref("quality_internal_config").once("value"); return { ok: true, detail: "OK" } } },
+        { key: "Firebase /quality_internal_feedback", run: async () => { await db.ref("quality_internal_feedback").limitToFirst(1).once("value"); return { ok: true, detail: "OK" } } }
+      ]
+      const results = []
+      for(const check of checks){
+        try{
+          const out = await check.run()
+          results.push({ key: check.key, ok: !!out.ok, detail: out.detail || "OK" })
+        }catch(err){
+          const msg = String(err?.message || err || "Error desconocido")
+          results.push({ key: check.key, ok: false, detail: /permission_denied/i.test(msg) ? "PERMISSION_DENIED" : msg })
+        }
+      }
+      return {
+        at: new Date().toISOString(),
+        checks: results,
+        runtimeErrors: [...appRuntimeErrors]
+      }
+    }
+
+    async function loadAdminConnectionsPanel(forceRefresh = false){
+      const wrap = document.getElementById("adminConnectionsPanel")
+      if(!wrap || currentRole !== "admin") return
+      if(!forceRefresh && adminConnectionsLastReport){
+        return renderAdminConnectionsPanel(adminConnectionsLastReport)
+      }
+      wrap.innerHTML = `<div class="small">Ejecutando diagnóstico de conexiones…</div>`
+      const report = await runAdminConnectionsDiagnostics()
+      adminConnectionsLastReport = report
+      renderAdminConnectionsPanel(report)
+    }
+
+    function renderAdminConnectionsPanel(report){
+      const wrap = document.getElementById("adminConnectionsPanel")
+      if(!wrap) return
+      const rows = (report?.checks || []).map(item => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.key)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${item.ok ? "✅ OK" : "❌ Error"}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.detail || "-")}</td></tr>`).join("")
+      const runtimeErrors = (report?.runtimeErrors || []).length
+        ? (report.runtimeErrors || []).map(err => `<div class="feedItem"><div class="feedType">${htmlEscape(err.source)}</div><div class="feedMeta">${htmlEscape(formatDateTime24(err.at))}</div><div class="small" style="margin-top:6px">${htmlEscape(err.message)}</div></div>`).join("")
+        : `<div class="small">Sin errores capturados en esta sesión.</div>`
+      wrap.innerHTML = `<div class="inline" style="justify-content:space-between;align-items:center"><div class="small">Último diagnóstico: ${htmlEscape(formatDateTime24(report?.at || new Date().toISOString()))}</div><button class="ghost" onclick="loadAdminConnectionsPanel(true)">Diagnosticar ahora</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Conexión</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead><tbody>${rows}</tbody></table></div><h4 style="margin:12px 0 8px">Errores detectados en la sesión (inspector-runtime)</h4>${runtimeErrors}`
+    }
+
     async function loadAdminInternalQualityTab(){
       const container = document.getElementById("adminInternalQualityList")
       if(!container || currentRole !== "admin") return
@@ -4720,7 +4847,8 @@ Cliente B`)
         container.innerHTML = String(html || "").trim() ? html : `<div class="small">Sin datos para mostrar en este momento.</div>`
       }catch(err){
         console.error("Error cargando Calidad interna (admin):", err)
-        container.innerHTML = `<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos. Si persiste, revisá permisos de lectura de Firebase para: users_by_email, tickets, activity_logs y quality_internal_config.</div></div>`
+        container.innerHTML = `<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos. Si persiste, revisá permisos de lectura de Firebase para: users_by_email, tickets, activity_logs, quality_internal_config y quality_internal_feedback.</div><div class="inline" style="justify-content:flex-end;margin-top:8px"><button class="ghost" onclick="renderInternalQualityDiagnostics(document.getElementById('adminInternalQualityList'))">Diagnosticar permisos</button></div><div id="internalQualityDiagResult" style="margin-top:8px"></div></div>`
+        await renderInternalQualityDiagnostics(container)
       }
     }
 
@@ -5535,42 +5663,47 @@ Cliente B`)
       const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
+          { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
-          { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" }
+          { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" },
+          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" },
+          { icon: "📅", label: "Calendario", action: "setAdminTab('calendar')" }
         ]},
         { title: "Área", items: [
           { icon: "🧮", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
           { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" },
+          { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" },
           { icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }
         ]},
         { title: "Mejora continua", items: [
-          { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" },
-          { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" }
+          { icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" },
+          { icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" },
+          { icon: "🎯", label: "Calidad interna", action: "setAdminTab('internal_quality')" },
+          { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" }
         ]},
-        { title: "Otros", items: [
-          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" },
-          { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
+        { title: "Técnico", items: [
           { icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" },
-          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" },
-          { icon: "📅", label: "Calendario", action: "setAdminTab('calendar')" }
+          { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
+          { icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" },
+          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
         ]}
       ] : [
         { title: "General", items: [
-          { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
-          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
-          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
+          { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
+          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "⊙", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
+          { icon: "◩", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
-          ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-          ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
-          ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : [])
+          ...(currentRole === "consultor" ? [{ icon: "◎", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "□", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(isAnalyst ? [{ icon: "◫", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "◍", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
+          ...(isAnalyst ? [{ icon: "≣", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          ...(isAnalyst ? [{ icon: "◷", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
+          ...(isAnalyst ? [{ icon: "◎", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : [])
         ].filter(Boolean)}
       ]
 
@@ -5673,7 +5806,7 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3><button class="ghost" onclick="loadAdminConnectionsPanel(true)">Diagnosticar</button></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -5817,6 +5950,7 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'continuous_improvement' && adminContinuousTab === 'internal_quality'){ loadAdminInternalQualityTab() }
       if(isAdmin && adminPanelTab === 'quality'){ loadQualitySurveyAdmin() }
       if(isAdmin && adminPanelTab === 'internal_quality'){ loadAdminInternalQualityTab() }
+      if(isAdmin && adminPanelTab === 'connections'){ loadAdminConnectionsPanel() }
       if(isAdmin && adminPanelTab === 'announcements'){ loadAnnouncementsAdmin() }
       if(isAdmin && adminPanelTab === 'agenda'){ loadAdminAgenda() }
       if(isAdmin && adminPanelTab === 'comments'){ loadAdminComments() }
@@ -7357,6 +7491,7 @@ Cliente B`)
       if(pendingOpenTicketId && (cachedTickets||[]).some(t => t.id === pendingOpenTicketId)){
         const toOpen = pendingOpenTicketId
         pendingOpenTicketId = ""
+        globalThis.pendingOpenTicketId = ""
         openTicketDetailModal(toOpen)
       }
     }
@@ -9834,9 +9969,11 @@ Cliente B`)
 
 
     function toLocalDateOnly(date){
-      const y = date.getFullYear()
-      const m = String(date.getMonth()+1).padStart(2,'0')
-      const d = String(date.getDate()).padStart(2,'0')
+      const value = (date instanceof Date) ? new Date(date.getTime()) : new Date(date || "")
+      if(Number.isNaN(value.getTime())) return ""
+      const y = value.getFullYear()
+      const m = String(value.getMonth()+1).padStart(2,'0')
+      const d = String(value.getDate()).padStart(2,'0')
       return `${y}-${m}-${d}`
     }
 
@@ -10594,6 +10731,7 @@ Cliente B`)
 
     async function init(){
       try{
+        setupRuntimeErrorCapture()
         applyTheme()
         loadAdminAttendanceState()
         const startupWarmup = Promise.allSettled([
