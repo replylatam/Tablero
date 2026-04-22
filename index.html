@@ -9880,9 +9880,11 @@ Cliente B`)
 
 
     function toLocalDateOnly(date){
-      const y = date.getFullYear()
-      const m = String(date.getMonth()+1).padStart(2,'0')
-      const d = String(date.getDate()).padStart(2,'0')
+      const value = (date instanceof Date) ? new Date(date.getTime()) : new Date(date || "")
+      if(Number.isNaN(value.getTime())) return ""
+      const y = value.getFullYear()
+      const m = String(value.getMonth()+1).padStart(2,'0')
+      const d = String(value.getDate()).padStart(2,'0')
       return `${y}-${m}-${d}`
     }
 
