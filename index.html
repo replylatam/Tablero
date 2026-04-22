@@ -5596,46 +5596,47 @@ Cliente B`)
       const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
-          { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
-          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
-          { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" }
+          { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
+          { icon: "◫", label: "Organizar agendas", action: "setAdminTab('agenda')" },
+          { icon: "◩", label: "Guardados", action: "setMainViewTab('saved')" },
+          { icon: "≣", label: "Comentarios", action: "setAdminTab('comments')" }
         ]},
         { title: "Área", items: [
-          { icon: "🧮", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
-          { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" },
-          { icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }
+          { icon: "◧", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
+          { icon: "◎", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" },
+          { icon: "◈", label: "Comunicados", action: "setAdminTab('announcements')" }
         ]},
         { title: "Mejora continua", items: [
-          { icon: "🧩", label: "Mejora continua", action: "setAdminTab('continuous_improvement')" },
-          { icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" },
-          { icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" },
-          { icon: "🎯", label: "Calidad interna", action: "setAdminTab('internal_quality')" },
-          { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" },
-          { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" }
+          { icon: "◇", label: "Mejora continua", action: "setAdminTab('continuous_improvement')" },
+          { icon: "□", label: "Lineamientos", action: "setAdminTab('guidelines')" },
+          { icon: "▤", label: "Manuales", action: "setAdminTab('manuals')" },
+          { icon: "◉", label: "Calidad interna", action: "setAdminTab('internal_quality')" },
+          { icon: "◍", label: "Encuesta de calidad", action: "setAdminTab('quality')" },
+          { icon: "▣", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" }
         ]},
         { title: "Otros", items: [
-          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" },
-          { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
-          { icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" },
-          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" },
-          { icon: "📅", label: "Calendario", action: "setAdminTab('calendar')" }
+          { icon: "⊙", label: "Encuentros", action: "setMainViewTab('encuentro')" },
+          { icon: "?", label: "Ayuda", action: "setAdminTab('help')" },
+          { icon: "◌", label: "Soporte técnico", action: "setAdminTab('support')" },
+          { icon: uiTheme === "light" ? "◐" : "◑", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" },
+          { icon: "◷", label: "Calendario", action: "setAdminTab('calendar')" }
         ]}
       ] : [
         { title: "General", items: [
-          { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
-          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
-          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
+          { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
+          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "⊙", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
+          { icon: "◩", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
-          ...(currentRole === "consultor" ? [{ icon: "👤", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "📘", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(isAnalyst ? [{ icon: "🧭", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-          ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
-          ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : [])
+          ...(currentRole === "consultor" ? [{ icon: "◎", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "□", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(isAnalyst ? [{ icon: "◫", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "◍", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
+          ...(isAnalyst ? [{ icon: "≣", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          ...(isAnalyst ? [{ icon: "◷", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
+          ...(isAnalyst ? [{ icon: "◎", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : [])
         ].filter(Boolean)}
       ]
 
