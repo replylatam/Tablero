@@ -1507,6 +1507,7 @@
     var ticketSearchTerm = globalThis.ticketSearchTerm || ""
     var ticketFilterClient = Array.isArray(globalThis.ticketFilterClient) ? globalThis.ticketFilterClient : []
     var cachedClients = globalThis.cachedClients || []
+    var pendingOpenTicketId = globalThis.pendingOpenTicketId || ""
     var consultorRefreshTimer = globalThis.consultorRefreshTimer || null
     var loginInProgress = false
     var uiTheme = localStorage.getItem("uiTheme") || "dark"
@@ -1612,6 +1613,7 @@
     var adminReassignRecommendationCache = []
     var adminReassignAnalystCache = []
     var adminReassignIgnoredIds = {}
+    var clientsPermissionWarningShown = false
     var commentEditContext = null
     var pendingCommentImageByTicket = {}
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
@@ -3045,6 +3047,17 @@ Cliente B`)
         if(ticketClientSelect){
           ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${cachedClients.map(c => `<option value="${htmlEscape(c)}">${htmlEscape(c)}</option>`).join("")}`
         }
+      }, err => {
+        console.error("Sin permisos para leer /clients:", err)
+        cachedClients = []
+        globalThis.cachedClients = []
+        renderTicketFilterChecks("filterClient", [], ticketFilterClient, "updateClientFilter")
+        const ticketClientSelect = document.getElementById("tClient")
+        if(ticketClientSelect) ticketClientSelect.innerHTML = `<option value="">Seleccionar cliente</option>`
+        if(!clientsPermissionWarningShown){
+          clientsPermissionWarningShown = true
+          showToast("Sin permisos en Firebase para /clients. Revisá reglas de lectura.", "warn")
+        }
       })
 
       db.ref("capacity_low_hours_alerts").off()
@@ -3055,9 +3068,15 @@ Cliente B`)
     }
 
     async function loadFilterOptions(){
-      const clients = Object.values((await db.ref("clients").once("value")).val() || {})
-      cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
-      globalThis.cachedClients = cachedClients
+      try{
+        const clients = Object.values((await db.ref("clients").once("value")).val() || {})
+        cachedClients = clients.map(c => String(c.name||"").trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))
+        globalThis.cachedClients = cachedClients
+      }catch(err){
+        console.error("No se pudo leer /clients en loadFilterOptions:", err)
+        cachedClients = []
+        globalThis.cachedClients = []
+      }
 
       const clientFilterSelect = document.getElementById("filterClient")
       if(clientFilterSelect) renderTicketFilterChecks("filterClient", cachedClients, ticketFilterClient, "updateClientFilter")
@@ -7403,6 +7422,7 @@ Cliente B`)
       if(pendingOpenTicketId && (cachedTickets||[]).some(t => t.id === pendingOpenTicketId)){
         const toOpen = pendingOpenTicketId
         pendingOpenTicketId = ""
+        globalThis.pendingOpenTicketId = ""
         openTicketDetailModal(toOpen)
       }
     }
