@@ -1862,7 +1862,8 @@
       firstGrid.setDate(firstGrid.getDate() - offset)
       const monthLabel = firstDay.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
       const today = toLocalDateOnly(new Date())
-      const ticketsWithDeadline = tickets
+      const ticketsSource = Array.isArray(cachedTickets) ? cachedTickets : []
+      const ticketsWithDeadline = ticketsSource
         .filter(t => String(t.deadline || "").match(/^\d{4}-\d{2}-\d{2}$/))
         .sort((a,b) => String(a.deadline||"").localeCompare(String(b.deadline||"")))
       const byDay = ticketsWithDeadline.reduce((acc, t) => {
@@ -4712,6 +4713,41 @@ Cliente B`)
       return cfgHtml + `<div class="inline" style="margin-bottom:8px"><label style="margin:0">Histórico</label><select onchange="internalQualitySelectedPeriod=this.value;loadAdminInternalQualityTab()" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select></div>` + analystCards
     }
 
+    async function runInternalQualityFirebaseDiagnostics(){
+      const checks = [
+        { path: "users_by_email", label: "Lectura de usuarios" },
+        { path: "tickets", label: "Lectura de tickets" },
+        { path: "activity_logs", label: "Lectura de activity logs" },
+        { path: "quality_internal_config", label: "Lectura de configuración CI" },
+        { path: "quality_internal_feedback", label: "Lectura de feedback CI" }
+      ]
+      const results = await Promise.all(checks.map(async item => {
+        try{
+          await db.ref(item.path).once("value")
+          return { ...item, ok: true, detail: "OK" }
+        }catch(err){
+          const msg = String(err?.message || err || "Error desconocido")
+          const denied = /permission_denied/i.test(msg) || String(err?.code || "").toLowerCase().includes("permission")
+          return { ...item, ok: false, detail: denied ? "PERMISSION_DENIED" : msg }
+        }
+      }))
+      return results
+    }
+
+    async function renderInternalQualityDiagnostics(container){
+      if(!container) return
+      const target = container.querySelector("#internalQualityDiagResult")
+      if(!target) return
+      target.innerHTML = `<div class="small">Ejecutando diagnóstico de Firebase…</div>`
+      try{
+        const results = await runInternalQualityFirebaseDiagnostics()
+        const rows = results.map(r => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.label)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><code>${htmlEscape(r.path)}</code></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${r.ok ? "✅ OK" : "❌ " + htmlEscape(r.detail)}</td></tr>`).join("")
+        target.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Chequeo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Ruta</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resultado</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      }catch(err){
+        target.innerHTML = `<div class="small">No se pudo ejecutar el diagnóstico: ${htmlEscape(String(err?.message || err || "Error desconocido"))}</div>`
+      }
+    }
+
     async function loadAdminInternalQualityTab(){
       const container = document.getElementById("adminInternalQualityList")
       if(!container || currentRole !== "admin") return
@@ -4720,7 +4756,8 @@ Cliente B`)
         container.innerHTML = String(html || "").trim() ? html : `<div class="small">Sin datos para mostrar en este momento.</div>`
       }catch(err){
         console.error("Error cargando Calidad interna (admin):", err)
-        container.innerHTML = `<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos. Si persiste, revisá permisos de lectura de Firebase para: users_by_email, tickets, activity_logs y quality_internal_config.</div></div>`
+        container.innerHTML = `<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos. Si persiste, revisá permisos de lectura de Firebase para: users_by_email, tickets, activity_logs, quality_internal_config y quality_internal_feedback.</div><div class="inline" style="justify-content:flex-end;margin-top:8px"><button class="ghost" onclick="renderInternalQualityDiagnostics(document.getElementById('adminInternalQualityList'))">Diagnosticar permisos</button></div><div id="internalQualityDiagResult" style="margin-top:8px"></div></div>`
+        await renderInternalQualityDiagnostics(container)
       }
     }
 
@@ -5545,6 +5582,10 @@ Cliente B`)
           { icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }
         ]},
         { title: "Mejora continua", items: [
+          { icon: "🧩", label: "Mejora continua", action: "setAdminTab('continuous_improvement')" },
+          { icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" },
+          { icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" },
+          { icon: "🎯", label: "Calidad interna", action: "setAdminTab('internal_quality')" },
           { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" },
           { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" }
         ]},
