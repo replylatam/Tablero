@@ -7632,12 +7632,19 @@ Cliente B`)
       const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
-      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      const header = `<div class="small" style="display:flex;justify-content:flex-end;padding:4px 2px 8px;border-bottom:1px solid rgba(148,163,184,.15)"><button class="ghost" style="padding:4px 8px" onclick="markAllRoleNotificationsRead(event)" title="Marcar todas como leídas">✅</button></div>`
+      const listHtml = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      dd.innerHTML = header + listHtml
+    }
+
+    async function markAllRoleNotificationsRead(ev){
+      ev?.stopPropagation?.()
+      const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       const newest = items[0]?.ts || ""
-      if(newest){
-        const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
-        localStorage.setItem(seenKey, String(newest))
-      }
+      const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
+      if(newest) localStorage.setItem(seenKey, String(newest))
+      await renderAnalystNotificationsDropdown()
+      refreshAnalystNotificationBadge()
     }
 
     async function openAlertTicket(ticketId, tab = "comments"){
@@ -9179,6 +9186,35 @@ Cliente B`)
       if(input) input.value = ""
     }
 
+    async function insertInlineImageIntoComment(ticketId, file){
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor || !file) return
+      if(!String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
+        return
+      }
+      showToast("Subiendo imagen para integrarla al comentario...", "info", 1800)
+      let imageUrl = ""
+      try{
+        const uploaded = await uploadAttachmentFile(file)
+        imageUrl = String(uploaded?.url || "")
+      }catch(err){
+        console.error("Fallo upload inline image:", err)
+        try{
+          imageUrl = await readFileAsDataUrl(file)
+        }catch(_){
+          showToast("No se pudo insertar la imagen en el comentario", "error", 2600)
+          return
+        }
+      }
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      const input = document.getElementById(`comment-file-${ticketId}`)
+      if(input) input.value = ""
+      handleCommentMentionInput(ticketId)
+      showToast("Imagen integrada en el comentario", "ok", 1400)
+    }
+
     function renderCommentImagePreview(ticketId, file){
       const wrap = document.getElementById(`comment-image-preview-${ticketId}`)
       if(!wrap) return
@@ -9190,7 +9226,7 @@ Cliente B`)
       wrap.innerHTML = `<div class="feedItem" style="padding:8px"><div class="small" style="margin-bottom:6px">Vista previa de imagen</div><img src="${htmlEscape(previewUrl)}" alt="preview" style="max-width:220px;border-radius:8px;display:block;margin-bottom:6px"><div class="inline" style="justify-content:space-between"><span class="small">${htmlEscape(file.name || "imagen")}</span><button class="ghost" type="button" onclick="clearCommentImagePreview('${ticketId}')">Quitar</button></div></div>`
     }
 
-    function handleCommentFileChange(ticketId){
+    async function handleCommentFileChange(ticketId){
       const file = document.getElementById(`comment-file-${ticketId}`)?.files?.[0] || null
       if(!file){ clearCommentImagePreview(ticketId); return }
       if(!String(file.type || "").startsWith("image/")){
@@ -9198,7 +9234,8 @@ Cliente B`)
         clearCommentImagePreview(ticketId)
         return
       }
-      renderCommentImagePreview(ticketId, file)
+      await insertInlineImageIntoComment(ticketId, file)
+      clearCommentImagePreview(ticketId)
     }
 
     function handleCommentComposerDragOver(ev, ticketId){
@@ -9213,7 +9250,7 @@ Cliente B`)
       if(composer) composer.classList.remove("dropActive")
     }
 
-    function handleCommentComposerDrop(ev, ticketId){
+    async function handleCommentComposerDrop(ev, ticketId){
       ev.preventDefault()
       const composer = document.getElementById(`comment-composer-${ticketId}`)
       if(composer) composer.classList.remove("dropActive")
@@ -9224,13 +9261,7 @@ Cliente B`)
         showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
         return
       }
-      const input = document.getElementById(`comment-file-${ticketId}`)
-      if(!input) return
-      const transfer = new DataTransfer()
-      transfer.items.add(image)
-      input.files = transfer.files
-      renderCommentImagePreview(ticketId, image)
-      showToast(`Imagen lista para comentar: ${image.name}`, "ok", 1800)
+      await insertInlineImageIntoComment(ticketId, image)
     }
 
     async function addComment(id){
@@ -10928,12 +10959,21 @@ Cliente B`)
             const analystsWithLoad = activeAnalystEmails.filter(email => Number(byAnalyst[email] || 0) > 0).length
             const ticketsAssignedToAnalysts = activeAnalystEmails.reduce((acc, email) => acc + Number(byAnalyst[email] || 0), 0)
             const avgTicketsByLoadedAnalyst = analystsWithLoad ? (ticketsAssignedToAnalysts / analystsWithLoad) : 0
+            const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+            const surveysByMonth = Object.values(surveyMap).filter(s => String(s?.createdAt || "").slice(0,7) === selectedMonth)
+            const analystScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "analista").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const consultorScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "consultor").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const renderSatisfactionMiniChart = (title, scores, color) => {
+              const avg = scores.length ? (scores.reduce((acc, val) => acc + val, 0) / scores.length) : 0
+              const deg = Math.max(0, Math.min(360, (avg / 10) * 360))
+              return `<div style="display:flex;align-items:center;gap:8px;min-width:170px"><div style="width:48px;height:48px;border-radius:50%;background:conic-gradient(${color} ${deg}deg, rgba(99,132,199,.18) ${deg}deg 360deg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${scores.length ? avg.toFixed(1) : "-"}</div><div><div class="small" style="color:var(--text-2)">${htmlEscape(title)}</div><div class="small">Encuestas: ${scores.length}</div></div></div>`
+            }
 
             chartsArea.innerHTML = `
               <div class="kpiGrid adminOverviewRow">
                 <div class="kpi" title="Total de tickets creados en el mes seleccionado"><div class="label">Tickets del mes</div><div class="value">${monthTickets.length}</div><div class="meta">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
                 <div class="kpi" title="Variación porcentual respecto al mes anterior"><div class="label">Tendencia mensual</div><div class="value">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="meta">Comparado con ${htmlEscape(prevKey)}</div></div>
-                <div class="kpi" title="Cantidad de analistas activos con tickets en el período"><div class="label">Analistas con carga</div><div class="value">${analystsWithLoad}</div><div class="meta">Mes seleccionado</div></div>
+                <div class="kpi" title="Resultados de encuestas de satisfacción del mes"><div class="label">Satisfacción (consultor y analista)</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Analista", analystScores, "#3d6ef5")}${renderSatisfactionMiniChart("Consultor", consultorScores, "#22d4bf")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
                 <div class="kpi" title="Promedio de tickets por analista con carga"><div class="label">Promedio por analista</div><div class="value">${avgTicketsByLoadedAnalyst.toFixed(1)}</div><div class="meta">Tickets asignados / analistas con tickets</div></div>
               </div>
               <div class="adminOverviewLayout">
