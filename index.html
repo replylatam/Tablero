@@ -3537,7 +3537,26 @@ Cliente B`)
       const selectedKeys = Object.entries(clientsObj).filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
       const selectedClients = selectedKeys.map(k => String(clientsObj?.[k]?.name || k))
       const tickets = (cachedTickets || []).filter(t => selectedClients.includes(String(t.client || "")))
+      const byConsultor = {}
+      ;(cachedTickets || []).forEach(t => {
+        const consultor = resolveInformerEmail(t) || "sin_consultor"
+        byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
+      })
+      const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
+      const renderConsultorPie = () => {
+        const entries = Object.entries(byConsultor).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
+        const total = entries.reduce((a,[,v])=>a+v,0)
+        if(!total) return `<div class="small">Sin datos.</div>`
+        let acc = 0
+        const stops = entries.map(([_,v],i) => {
+          const start = acc
+          acc += (v/total)*360
+          return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
+        }).join(", ")
+        return `<div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</span><strong>${v}</strong></div>`).join("")}</div></div>`
+      }
       wrap.innerHTML = `
+        ${currentRole === "admin" ? `<div class="card" style="padding:10px;margin:0 0 10px"><h4 style="margin:0 0 8px">Cantidad de tickets por consultores</h4>${renderConsultorPie()}</div>` : ""}
         <div class="row">
           <div><label>Consultor</label><select onchange="setPortfolioViewerConsultor(this.value)">${consultors.map(c => `<option value="${htmlEscape(String(c.email||"").toLowerCase())}" ${String(c.email||"").toLowerCase()===portfolioViewerConsultor?"selected":""}>${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</option>`).join("")}</select></div>
         </div>
@@ -10838,13 +10857,10 @@ Cliente B`)
             const trend = prevCount ? (((monthTickets.length - prevCount) / prevCount) * 100) : (monthTickets.length ? 100 : 0)
 
             const byAnalyst = {}
-            const byConsultor = {}
             const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0, "Sáb":0, "Dom":0 }
             monthTickets.forEach(t => {
               const analyst = String(t.assignedTo||"sin_asignar").toLowerCase()
-              const consultor = resolveInformerEmail(t) || "sin_consultor"
               byAnalyst[analyst] = (byAnalyst[analyst] || 0) + 1
-              byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
               const d = new Date(t.createdAt || Date.now())
               const wk = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][d.getDay()]
               byWeekday[wk] = (byWeekday[wk] || 0) + 1
@@ -10892,6 +10908,21 @@ Cliente B`)
                 </div>
               `).join("")}</div>`
             }
+            const renderWeekdayTicketStatus = () => {
+              const rows = Object.entries(byWeekday)
+                .map(([day, total]) => ({ day, total: Number(total || 0) }))
+                .sort((a,b) => b.total - a.total || a.day.localeCompare(b.day, "es"))
+              const max = Math.max(1, ...rows.map(r => r.total))
+              return `<div class="analystTicketsList">${rows.map((row, index) => `
+                <div class="analystTicketsItem">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div class="small" style="color:var(--text-2)">${htmlEscape(row.day)} ${index === 0 && row.total > 0 ? `<span class="badge" style="margin-left:6px">Top</span>` : ""}</div>
+                    <strong>${row.total}</strong>
+                  </div>
+                  <div class="analystTicketsBar"><div class="analystTicketsBarFill" style="width:${Math.round((row.total / max) * 100)}%"></div></div>
+                </div>
+              `).join("")}</div>`
+            }
             const activeAnalystEmails = users
               .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
               .map(u => String(u?.email || "").toLowerCase())
@@ -10911,8 +10942,11 @@ Cliente B`)
                 <div class="adminOverviewMain">
                   <h4 style="margin:0 0 8px">Distribución mensual</h4>
                   <div class="row" style="margin:0">
-                    <div>${renderPie("Tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
-                    <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
+                    <div class="card" style="padding:10px;margin:0">
+                      <h4 style="margin:0 0 8px">Tickets por día de semana</h4>
+                      <div class="small">Mes seleccionado (${htmlEscape(selectedMonth)}).</div>
+                      ${renderWeekdayTicketStatus()}
+                    </div>
                   </div>
                 </div>
                 <div class="adminOverviewSide">
