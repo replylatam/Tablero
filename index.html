@@ -1141,7 +1141,15 @@
         <div><label>Título</label><input id="tTitle" /></div>
         <div><label>Prioridad</label><select id="tPriority"><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option></select></div>
       </div>
-      <div><label>Detalle</label><textarea id="tDescription"></textarea></div>
+      <div>
+        <label>Detalle</label>
+        <textarea id="tDescription" ondragover="handleTextareaImageDragOver(event)" ondragleave="handleTextareaImageDragLeave(event)" ondrop="handleTextareaImageDrop(event,'tDescription')"></textarea>
+        <div class="inline" style="margin-top:6px;gap:6px;align-items:center">
+          <label class="ghost attachBtn" for="tDescriptionFile" title="Insertar imagen en el detalle">🖼️</label>
+          <input id="tDescriptionFile" class="attachInput" type="file" accept="image/*" onchange="handleTextareaImageFileChange('tDescriptionFile','tDescription')">
+          <span class="small">Podés arrastrar y soltar imágenes en el detalle</span>
+        </div>
+      </div>
       <div class="row">
         <div><label>Cliente</label><select id="tClient"></select></div>
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
@@ -8041,7 +8049,7 @@ Cliente B`)
                 </div>
               </div>
             </div>
-            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
+            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?`ondragover="handleTextareaImageDragOver(event)" ondragleave="handleTextareaImageDragLeave(event)" ondrop="handleTextareaImageDrop(event,'detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea>${canEdit ? `<div class="inline" style="margin-top:6px;gap:6px;align-items:center"><label class="ghost attachBtn" for="detail-description-file-${ticketWithRead.id}" title="Insertar imagen en el detalle">🖼️</label><input id="detail-description-file-${ticketWithRead.id}" class="attachInput" type="file" accept="image/*" onchange="handleTextareaImageFileChange('detail-description-file-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"><span class="small">Arrastrá imágenes o usá el botón</span></div>` : ""}</div>
             
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
@@ -9183,6 +9191,76 @@ Cliente B`)
       const wrap = document.getElementById(`comment-image-preview-${key}`)
       if(wrap) wrap.innerHTML = ""
       const input = document.getElementById(`comment-file-${key}`)
+      if(input) input.value = ""
+    }
+
+    function insertImageMarkdownIntoTextarea(textareaId, imageUrl, imageName){
+      const textarea = document.getElementById(String(textareaId || ""))
+      if(!textarea) return
+      const md = `\n![${String(imageName || "Imagen").replace(/[\[\]]/g, "")}](${String(imageUrl || "")})\n`
+      const start = Number(textarea.selectionStart || 0)
+      const end = Number(textarea.selectionEnd || 0)
+      const original = String(textarea.value || "")
+      textarea.value = `${original.slice(0, start)}${md}${original.slice(end)}`
+      const nextPos = start + md.length
+      textarea.focus()
+      try{ textarea.setSelectionRange(nextPos, nextPos) }catch(_){}
+    }
+
+    async function insertImageIntoTextarea(textareaId, file, ticketId = ""){
+      if(!file || !String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes", "warn", 2200)
+        return
+      }
+      showToast("Subiendo imagen...", "info", 1500)
+      let imageUrl = ""
+      try{
+        const uploaded = await uploadAttachmentFile(file)
+        imageUrl = String(uploaded?.url || "")
+      }catch(err){
+        console.error("Fallo upload imagen en detalle:", err)
+        try{
+          imageUrl = await readFileAsDataUrl(file)
+        }catch(_){
+          showToast("No se pudo insertar la imagen", "error", 2500)
+          return
+        }
+      }
+      insertImageMarkdownIntoTextarea(textareaId, imageUrl, file.name || "Imagen")
+      if(ticketId) autoSaveTicketDetail(String(ticketId))
+      showToast("Imagen insertada en el detalle", "ok", 1300)
+    }
+
+    function handleTextareaImageDragOver(ev){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = "var(--accent)"
+    }
+
+    function handleTextareaImageDragLeave(ev){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = ""
+    }
+
+    async function handleTextareaImageDrop(ev, textareaId, ticketId = ""){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = ""
+      const files = Array.from(ev?.dataTransfer?.files || [])
+      const image = files.find(f => String(f?.type || "").startsWith("image/"))
+      if(!image){
+        showToast("Solo se permiten imágenes", "warn", 2200)
+        return
+      }
+      await insertImageIntoTextarea(textareaId, image, ticketId)
+    }
+
+    async function handleTextareaImageFileChange(inputId, textareaId, ticketId = ""){
+      const input = document.getElementById(String(inputId || ""))
+      const file = input?.files?.[0] || null
+      if(!file) return
+      await insertImageIntoTextarea(textareaId, file, ticketId)
       if(input) input.value = ""
     }
 
@@ -10971,19 +11049,14 @@ Cliente B`)
               </div>
               <div class="adminOverviewLayout">
                 <div class="adminOverviewMain">
-                  <h4 style="margin:0 0 8px">Distribución mensual</h4>
-                  <div class="row" style="margin:0">
-                    <div class="card" style="padding:10px;margin:0">
-                      <h4 style="margin:0 0 8px">Tickets por día de semana</h4>
-                      <div class="small">Mes seleccionado (${htmlEscape(selectedMonth)}).</div>
-                      ${renderWeekdayTicketStatus()}
-                    </div>
-                  </div>
-                </div>
-                <div class="adminOverviewSide">
                   <h4 style="margin:0">Cantidad de tickets por analista</h4>
                   <div class="small">Todos los analistas activos del sistema (${htmlEscape(selectedMonth)}).</div>
                   ${renderAnalystTicketStatus()}
+                </div>
+                <div class="adminOverviewSide">
+                  <h4 style="margin:0 0 8px">Tickets por día de semana</h4>
+                  <div class="small">Mes seleccionado (${htmlEscape(selectedMonth)}).</div>
+                  ${renderWeekdayTicketStatus()}
                 </div>
               </div>
             `
