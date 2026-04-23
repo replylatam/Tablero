@@ -10952,6 +10952,8 @@ Cliente B`)
                 </div>
               `).join("")}</div>`
             }
+<<<<<<< codex/move-and-convert-admin-graphs-nm6zro
+=======
             const activeAnalystEmails = users
               .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
               .map(u => String(u?.email || "").toLowerCase())
@@ -10959,6 +10961,7 @@ Cliente B`)
             const analystsWithLoad = activeAnalystEmails.filter(email => Number(byAnalyst[email] || 0) > 0).length
             const ticketsAssignedToAnalysts = activeAnalystEmails.reduce((acc, email) => acc + Number(byAnalyst[email] || 0), 0)
             const avgTicketsByLoadedAnalyst = analystsWithLoad ? (ticketsAssignedToAnalysts / analystsWithLoad) : 0
+>>>>>>> main
             const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
             const surveysByMonth = Object.values(surveyMap).filter(s => String(s?.createdAt || "").slice(0,7) === selectedMonth)
             const analystScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "analista").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
@@ -10973,8 +10976,13 @@ Cliente B`)
               <div class="kpiGrid adminOverviewRow">
                 <div class="kpi" title="Total de tickets creados en el mes seleccionado"><div class="label">Tickets del mes</div><div class="value">${monthTickets.length}</div><div class="meta">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
                 <div class="kpi" title="Variación porcentual respecto al mes anterior"><div class="label">Tendencia mensual</div><div class="value">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="meta">Comparado con ${htmlEscape(prevKey)}</div></div>
+<<<<<<< codex/move-and-convert-admin-graphs-nm6zro
+                <div class="kpi" title="Resultados de encuesta de satisfacción del analista"><div class="label">Satisfacción analista</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Analista", analystScores, "#3d6ef5")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del consultor"><div class="label">Satisfacción consultor</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Consultor", consultorScores, "#22d4bf")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
+=======
                 <div class="kpi" title="Resultados de encuestas de satisfacción del mes"><div class="label">Satisfacción (consultor y analista)</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Analista", analystScores, "#3d6ef5")}${renderSatisfactionMiniChart("Consultor", consultorScores, "#22d4bf")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
                 <div class="kpi" title="Promedio de tickets por analista con carga"><div class="label">Promedio por analista</div><div class="value">${avgTicketsByLoadedAnalyst.toFixed(1)}</div><div class="meta">Tickets asignados / analistas con tickets</div></div>
+>>>>>>> main
               </div>
               <div class="adminOverviewLayout">
                 <div class="adminOverviewMain">
