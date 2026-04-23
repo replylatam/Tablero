@@ -1569,6 +1569,8 @@
     const COMMON_LEAKED_PASSWORDS = new Set([
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
+    const ADMIN_LEVEL1_EMAILS = ["admin@tablero.local"]
+    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support"])
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -1838,7 +1840,40 @@
       if(btn) btn.textContent = uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"
     }
 
+    function getCurrentAdminLevel(){
+      if(String(currentRole || "").toLowerCase() !== "admin") return 0
+      const userLevel = Number(currentUser?.adminLevel)
+      if(userLevel === 1 || userLevel === 2) return userLevel
+      const email = String(currentUser?.email || "").toLowerCase()
+      if(ADMIN_LEVEL1_EMAILS.includes(email)) return 1
+      return 2
+    }
+
+    function isAdminLevel1(){
+      return getCurrentAdminLevel() === 1
+    }
+
+    function isAdminLevel2(){
+      return getCurrentAdminLevel() === 2
+    }
+
+    function canAccessAdminTab(tab){
+      if(String(currentRole || "").toLowerCase() !== "admin") return false
+      if(isAdminLevel1()) return true
+      return !ADMIN_LEVEL2_BLOCKED_TABS.has(String(tab || ""))
+    }
+
     function setAdminTab(tab){
+      if(!canAccessAdminTab(tab)){
+        showToast("No tenés permisos para acceder a esta sección.", "error", 1800)
+        if(adminPanelTab !== "panel"){
+          adminPanelTab = "panel"
+          mainViewTab = "tickets"
+          closeHeaderMenu()
+          renderApp()
+        }
+        return
+      }
       if(adminPanelTab === tab && mainViewTab === "tickets") return
       adminPanelTab = tab
       if(tab !== "guidelines" && tab !== "continuous_improvement") adminGuidelinesClient = ""
@@ -2897,7 +2932,7 @@ Cliente B`)
         const policy = passwordPolicyError(password)
         if(policy) continue
         const secureFields = await buildPasswordFields(password)
-        const payload = { key: emailKey(email), email, password: "", role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
+        const payload = { key: emailKey(email), email, password: "", role, adminLevel: role === "admin" ? 2 : null, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
         await adminWrite('upsertUser', payload)
         await db.ref('users_by_email').child(payload.key).set(payload)
         count++
@@ -4564,6 +4599,7 @@ Cliente B`)
             email: user.email,
             password: "",
             role: user.role,
+            adminLevel: user.role === "admin" ? 1 : 2,
             active: true,
             createdAt: new Date().toISOString(),
             createdBy: "system",
@@ -5646,7 +5682,7 @@ Cliente B`)
           adminWrite("upsertUser", migrated).catch(()=>{})
         }
 
-        currentUser = { email: user.email }
+        currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
         currentRole = user.role
         persistSession()
 
@@ -5890,6 +5926,9 @@ Cliente B`)
 
     function renderApp(){
       const isAdmin = currentRole === "admin"
+      const adminCanAccess = (tab) => canAccessAdminTab(tab)
+      const showAdminConfigButton = isAdmin && adminCanAccess("config_home")
+      if(isAdmin && !adminCanAccess(adminPanelTab)) adminPanelTab = "panel"
       const isAnalyst = currentRole === "analista"
       if(isAnalyst) loadAnalystBoardSettings()
       if(isAnalyst && analystMoodDateLoaded && analystMoodDateLoaded !== toLocalDateOnly(new Date())){
@@ -5939,11 +5978,11 @@ Cliente B`)
           { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" }
         ]},
         { title: "Técnico", items: [
-          { icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" },
+          ...(adminCanAccess("support") ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
           { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
-          { icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" },
+          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : []),
           { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
-        ]}
+        ].filter(Boolean)}
       ] : [
         { title: "General", items: [
           { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
@@ -5988,7 +6027,7 @@ Cliente B`)
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor" || isAdmin) ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" title="Notificaciones" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
-              ${isAdmin ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
+              ${showAdminConfigButton ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
               ${isAnalyst ? `<button class="ghost" title="Configuración del tablero" onclick="setAnalystTab('board_settings')">⚙️</button>` : ""}
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
@@ -6045,7 +6084,7 @@ Cliente B`)
           </div>
         ` : showPortfolioOverview ? `
           <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
-        ` : showAdminPanel ? (adminPanelTab==='config_home' ? `
+        ` : showAdminPanel ? (adminPanelTab==='config_home' && showAdminConfigButton ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
             <div class="row">
               <div class="feedItem" style="cursor:pointer" onclick="setAdminTab('people')"><div class="feedType">Gestión de personas</div><div class="feedMeta">Crear/importar usuarios y ver usuarios creados.</div></div>
@@ -9594,6 +9633,7 @@ Cliente B`)
       const payload = {
         key: emailKey(email),
         email, password: "", role, active: true,
+        adminLevel: role === "admin" ? 2 : null,
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
         analystTeam: role === "analista" ? analystTeam : "",
         ...secureFields,
@@ -11229,7 +11269,7 @@ Cliente B`)
         if(savedEmail){
           const user = await getUserFromDb(savedEmail)
           if(user && user.active !== false){
-            currentUser = { email: user.email }
+            currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
             currentRole = user.role || savedRole || "consultor"
             persistSession()
             renderApp()
