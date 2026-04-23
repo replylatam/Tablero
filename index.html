@@ -575,6 +575,10 @@
       border-radius: var(--radius-md);
       background: var(--surface-2);
       padding: 12px;
+      max-height: 420px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     .adminOverviewSide {
       border: 1px solid var(--stroke);
@@ -1143,10 +1147,11 @@
       </div>
       <div>
         <label>Detalle</label>
-        <textarea id="tDescription" ondragover="handleTextareaImageDragOver(event)" ondragleave="handleTextareaImageDragLeave(event)" ondrop="handleTextareaImageDrop(event,'tDescription')"></textarea>
+        <div id="tDescriptionEditor" class="commentEditor" contenteditable="true" data-placeholder="Escribí el detalle del ticket" oninput="syncRichEditorToTextarea('tDescriptionEditor','tDescription')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'tDescriptionEditor','tDescription')"></div>
+        <textarea id="tDescription" class="hidden"></textarea>
         <div class="inline" style="margin-top:6px;gap:6px;align-items:center">
           <label class="ghost attachBtn" for="tDescriptionFile" title="Insertar imagen en el detalle">🖼️</label>
-          <input id="tDescriptionFile" class="attachInput" type="file" accept="image/*" onchange="handleTextareaImageFileChange('tDescriptionFile','tDescription')">
+          <input id="tDescriptionFile" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('tDescriptionFile','tDescriptionEditor','tDescription')">
           <span class="small">Podés arrastrar y soltar imágenes en el detalle</span>
         </div>
       </div>
@@ -7697,6 +7702,8 @@ Cliente B`)
     function closeTicketModal(){
       document.getElementById("tTitle").value = ""
       document.getElementById("tDescription").value = ""
+      const descEditor = document.getElementById("tDescriptionEditor")
+      if(descEditor) descEditor.innerHTML = ""
       document.getElementById("tPriority").value = "Media"
       document.getElementById("tClient").value = ""
       document.getElementById("tDeadline").value = ""
@@ -7708,7 +7715,9 @@ Cliente B`)
 
     async function saveTicket(){
       const title = document.getElementById("tTitle").value.trim()
+      syncRichEditorToTextarea("tDescriptionEditor", "tDescription")
       const description = document.getElementById("tDescription").value.trim()
+      const descriptionHtml = String(document.getElementById("tDescriptionEditor")?.innerHTML || "").trim()
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
@@ -7740,7 +7749,7 @@ Cliente B`)
       const code = buildTicketCode(cachedTickets)
       const ticket = {
         id: code,
-        title, description, priority, client, deadline,
+        title, description, descriptionHtml, priority, client, deadline,
         publicationCountConsultor: currentRole === "consultor" ? publicationCount : 0,
         publicationCountAnalyst: currentRole === "analista" ? publicationCount : 0,
         publicationCount,
@@ -8049,7 +8058,7 @@ Cliente B`)
                 </div>
               </div>
             </div>
-            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?`ondragover="handleTextareaImageDragOver(event)" ondragleave="handleTextareaImageDragLeave(event)" ondrop="handleTextareaImageDrop(event,'detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea>${canEdit ? `<div class="inline" style="margin-top:6px;gap:6px;align-items:center"><label class="ghost attachBtn" for="detail-description-file-${ticketWithRead.id}" title="Insertar imagen en el detalle">🖼️</label><input id="detail-description-file-${ticketWithRead.id}" class="attachInput" type="file" accept="image/*" onchange="handleTextareaImageFileChange('detail-description-file-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"><span class="small">Arrastrá imágenes o usá el botón</span></div>` : ""}</div>
+            <div><label>Detalle</label><div id="detail-description-editor-${ticketWithRead.id}" class="commentEditor" contenteditable="${canEdit ? "true" : "false"}" data-placeholder="Detalle del ticket" ${canEdit ? `oninput="syncRichEditorToTextarea('detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}')" onblur="autoSaveTicketDetail('${ticketWithRead.id}')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"` : ""}>${ticketWithRead.descriptionHtml ? safeCommentHtml(ticketWithRead.descriptionHtml) : htmlEscape(ticketWithRead.description||"").replace(/\n/g, "<br>")}</div><textarea id="detail-description-${ticketWithRead.id}" class="hidden">${htmlEscape(ticketWithRead.description||"")}</textarea>${canEdit ? `<div class="inline" style="margin-top:6px;gap:6px;align-items:center"><label class="ghost attachBtn" for="detail-description-file-${ticketWithRead.id}" title="Insertar imagen en el detalle">🖼️</label><input id="detail-description-file-${ticketWithRead.id}" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('detail-description-file-${ticketWithRead.id}','detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"><span class="small">Arrastrá imágenes o usá el botón</span></div>` : ""}</div>
             
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
@@ -8163,6 +8172,7 @@ Cliente B`)
         ...ticket,
         title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
         description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
+        descriptionHtml: canEditFields ? String(document.getElementById(`detail-description-editor-${id}`)?.innerHTML || ticket.descriptionHtml || "").trim() : (ticket.descriptionHtml || ""),
         priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
@@ -9194,56 +9204,47 @@ Cliente B`)
       if(input) input.value = ""
     }
 
-    function insertImageMarkdownIntoTextarea(textareaId, imageUrl, imageName){
+    function syncRichEditorToTextarea(editorId, textareaId){
+      const editor = document.getElementById(String(editorId || ""))
       const textarea = document.getElementById(String(textareaId || ""))
-      if(!textarea) return
-      const md = `\n![${String(imageName || "Imagen").replace(/[\[\]]/g, "")}](${String(imageUrl || "")})\n`
-      const start = Number(textarea.selectionStart || 0)
-      const end = Number(textarea.selectionEnd || 0)
-      const original = String(textarea.value || "")
-      textarea.value = `${original.slice(0, start)}${md}${original.slice(end)}`
-      const nextPos = start + md.length
-      textarea.focus()
-      try{ textarea.setSelectionRange(nextPos, nextPos) }catch(_){}
+      if(!editor || !textarea) return
+      textarea.value = commentPlainTextFromHtml(editor.innerHTML || "")
     }
 
-    async function insertImageIntoTextarea(textareaId, file, ticketId = ""){
-      if(!file || !String(file.type || "").startsWith("image/")){
+    async function insertInlineImageIntoRichEditor(editorId, textareaId, file, ticketId = ""){
+      const editor = document.getElementById(String(editorId || ""))
+      if(!editor || !file || !String(file.type || "").startsWith("image/")){
         showToast("Solo se permiten imágenes", "warn", 2200)
         return
       }
-      showToast("Subiendo imagen...", "info", 1500)
+      showToast("Insertando imagen...", "info", 1200)
       let imageUrl = ""
       try{
-        const uploaded = await uploadAttachmentFile(file)
-        imageUrl = String(uploaded?.url || "")
-      }catch(err){
-        console.error("Fallo upload imagen en detalle:", err)
-        try{
-          imageUrl = await readFileAsDataUrl(file)
-        }catch(_){
-          showToast("No se pudo insertar la imagen", "error", 2500)
-          return
-        }
+        imageUrl = await readFileAsDataUrl(file)
+      }catch(_){
+        showToast("No se pudo procesar la imagen", "error", 2200)
+        return
       }
-      insertImageMarkdownIntoTextarea(textareaId, imageUrl, file.name || "Imagen")
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      syncRichEditorToTextarea(editorId, textareaId)
       if(ticketId) autoSaveTicketDetail(String(ticketId))
-      showToast("Imagen insertada en el detalle", "ok", 1300)
+      showToast("Imagen integrada en el texto", "ok", 1200)
     }
 
-    function handleTextareaImageDragOver(ev){
+    function handleRichEditorImageDragOver(ev){
       ev.preventDefault()
       const target = ev?.currentTarget
       if(target?.style) target.style.borderColor = "var(--accent)"
     }
 
-    function handleTextareaImageDragLeave(ev){
+    function handleRichEditorImageDragLeave(ev){
       ev.preventDefault()
       const target = ev?.currentTarget
       if(target?.style) target.style.borderColor = ""
     }
 
-    async function handleTextareaImageDrop(ev, textareaId, ticketId = ""){
+    async function handleRichEditorImageDrop(ev, editorId, textareaId, ticketId = ""){
       ev.preventDefault()
       const target = ev?.currentTarget
       if(target?.style) target.style.borderColor = ""
@@ -9253,14 +9254,14 @@ Cliente B`)
         showToast("Solo se permiten imágenes", "warn", 2200)
         return
       }
-      await insertImageIntoTextarea(textareaId, image, ticketId)
+      await insertInlineImageIntoRichEditor(editorId, textareaId, image, ticketId)
     }
 
-    async function handleTextareaImageFileChange(inputId, textareaId, ticketId = ""){
+    async function handleRichEditorImageFileChange(inputId, editorId, textareaId, ticketId = ""){
       const input = document.getElementById(String(inputId || ""))
       const file = input?.files?.[0] || null
       if(!file) return
-      await insertImageIntoTextarea(textareaId, file, ticketId)
+      await insertInlineImageIntoRichEditor(editorId, textareaId, file, ticketId)
       if(input) input.value = ""
     }
 
