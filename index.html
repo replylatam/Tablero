@@ -95,14 +95,14 @@
     .container { max-width: none; margin: 0; position: relative; z-index: 1; }
     .layoutShell { display: block; }
     .mainShell {
-      margin-left: 88px;
+      margin-left: 84px;
       min-width: 0;
       padding: 14px;
     }
     .leftSidebar {
       position: fixed;
       inset: 0 auto 0 0;
-      width: 78px;
+      width: 72px;
       background: linear-gradient(180deg, #0f172a 0%, #14213d 60%, #1f3b67 100%);
       border-right: 1px solid rgba(110, 152, 228, 0.24);
       transition: width .24s ease;
@@ -112,7 +112,7 @@
       flex-direction: column;
       min-height: 100vh;
     }
-    .leftSidebar.expanded { width: 220px; }
+    .leftSidebar.expanded { width: 224px; }
     .sideBrand {
       padding: 14px 12px 8px;
       font-weight: 800;
@@ -537,6 +537,7 @@
     /* ── KPI Grid ──────────────────────────────────────────────────── */
     .kpiGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .kpiGrid.adminRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .kpiGrid.adminOverviewRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .kpiGrid.singleRow { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
     .kpiGrid.analystDashRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .kpiGrid.analystDashRow .kpi { padding: 7px 8px; }
@@ -562,6 +563,60 @@
     }
     .kpi .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
     .kpi .value { font-size: 24px; font-weight: 700; margin-top: 5px; color: var(--text); }
+    .kpi .meta { margin-top: 6px; font-size: 12px; color: var(--muted); }
+    .adminOverviewLayout {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .adminOverviewMain {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      padding: 12px;
+    }
+    .adminOverviewSide {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      padding: 12px;
+      max-height: 420px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .analystTicketsList {
+      margin-top: 8px;
+      overflow-y: auto;
+      padding-right: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .analystTicketsItem {
+      padding: 8px;
+      border: 1px solid var(--stroke-2);
+      border-radius: 10px;
+      background: rgba(8, 12, 22, 0.34);
+    }
+    .analystTicketsBar {
+      margin-top: 6px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.14);
+      overflow: hidden;
+    }
+    .analystTicketsBarFill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    @media (max-width: 980px) {
+      .kpiGrid.adminOverviewRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .adminOverviewLayout { grid-template-columns: 1fr; }
+      .adminOverviewSide { max-height: none; }
+    }
     .kpiControl input, .kpiControl button { margin: 0; }
     .kpiControl .inline { margin-top: 8px; }
 
@@ -6066,7 +6121,7 @@ Cliente B`)
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>` : ""}
-              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div><h4 style="margin:12px 0 0">Recomendación de reasignación</h4><div id="adminReassignPanel" style="margin-top:8px"></div>` : ""}
+              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><h4 style="margin:12px 0 0">Recomendación de reasignación</h4><div id="adminReassignPanel" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
@@ -10795,11 +10850,6 @@ Cliente B`)
               byWeekday[wk] = (byWeekday[wk] || 0) + 1
             })
 
-            const renderBar = (title, mapObj, formatter) => {
-              const entries = Object.entries(mapObj).sort((a,b)=>b[1]-a[1]).slice(0,8)
-              const max = Math.max(1, ...entries.map(([,v])=>v))
-              return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4>${entries.length ? entries.map(([k,v]) => `<div class="small" style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;gap:8px"><span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div><div style="height:8px;border-radius:8px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${Math.round((v/max)*100)}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></div></div></div>`).join("") : `<p class="small">Sin datos.</p>`}</div>`
-            }
             const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
             const renderPie = (title, mapObj, formatter) => {
               const entries = Object.entries(mapObj).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
@@ -10815,15 +10865,61 @@ Cliente B`)
               return `<div class="card" style="padding:10px;margin:0" title="${htmlEscape(hoverDetail)}"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
             }
 
+            const renderAnalystTicketStatus = () => {
+              const analysts = users
+                .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+                .map(u => String(u?.email || "").toLowerCase())
+                .filter(Boolean)
+              const allEmails = Array.from(new Set(analysts))
+              const rows = allEmails
+                .map(email => ({
+                  email,
+                  name: analystDisplayNameWithTeam(email) || userDisplayNameByEmail(email) || email,
+                  total: Number(byAnalyst[email] || 0)
+                }))
+                .sort((a,b) => b.total - a.total || a.name.localeCompare(b.name, "es"))
+              const max = Math.max(1, ...rows.map(r => r.total))
+              if(!rows.length){
+                return `<p class="small">No hay analistas activos.</p>`
+              }
+              return `<div class="analystTicketsList">${rows.map((row, index) => `
+                <div class="analystTicketsItem">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div class="small" style="color:var(--text-2)">${htmlEscape(row.name)} ${index === 0 && row.total > 0 ? `<span class="badge" style="margin-left:6px">Top</span>` : ""}</div>
+                    <strong>${row.total}</strong>
+                  </div>
+                  <div class="analystTicketsBar"><div class="analystTicketsBarFill" style="width:${Math.round((row.total / max) * 100)}%"></div></div>
+                </div>
+              `).join("")}</div>`
+            }
+            const activeAnalystEmails = users
+              .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+              .map(u => String(u?.email || "").toLowerCase())
+              .filter(Boolean)
+            const analystsWithLoad = activeAnalystEmails.filter(email => Number(byAnalyst[email] || 0) > 0).length
+            const ticketsAssignedToAnalysts = activeAnalystEmails.reduce((acc, email) => acc + Number(byAnalyst[email] || 0), 0)
+            const avgTicketsByLoadedAnalyst = analystsWithLoad ? (ticketsAssignedToAnalysts / analystsWithLoad) : 0
+
             chartsArea.innerHTML = `
-              <div class="row" style="margin-bottom:8px">
-                <div class="card" style="padding:10px;margin:0" title="Total de tickets creados en el mes seleccionado"><h4 style="margin:0 0 4px">Tickets del mes</h4><div style="font-size:24px;font-weight:700">${monthTickets.length}</div><div class="small">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
-                <div class="card" style="padding:10px;margin:0" title="Variación porcentual respecto al mes anterior"><h4 style="margin:0 0 4px">Tendencia</h4><div style="font-size:24px;font-weight:700">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="small">Comparado con ${htmlEscape(prevKey)}</div></div>
+              <div class="kpiGrid adminOverviewRow">
+                <div class="kpi" title="Total de tickets creados en el mes seleccionado"><div class="label">Tickets del mes</div><div class="value">${monthTickets.length}</div><div class="meta">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
+                <div class="kpi" title="Variación porcentual respecto al mes anterior"><div class="label">Tendencia mensual</div><div class="value">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="meta">Comparado con ${htmlEscape(prevKey)}</div></div>
+                <div class="kpi" title="Cantidad de analistas activos con tickets en el período"><div class="label">Analistas con carga</div><div class="value">${analystsWithLoad}</div><div class="meta">Mes seleccionado</div></div>
+                <div class="kpi" title="Promedio de tickets por analista con carga"><div class="label">Promedio por analista</div><div class="value">${avgTicketsByLoadedAnalyst.toFixed(1)}</div><div class="meta">Tickets asignados / analistas con tickets</div></div>
               </div>
-              <div class="row" style="flex-wrap:nowrap;overflow-x:auto">
-                <div>${renderPie("Tickets por analista", byAnalyst, (k)=> analystDisplayNameWithTeam(k==="sin_asignar"?"":k) || "Sin asignar")}</div>
-                <div>${renderPie("Tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
-                <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
+              <div class="adminOverviewLayout">
+                <div class="adminOverviewMain">
+                  <h4 style="margin:0 0 8px">Distribución mensual</h4>
+                  <div class="row" style="margin:0">
+                    <div>${renderPie("Tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
+                    <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
+                  </div>
+                </div>
+                <div class="adminOverviewSide">
+                  <h4 style="margin:0">Cantidad de tickets por analista</h4>
+                  <div class="small">Todos los analistas activos del sistema (${htmlEscape(selectedMonth)}).</div>
+                  ${renderAnalystTicketStatus()}
+                </div>
               </div>
             `
             const reassignmentData = buildAdminReassignmentData(normalizedTickets, users, selectedMonth)
