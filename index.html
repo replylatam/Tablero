@@ -3534,16 +3534,47 @@ Cliente B`)
       }
       const selected = consultors.find(c => String(c.email||"").toLowerCase() === portfolioViewerConsultor) || consultors[0]
       const clientsObj = (await db.ref("clients").once("value")).val() || {}
-      const selectedKeys = Object.entries(clientsObj).filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
+      const allClientEntries = Object.entries(clientsObj)
+      const selectedKeys = allClientEntries.filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
       const selectedClients = selectedKeys.map(k => String(clientsObj?.[k]?.name || k))
       const tickets = (cachedTickets || []).filter(t => selectedClients.includes(String(t.client || "")))
+      const byConsultor = {}
+      ;(cachedTickets || []).forEach(t => {
+        const consultor = resolveInformerEmail(t) || "sin_consultor"
+        byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
+      })
+      const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
+      const renderConsultorPie = () => {
+        const entries = Object.entries(byConsultor).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
+        const total = entries.reduce((a,[,v])=>a+v,0)
+        if(!total) return `<div class="small">Sin datos.</div>`
+        let acc = 0
+        const stops = entries.map(([_,v],i) => {
+          const start = acc
+          acc += (v/total)*360
+          return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
+        }).join(", ")
+        return `<div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</span><strong>${v}</strong></div>`).join("")}</div></div>`
+      }
       wrap.innerHTML = `
+        ${currentRole === "admin" ? `<div class="card" style="padding:10px;margin:0 0 10px"><h4 style="margin:0 0 8px">Cantidad de tickets por consultores</h4>${renderConsultorPie()}</div>` : ""}
         <div class="row">
           <div><label>Consultor</label><select onchange="setPortfolioViewerConsultor(this.value)">${consultors.map(c => `<option value="${htmlEscape(String(c.email||"").toLowerCase())}" ${String(c.email||"").toLowerCase()===portfolioViewerConsultor?"selected":""}>${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</option>`).join("")}</select></div>
         </div>
         <div style="margin-top:8px">
-          <h4 style="margin:0 0 8px">Clientes asignados</h4>
-          ${selectedKeys.length ? selectedKeys.map(key => `<div class="portfolioItem"><span class="name">${htmlEscape(String(clientsObj?.[key]?.name || key))}</span>${currentRole === "admin" ? `<label class="switch"><input type="checkbox" checked onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label>` : ""}</div>`).join("") : `<div class="small">Sin clientes asignados.</div>`}
+          <h4 style="margin:0 0 8px">${currentRole === "admin" ? "Asignar clientes a la cartera" : "Clientes asignados"}</h4>
+          ${currentRole === "admin"
+            ? (allClientEntries.length
+              ? allClientEntries
+                .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+                .map(([key, client]) => {
+                  const isAssigned = String(client?.assignedConsultor || "").toLowerCase() === String(selected.email || "").toLowerCase()
+                  return `<div class="portfolioItem"><span class="name">${htmlEscape(String(client?.name || key))}</span><label class="switch"><input type="checkbox" ${isAssigned ? "checked" : ""} onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label></div>`
+                }).join("")
+              : `<div class="small">No hay clientes disponibles.</div>`)
+            : (selectedKeys.length
+              ? selectedKeys.map(key => `<div class="portfolioItem"><span class="name">${htmlEscape(String(clientsObj?.[key]?.name || key))}</span></div>`).join("")
+              : `<div class="small">Sin clientes asignados.</div>`)}
         </div>
         <div style="margin-top:12px">
           <h4 style="margin:0 0 8px">Tickets según cartera (${tickets.length})</h4>
@@ -5674,11 +5705,11 @@ Cliente B`)
       const msg = new ArrayBuffer(8)
       const view = new DataView(msg)
       view.setUint32(0, Math.floor(counter / 0x100000000), false)
-      view.setUint32(4, counter >>> 0, false)
+      view.setUint32(4, counter % 0x100000000, false)
       const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
       const sig = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msg))
       const offset = sig[sig.length - 1] & 0x0f
-      const bin = ((sig[offset] & 0x7f) << 24) | (sig[offset+1] << 16) | (sig[offset+2] << 8) | sig[offset+3]
+      const bin = ((sig[offset] & 0x7f) * 16777216) + (sig[offset+1] * 65536) + (sig[offset+2] * 256) + sig[offset+3]
       return String(bin % 1000000).padStart(6, "0")
     }
 
@@ -7601,12 +7632,19 @@ Cliente B`)
       const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
-      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      const header = `<div class="small" style="display:flex;justify-content:flex-end;padding:4px 2px 8px;border-bottom:1px solid rgba(148,163,184,.15)"><button class="ghost" style="padding:4px 8px" onclick="markAllRoleNotificationsRead(event)" title="Marcar todas como leídas">✅</button></div>`
+      const listHtml = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      dd.innerHTML = header + listHtml
+    }
+
+    async function markAllRoleNotificationsRead(ev){
+      ev?.stopPropagation?.()
+      const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       const newest = items[0]?.ts || ""
-      if(newest){
-        const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
-        localStorage.setItem(seenKey, String(newest))
-      }
+      const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
+      if(newest) localStorage.setItem(seenKey, String(newest))
+      await renderAnalystNotificationsDropdown()
+      refreshAnalystNotificationBadge()
     }
 
     async function openAlertTicket(ticketId, tab = "comments"){
@@ -9148,6 +9186,35 @@ Cliente B`)
       if(input) input.value = ""
     }
 
+    async function insertInlineImageIntoComment(ticketId, file){
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor || !file) return
+      if(!String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
+        return
+      }
+      showToast("Subiendo imagen para integrarla al comentario...", "info", 1800)
+      let imageUrl = ""
+      try{
+        const uploaded = await uploadAttachmentFile(file)
+        imageUrl = String(uploaded?.url || "")
+      }catch(err){
+        console.error("Fallo upload inline image:", err)
+        try{
+          imageUrl = await readFileAsDataUrl(file)
+        }catch(_){
+          showToast("No se pudo insertar la imagen en el comentario", "error", 2600)
+          return
+        }
+      }
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      const input = document.getElementById(`comment-file-${ticketId}`)
+      if(input) input.value = ""
+      handleCommentMentionInput(ticketId)
+      showToast("Imagen integrada en el comentario", "ok", 1400)
+    }
+
     function renderCommentImagePreview(ticketId, file){
       const wrap = document.getElementById(`comment-image-preview-${ticketId}`)
       if(!wrap) return
@@ -9159,7 +9226,7 @@ Cliente B`)
       wrap.innerHTML = `<div class="feedItem" style="padding:8px"><div class="small" style="margin-bottom:6px">Vista previa de imagen</div><img src="${htmlEscape(previewUrl)}" alt="preview" style="max-width:220px;border-radius:8px;display:block;margin-bottom:6px"><div class="inline" style="justify-content:space-between"><span class="small">${htmlEscape(file.name || "imagen")}</span><button class="ghost" type="button" onclick="clearCommentImagePreview('${ticketId}')">Quitar</button></div></div>`
     }
 
-    function handleCommentFileChange(ticketId){
+    async function handleCommentFileChange(ticketId){
       const file = document.getElementById(`comment-file-${ticketId}`)?.files?.[0] || null
       if(!file){ clearCommentImagePreview(ticketId); return }
       if(!String(file.type || "").startsWith("image/")){
@@ -9167,7 +9234,8 @@ Cliente B`)
         clearCommentImagePreview(ticketId)
         return
       }
-      renderCommentImagePreview(ticketId, file)
+      await insertInlineImageIntoComment(ticketId, file)
+      clearCommentImagePreview(ticketId)
     }
 
     function handleCommentComposerDragOver(ev, ticketId){
@@ -9182,7 +9250,7 @@ Cliente B`)
       if(composer) composer.classList.remove("dropActive")
     }
 
-    function handleCommentComposerDrop(ev, ticketId){
+    async function handleCommentComposerDrop(ev, ticketId){
       ev.preventDefault()
       const composer = document.getElementById(`comment-composer-${ticketId}`)
       if(composer) composer.classList.remove("dropActive")
@@ -9193,13 +9261,7 @@ Cliente B`)
         showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
         return
       }
-      const input = document.getElementById(`comment-file-${ticketId}`)
-      if(!input) return
-      const transfer = new DataTransfer()
-      transfer.items.add(image)
-      input.files = transfer.files
-      renderCommentImagePreview(ticketId, image)
-      showToast(`Imagen lista para comentar: ${image.name}`, "ok", 1800)
+      await insertInlineImageIntoComment(ticketId, image)
     }
 
     async function addComment(id){
@@ -10838,32 +10900,16 @@ Cliente B`)
             const trend = prevCount ? (((monthTickets.length - prevCount) / prevCount) * 100) : (monthTickets.length ? 100 : 0)
 
             const byAnalyst = {}
-            const byConsultor = {}
-            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0, "Sáb":0, "Dom":0 }
+            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0 }
             monthTickets.forEach(t => {
               const analyst = String(t.assignedTo||"sin_asignar").toLowerCase()
-              const consultor = resolveInformerEmail(t) || "sin_consultor"
               byAnalyst[analyst] = (byAnalyst[analyst] || 0) + 1
-              byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
               const d = new Date(t.createdAt || Date.now())
               const wk = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][d.getDay()]
-              byWeekday[wk] = (byWeekday[wk] || 0) + 1
+              if(Object.prototype.hasOwnProperty.call(byWeekday, wk)){
+                byWeekday[wk] = (byWeekday[wk] || 0) + 1
+              }
             })
-
-            const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
-            const renderPie = (title, mapObj, formatter) => {
-              const entries = Object.entries(mapObj).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
-              const total = entries.reduce((a,[,v])=>a+v,0)
-              if(!total) return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4><p class="small">Sin datos.</p></div>`
-              let acc = 0
-              const stops = entries.map(([_,v],i) => {
-                const start = acc
-                acc += (v/total)*360
-                return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
-              }).join(", ")
-              const hoverDetail = entries.map(([k,v]) => `${formatter(k)}: ${v}`).join(" | ")
-              return `<div class="card" style="padding:10px;margin:0" title="${htmlEscape(hoverDetail)}"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
-            }
 
             const renderAnalystTicketStatus = () => {
               const analysts = users
@@ -10892,27 +10938,46 @@ Cliente B`)
                 </div>
               `).join("")}</div>`
             }
-            const activeAnalystEmails = users
-              .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
-              .map(u => String(u?.email || "").toLowerCase())
-              .filter(Boolean)
-            const analystsWithLoad = activeAnalystEmails.filter(email => Number(byAnalyst[email] || 0) > 0).length
-            const ticketsAssignedToAnalysts = activeAnalystEmails.reduce((acc, email) => acc + Number(byAnalyst[email] || 0), 0)
-            const avgTicketsByLoadedAnalyst = analystsWithLoad ? (ticketsAssignedToAnalysts / analystsWithLoad) : 0
+            const renderWeekdayTicketStatus = () => {
+              const weekdayOrder = ["Lun", "Mar", "Mié", "Jue", "Vie"]
+              const rows = weekdayOrder.map(day => ({ day, total: Number(byWeekday[day] || 0) }))
+              const max = Math.max(1, ...rows.map(r => r.total))
+              return `<div class="analystTicketsList">${rows.map((row, index) => `
+                <div class="analystTicketsItem">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div class="small" style="color:var(--text-2)">${htmlEscape(row.day)}</div>
+                    <strong>${row.total}</strong>
+                  </div>
+                  <div class="analystTicketsBar"><div class="analystTicketsBarFill" style="width:${Math.round((row.total / max) * 100)}%"></div></div>
+                </div>
+              `).join("")}</div>`
+            }
+            const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+            const surveysByMonth = Object.values(surveyMap).filter(s => String(s?.createdAt || "").slice(0,7) === selectedMonth)
+            const analystScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "analista").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const consultorScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "consultor").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const renderSatisfactionMiniChart = (title, scores, color) => {
+              const avg = scores.length ? (scores.reduce((acc, val) => acc + val, 0) / scores.length) : 0
+              const deg = Math.max(0, Math.min(360, (avg / 10) * 360))
+              return `<div style="display:flex;align-items:center;gap:8px;min-width:170px"><div style="width:48px;height:48px;border-radius:50%;background:conic-gradient(${color} ${deg}deg, rgba(99,132,199,.18) ${deg}deg 360deg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${scores.length ? avg.toFixed(1) : "-"}</div><div><div class="small" style="color:var(--text-2)">${htmlEscape(title)}</div><div class="small">Encuestas: ${scores.length}</div></div></div>`
+            }
 
             chartsArea.innerHTML = `
               <div class="kpiGrid adminOverviewRow">
                 <div class="kpi" title="Total de tickets creados en el mes seleccionado"><div class="label">Tickets del mes</div><div class="value">${monthTickets.length}</div><div class="meta">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
                 <div class="kpi" title="Variación porcentual respecto al mes anterior"><div class="label">Tendencia mensual</div><div class="value">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="meta">Comparado con ${htmlEscape(prevKey)}</div></div>
-                <div class="kpi" title="Cantidad de analistas activos con tickets en el período"><div class="label">Analistas con carga</div><div class="value">${analystsWithLoad}</div><div class="meta">Mes seleccionado</div></div>
-                <div class="kpi" title="Promedio de tickets por analista con carga"><div class="label">Promedio por analista</div><div class="value">${avgTicketsByLoadedAnalyst.toFixed(1)}</div><div class="meta">Tickets asignados / analistas con tickets</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del analista"><div class="label">Satisfacción analista</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Analista", analystScores, "#3d6ef5")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del consultor"><div class="label">Satisfacción consultor</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Consultor", consultorScores, "#22d4bf")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
               </div>
               <div class="adminOverviewLayout">
                 <div class="adminOverviewMain">
                   <h4 style="margin:0 0 8px">Distribución mensual</h4>
                   <div class="row" style="margin:0">
-                    <div>${renderPie("Tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
-                    <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
+                    <div class="card" style="padding:10px;margin:0">
+                      <h4 style="margin:0 0 8px">Tickets por día de semana</h4>
+                      <div class="small">Mes seleccionado (${htmlEscape(selectedMonth)}).</div>
+                      ${renderWeekdayTicketStatus()}
+                    </div>
                   </div>
                 </div>
                 <div class="adminOverviewSide">
