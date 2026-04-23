@@ -575,6 +575,10 @@
       border-radius: var(--radius-md);
       background: var(--surface-2);
       padding: 12px;
+      max-height: 420px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     .adminOverviewSide {
       border: 1px solid var(--stroke);
@@ -1141,7 +1145,16 @@
         <div><label>Título</label><input id="tTitle" /></div>
         <div><label>Prioridad</label><select id="tPriority"><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option></select></div>
       </div>
-      <div><label>Detalle</label><textarea id="tDescription"></textarea></div>
+      <div>
+        <label>Detalle</label>
+        <div id="tDescriptionEditor" class="commentEditor" contenteditable="true" data-placeholder="Escribí el detalle del ticket" oninput="syncRichEditorToTextarea('tDescriptionEditor','tDescription')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'tDescriptionEditor','tDescription')"></div>
+        <textarea id="tDescription" class="hidden"></textarea>
+        <div class="inline" style="margin-top:6px;gap:6px;align-items:center">
+          <label class="ghost attachBtn" for="tDescriptionFile" title="Insertar imagen en el detalle">🖼️</label>
+          <input id="tDescriptionFile" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('tDescriptionFile','tDescriptionEditor','tDescription')">
+          <span class="small">Podés arrastrar y soltar imágenes en el detalle</span>
+        </div>
+      </div>
       <div class="row">
         <div><label>Cliente</label><select id="tClient"></select></div>
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
@@ -1556,6 +1569,8 @@
     const COMMON_LEAKED_PASSWORDS = new Set([
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
+    const ADMIN_LEVEL1_EMAILS = ["admin@tablero.local"]
+    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support"])
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -1825,7 +1840,40 @@
       if(btn) btn.textContent = uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"
     }
 
+    function getCurrentAdminLevel(){
+      if(String(currentRole || "").toLowerCase() !== "admin") return 0
+      const userLevel = Number(currentUser?.adminLevel)
+      if(userLevel === 1 || userLevel === 2) return userLevel
+      const email = String(currentUser?.email || "").toLowerCase()
+      if(ADMIN_LEVEL1_EMAILS.includes(email)) return 1
+      return 2
+    }
+
+    function isAdminLevel1(){
+      return getCurrentAdminLevel() === 1
+    }
+
+    function isAdminLevel2(){
+      return getCurrentAdminLevel() === 2
+    }
+
+    function canAccessAdminTab(tab){
+      if(String(currentRole || "").toLowerCase() !== "admin") return false
+      if(isAdminLevel1()) return true
+      return !ADMIN_LEVEL2_BLOCKED_TABS.has(String(tab || ""))
+    }
+
     function setAdminTab(tab){
+      if(!canAccessAdminTab(tab)){
+        showToast("No tenés permisos para acceder a esta sección.", "error", 1800)
+        if(adminPanelTab !== "panel"){
+          adminPanelTab = "panel"
+          mainViewTab = "tickets"
+          closeHeaderMenu()
+          renderApp()
+        }
+        return
+      }
       if(adminPanelTab === tab && mainViewTab === "tickets") return
       adminPanelTab = tab
       if(tab !== "guidelines" && tab !== "continuous_improvement") adminGuidelinesClient = ""
@@ -2884,7 +2932,7 @@ Cliente B`)
         const policy = passwordPolicyError(password)
         if(policy) continue
         const secureFields = await buildPasswordFields(password)
-        const payload = { key: emailKey(email), email, password: "", role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
+        const payload = { key: emailKey(email), email, password: "", role, adminLevel: role === "admin" ? 2 : null, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
         await adminWrite('upsertUser', payload)
         await db.ref('users_by_email').child(payload.key).set(payload)
         count++
@@ -3534,16 +3582,47 @@ Cliente B`)
       }
       const selected = consultors.find(c => String(c.email||"").toLowerCase() === portfolioViewerConsultor) || consultors[0]
       const clientsObj = (await db.ref("clients").once("value")).val() || {}
-      const selectedKeys = Object.entries(clientsObj).filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
+      const allClientEntries = Object.entries(clientsObj)
+      const selectedKeys = allClientEntries.filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
       const selectedClients = selectedKeys.map(k => String(clientsObj?.[k]?.name || k))
       const tickets = (cachedTickets || []).filter(t => selectedClients.includes(String(t.client || "")))
+      const byConsultor = {}
+      ;(cachedTickets || []).forEach(t => {
+        const consultor = resolveInformerEmail(t) || "sin_consultor"
+        byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
+      })
+      const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
+      const renderConsultorPie = () => {
+        const entries = Object.entries(byConsultor).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
+        const total = entries.reduce((a,[,v])=>a+v,0)
+        if(!total) return `<div class="small">Sin datos.</div>`
+        let acc = 0
+        const stops = entries.map(([_,v],i) => {
+          const start = acc
+          acc += (v/total)*360
+          return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
+        }).join(", ")
+        return `<div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</span><strong>${v}</strong></div>`).join("")}</div></div>`
+      }
       wrap.innerHTML = `
+        ${currentRole === "admin" ? `<div class="card" style="padding:10px;margin:0 0 10px"><h4 style="margin:0 0 8px">Cantidad de tickets por consultores</h4>${renderConsultorPie()}</div>` : ""}
         <div class="row">
           <div><label>Consultor</label><select onchange="setPortfolioViewerConsultor(this.value)">${consultors.map(c => `<option value="${htmlEscape(String(c.email||"").toLowerCase())}" ${String(c.email||"").toLowerCase()===portfolioViewerConsultor?"selected":""}>${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</option>`).join("")}</select></div>
         </div>
         <div style="margin-top:8px">
-          <h4 style="margin:0 0 8px">Clientes asignados</h4>
-          ${selectedKeys.length ? selectedKeys.map(key => `<div class="portfolioItem"><span class="name">${htmlEscape(String(clientsObj?.[key]?.name || key))}</span>${currentRole === "admin" ? `<label class="switch"><input type="checkbox" checked onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label>` : ""}</div>`).join("") : `<div class="small">Sin clientes asignados.</div>`}
+          <h4 style="margin:0 0 8px">${currentRole === "admin" ? "Asignar clientes a la cartera" : "Clientes asignados"}</h4>
+          ${currentRole === "admin"
+            ? (allClientEntries.length
+              ? allClientEntries
+                .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+                .map(([key, client]) => {
+                  const isAssigned = String(client?.assignedConsultor || "").toLowerCase() === String(selected.email || "").toLowerCase()
+                  return `<div class="portfolioItem"><span class="name">${htmlEscape(String(client?.name || key))}</span><label class="switch"><input type="checkbox" ${isAssigned ? "checked" : ""} onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label></div>`
+                }).join("")
+              : `<div class="small">No hay clientes disponibles.</div>`)
+            : (selectedKeys.length
+              ? selectedKeys.map(key => `<div class="portfolioItem"><span class="name">${htmlEscape(String(clientsObj?.[key]?.name || key))}</span></div>`).join("")
+              : `<div class="small">Sin clientes asignados.</div>`)}
         </div>
         <div style="margin-top:12px">
           <h4 style="margin:0 0 8px">Tickets según cartera (${tickets.length})</h4>
@@ -4137,7 +4216,7 @@ Cliente B`)
         return acc + dateHours
       }, 0))
       const totalExecutedToDate = executedSeries.reduce((acc, v) => acc + Number(v || 0), 0)
-      const gapIdlePct = totalTheoreticalToDate > 0 ? ((totalTheoreticalToDate - totalExecutedToDate) / totalTheoreticalToDate) * 100 : 0
+      const periodUtilizationPct = totalTheoreticalToDate > 0 ? (totalExecutedToDate / totalTheoreticalToDate) * 100 : 0
       const totalTheoreticalForGap = totalTheoreticalToDate * Math.max(1, activeAnalystCount)
       const gapPeople = (activeAnalystCount > 0 && totalTheoreticalForGap > 0)
         ? (activeAnalystCount - (((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap)))
@@ -4184,9 +4263,9 @@ Cliente B`)
           days_elapsed: { title: "Días hábiles transcurridos", formula: "Cantidad de días hábiles del período hasta la fecha actual.", detailsHtml: `<div class="small">Período: <strong>${htmlEscape(monthKey)}</strong> · Días hábiles transcurridos: <strong>${daysElapsed}</strong>.</div>` },
           total_theoretical: { title: "Tiempo total teórico mensual", formula: "Suma para cada analista: (días hábiles del mes - días ausentes) × horas diarias ajustadas.", detailsHtml: `<div class="small">Total mensual teórico del área: <strong>${totalMonthlyTheoretical.toFixed(2)} h</strong>.</div>` },
           total_executed: { title: "Tiempo total ejecutado", formula: "Suma de horas ejecutadas por todos los analistas para el período filtrado.", detailsHtml: `<div class="small">Total ejecutado del área en ${htmlEscape(monthKey)}: <strong>${totalExecutedHours.toFixed(2)} h</strong>.</div>` },
-          gap_idle: { title: "Utilización del día", formula: "((Teórico acumulado desde el 1er día hábil del mes hasta hoy - Ejecutado acumulado en ese período) / Teórico acumulado del período) × 100.", detailsHtml: `<div class="small">Período: 1er día hábil del mes → hoy.<br>Teórico al día: <strong>${totalTheoreticalToDate.toFixed(2)} h</strong> · Ejecutado al día: <strong>${totalExecutedToDate.toFixed(2)} h</strong> · Utilización del día: <strong>${gapIdlePct.toFixed(2)}%</strong>.</div>` },
+          gap_idle: { title: "Utilización del período", formula: "(Ejecutado acumulado del período / Horas disponibles acumuladas del período) × 100.", detailsHtml: `<div class="small">Período: 1er día hábil del mes → hoy.<br>Horas disponibles del período: <strong>${totalTheoreticalToDate.toFixed(2)} h</strong> · Ejecutado del período: <strong>${totalExecutedToDate.toFixed(2)} h</strong> · Utilización del período: <strong>${periodUtilizationPct.toFixed(2)}%</strong>.</div>` },
           capacity_use: { title: "Utilización del mes", formula: "(Tiempo total ejecutado mensual / Tiempo total teórico mensual) × 100.", detailsHtml: `<div class="small">(${totalExecutedHours.toFixed(2)} h / ${totalMonthlyTheoretical.toFixed(2)} h) × 100 = <strong>${usedCapacityPct.toFixed(2)}%</strong>.</div>` },
-          gap_people: { title: "GAP", formula: "Analistas activos - ((Ejecutado acumulado del 1er día hábil a hoy × analistas activos) / (Teórico acumulado del 1er día hábil a hoy × analistas activos)).", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado total para GAP: ${totalTheoreticalToDate.toFixed(2)} × ${activeAnalystCount} = <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = ${activeAnalystCount} - resultado = <strong>${gapPeople.toFixed(2)}</strong>.</div>` },
+          gap_people: { title: "GAP", formula: "Analistas activos - ((Ejecutado acumulado del período × analistas activos) / (Teórico acumulado del período × analistas activos)).", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado para GAP: ${totalTheoreticalToDate.toFixed(2)} × ${activeAnalystCount} = <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = ${activeAnalystCount} - resultado = <strong>${gapPeople.toFixed(2)}</strong>.</div>` },
           increased_clients: { title: "Clientes que han aumentado el consumo", formula: "Clientes cuyo consumo del mes actual aumentó más del 50% respecto del mes anterior.", detailsHtml: `<div class="small">Detectados: <strong>${adminCapacityIncreasedClients.length}</strong> clientes con aumento mayor al 50%.</div><div style="margin-top:8px"><button class="ghost" onclick="openCapacityIncreasedClientsModal()">Ver detalle</button></div>` }
         }
         const kpiCard = (key, label, value, small) => `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('${key}')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">${label}</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('${key}')">?</button></div><div class="value">${value}</div><div class="small">${small}</div></div>`
@@ -4290,7 +4369,7 @@ Cliente B`)
         </div>
         <div style="overflow:auto;margin-bottom:12px">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => { const d = new Date(`${date}T00:00:00`); const lbl = ["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()] || ""; return `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${lbl}<br>${String(date).slice(-2)}</th>` }).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días hábiles trabajados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado hasta ahora</th></tr></thead>
+            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => { const d = new Date(`${date}T00:00:00`); const lbl = ["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()] || ""; return `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${lbl}<br>${String(date).slice(-2)}</th>` }).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días hábiles trabajados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad de horas disponibles</th></tr></thead>
             <tbody>${visibleAnalysts.map(u => {
               const email = String(u.email || "").toLowerCase()
               const row = getAdminHoursRowValues(email)
@@ -4307,17 +4386,18 @@ Cliente B`)
         <div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
             <thead><tr>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Factor de ajuste</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas trabajadas</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas diarias ajustadas</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad de días hábiles del mes</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días ausentes <span class="tinyHelpIcon" title="Este campo abarca feriados, licencias y días no trabajados por motivos personales por el analista.">?</span></th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">TIempo mensual teorico</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado (h)</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Utilización del día</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Utilización del mes</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Analista</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Factor de ajuste</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Horas trabajadas</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Horas diarias ajustadas</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cantidad de días hábiles del mes</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Días ausentes <span class="tinyHelpIcon" title="Este campo abarca feriados, licencias y días no trabajados por motivos personales por el analista.">?</span></th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">TIempo mensual teorico</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado (h)</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cantidad de horas disponibles</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Utilización del período</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Utilización del mes</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Acción</th>
             </tr></thead>
             <tbody>
               ${visibleAnalysts.map(u => {
@@ -4326,13 +4406,13 @@ Cliente B`)
                 const autoMonthly = Math.max(0, row.monthDays - row.holidays) * row.adjustedHours
                 const executedHours = Number((executedByAnalyst[email] || 0) / 60)
                 const elapsedAnalystDates = businessDates.filter(date => date <= today)
-                const theoreticalToDate = elapsedAnalystDates.reduce((acc, date) => acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0)
+                const availablePeriodHours = elapsedAnalystDates.reduce((acc, date) => acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0)
                 const executedToDate = (entriesByAnalyst[email] || []).filter(r => String(r.date || "").slice(0,10) <= today).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
-                const gapPct = theoreticalToDate > 0 ? ((theoreticalToDate - executedToDate) / theoreticalToDate) * 100 : 0
+                const periodUsePct = availablePeriodHours > 0 ? (executedToDate / availablePeriodHours) * 100 : 0
                 const capacityUse = autoMonthly > 0 ? (executedHours / autoMonthly) * 100 : 0
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)}%" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div style="display:inline-flex;align-items:center;gap:6px"><button class="ghost" style="padding:6px 8px;font-size:12px;line-height:1" title="Enviar advertencia por baja carga" onclick="openCapacityLowHoursModal('${email}')">⚠️</button><button class="danger" style="padding:6px 10px;font-size:12px;line-height:1" onclick="removeAnalystFromHoursTable('${email}')">X</button></div></td></tr>`
+                return `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:82px"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:82px"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:98px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:98px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:82px"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:108px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:108px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${availablePeriodHours.toFixed(2)}" disabled style="margin:0;max-width:108px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${periodUsePct.toFixed(2)}%" disabled style="margin:0;max-width:94px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)}%" disabled style="margin:0;max-width:94px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><div style="display:inline-flex;align-items:center;gap:6px"><button class="ghost" style="padding:6px 8px;font-size:12px;line-height:1" title="Enviar advertencia por baja carga" onclick="openCapacityLowHoursModal('${email}')">⚠️</button><button class="danger" style="padding:6px 10px;font-size:12px;line-height:1" onclick="removeAnalystFromHoursTable('${email}')">X</button></div></td></tr>`
               }).join("")}
-              ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); return acc }, { theoretical: 0, executed: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
+              ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); const elapsedAnalystDates = businessDates.filter(date => date <= today); const availablePeriodHours = elapsedAnalystDates.reduce((sum, date) => sum + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); acc.available += availablePeriodHours; return acc }, { theoretical: 0, executed: 0, available: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.available.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
             </tbody>
           </table>
         </div>
@@ -4519,6 +4599,7 @@ Cliente B`)
             email: user.email,
             password: "",
             role: user.role,
+            adminLevel: user.role === "admin" ? 1 : 2,
             active: true,
             createdAt: new Date().toISOString(),
             createdBy: "system",
@@ -5601,7 +5682,7 @@ Cliente B`)
           adminWrite("upsertUser", migrated).catch(()=>{})
         }
 
-        currentUser = { email: user.email }
+        currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
         currentRole = user.role
         persistSession()
 
@@ -5674,11 +5755,11 @@ Cliente B`)
       const msg = new ArrayBuffer(8)
       const view = new DataView(msg)
       view.setUint32(0, Math.floor(counter / 0x100000000), false)
-      view.setUint32(4, counter >>> 0, false)
+      view.setUint32(4, counter % 0x100000000, false)
       const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
       const sig = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msg))
       const offset = sig[sig.length - 1] & 0x0f
-      const bin = ((sig[offset] & 0x7f) << 24) | (sig[offset+1] << 16) | (sig[offset+2] << 8) | sig[offset+3]
+      const bin = ((sig[offset] & 0x7f) * 16777216) + (sig[offset+1] * 65536) + (sig[offset+2] * 256) + sig[offset+3]
       return String(bin % 1000000).padStart(6, "0")
     }
 
@@ -5845,6 +5926,9 @@ Cliente B`)
 
     function renderApp(){
       const isAdmin = currentRole === "admin"
+      const adminCanAccess = (tab) => canAccessAdminTab(tab)
+      const showAdminConfigButton = isAdmin && adminCanAccess("config_home")
+      if(isAdmin && !adminCanAccess(adminPanelTab)) adminPanelTab = "panel"
       const isAnalyst = currentRole === "analista"
       if(isAnalyst) loadAnalystBoardSettings()
       if(isAnalyst && analystMoodDateLoaded && analystMoodDateLoaded !== toLocalDateOnly(new Date())){
@@ -5894,11 +5978,11 @@ Cliente B`)
           { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" }
         ]},
         { title: "Técnico", items: [
-          { icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" },
+          ...(adminCanAccess("support") ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
           { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
-          { icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" },
+          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : []),
           { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
-        ]}
+        ].filter(Boolean)}
       ] : [
         { title: "General", items: [
           { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
@@ -5943,7 +6027,7 @@ Cliente B`)
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor" || isAdmin) ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" title="Notificaciones" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
-              ${isAdmin ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
+              ${showAdminConfigButton ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
               ${isAnalyst ? `<button class="ghost" title="Configuración del tablero" onclick="setAnalystTab('board_settings')">⚙️</button>` : ""}
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
@@ -6000,7 +6084,7 @@ Cliente B`)
           </div>
         ` : showPortfolioOverview ? `
           <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
-        ` : showAdminPanel ? (adminPanelTab==='config_home' ? `
+        ` : showAdminPanel ? (adminPanelTab==='config_home' && showAdminConfigButton ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
             <div class="row">
               <div class="feedItem" style="cursor:pointer" onclick="setAdminTab('people')"><div class="feedType">Gestión de personas</div><div class="feedMeta">Crear/importar usuarios y ver usuarios creados.</div></div>
@@ -7601,12 +7685,19 @@ Cliente B`)
       const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
-      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      const header = `<div class="small" style="display:flex;justify-content:flex-end;padding:4px 2px 8px;border-bottom:1px solid rgba(148,163,184,.15)"><button class="ghost" style="padding:4px 8px" onclick="markAllRoleNotificationsRead(event)" title="Marcar todas como leídas">✅</button></div>`
+      const listHtml = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      dd.innerHTML = header + listHtml
+    }
+
+    async function markAllRoleNotificationsRead(ev){
+      ev?.stopPropagation?.()
+      const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       const newest = items[0]?.ts || ""
-      if(newest){
-        const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
-        localStorage.setItem(seenKey, String(newest))
-      }
+      const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
+      if(newest) localStorage.setItem(seenKey, String(newest))
+      await renderAnalystNotificationsDropdown()
+      refreshAnalystNotificationBadge()
     }
 
     async function openAlertTicket(ticketId, tab = "comments"){
@@ -7651,6 +7742,8 @@ Cliente B`)
     function closeTicketModal(){
       document.getElementById("tTitle").value = ""
       document.getElementById("tDescription").value = ""
+      const descEditor = document.getElementById("tDescriptionEditor")
+      if(descEditor) descEditor.innerHTML = ""
       document.getElementById("tPriority").value = "Media"
       document.getElementById("tClient").value = ""
       document.getElementById("tDeadline").value = ""
@@ -7662,7 +7755,9 @@ Cliente B`)
 
     async function saveTicket(){
       const title = document.getElementById("tTitle").value.trim()
+      syncRichEditorToTextarea("tDescriptionEditor", "tDescription")
       const description = document.getElementById("tDescription").value.trim()
+      const descriptionHtml = String(document.getElementById("tDescriptionEditor")?.innerHTML || "").trim()
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
@@ -7694,7 +7789,7 @@ Cliente B`)
       const code = buildTicketCode(cachedTickets)
       const ticket = {
         id: code,
-        title, description, priority, client, deadline,
+        title, description, descriptionHtml, priority, client, deadline,
         publicationCountConsultor: currentRole === "consultor" ? publicationCount : 0,
         publicationCountAnalyst: currentRole === "analista" ? publicationCount : 0,
         publicationCount,
@@ -8003,7 +8098,7 @@ Cliente B`)
                 </div>
               </div>
             </div>
-            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
+            <div><label>Detalle</label><div id="detail-description-editor-${ticketWithRead.id}" class="commentEditor" contenteditable="${canEdit ? "true" : "false"}" data-placeholder="Detalle del ticket" ${canEdit ? `oninput="syncRichEditorToTextarea('detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}')" onblur="autoSaveTicketDetail('${ticketWithRead.id}')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"` : ""}>${ticketWithRead.descriptionHtml ? safeCommentHtml(ticketWithRead.descriptionHtml) : htmlEscape(ticketWithRead.description||"").replace(/\n/g, "<br>")}</div><textarea id="detail-description-${ticketWithRead.id}" class="hidden">${htmlEscape(ticketWithRead.description||"")}</textarea>${canEdit ? `<div class="inline" style="margin-top:6px;gap:6px;align-items:center"><label class="ghost attachBtn" for="detail-description-file-${ticketWithRead.id}" title="Insertar imagen en el detalle">🖼️</label><input id="detail-description-file-${ticketWithRead.id}" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('detail-description-file-${ticketWithRead.id}','detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"><span class="small">Arrastrá imágenes o usá el botón</span></div>` : ""}</div>
             
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
@@ -8117,6 +8212,7 @@ Cliente B`)
         ...ticket,
         title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
         description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
+        descriptionHtml: canEditFields ? String(document.getElementById(`detail-description-editor-${id}`)?.innerHTML || ticket.descriptionHtml || "").trim() : (ticket.descriptionHtml || ""),
         priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
@@ -9148,6 +9244,96 @@ Cliente B`)
       if(input) input.value = ""
     }
 
+    function syncRichEditorToTextarea(editorId, textareaId){
+      const editor = document.getElementById(String(editorId || ""))
+      const textarea = document.getElementById(String(textareaId || ""))
+      if(!editor || !textarea) return
+      textarea.value = commentPlainTextFromHtml(editor.innerHTML || "")
+    }
+
+    async function insertInlineImageIntoRichEditor(editorId, textareaId, file, ticketId = ""){
+      const editor = document.getElementById(String(editorId || ""))
+      if(!editor || !file || !String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes", "warn", 2200)
+        return
+      }
+      showToast("Insertando imagen...", "info", 1200)
+      let imageUrl = ""
+      try{
+        imageUrl = await readFileAsDataUrl(file)
+      }catch(_){
+        showToast("No se pudo procesar la imagen", "error", 2200)
+        return
+      }
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      syncRichEditorToTextarea(editorId, textareaId)
+      if(ticketId) autoSaveTicketDetail(String(ticketId))
+      showToast("Imagen integrada en el texto", "ok", 1200)
+    }
+
+    function handleRichEditorImageDragOver(ev){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = "var(--accent)"
+    }
+
+    function handleRichEditorImageDragLeave(ev){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = ""
+    }
+
+    async function handleRichEditorImageDrop(ev, editorId, textareaId, ticketId = ""){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = ""
+      const files = Array.from(ev?.dataTransfer?.files || [])
+      const image = files.find(f => String(f?.type || "").startsWith("image/"))
+      if(!image){
+        showToast("Solo se permiten imágenes", "warn", 2200)
+        return
+      }
+      await insertInlineImageIntoRichEditor(editorId, textareaId, image, ticketId)
+    }
+
+    async function handleRichEditorImageFileChange(inputId, editorId, textareaId, ticketId = ""){
+      const input = document.getElementById(String(inputId || ""))
+      const file = input?.files?.[0] || null
+      if(!file) return
+      await insertInlineImageIntoRichEditor(editorId, textareaId, file, ticketId)
+      if(input) input.value = ""
+    }
+
+    async function insertInlineImageIntoComment(ticketId, file){
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor || !file) return
+      if(!String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
+        return
+      }
+      showToast("Subiendo imagen para integrarla al comentario...", "info", 1800)
+      let imageUrl = ""
+      try{
+        const uploaded = await uploadAttachmentFile(file)
+        imageUrl = String(uploaded?.url || "")
+      }catch(err){
+        console.error("Fallo upload inline image:", err)
+        try{
+          imageUrl = await readFileAsDataUrl(file)
+        }catch(_){
+          showToast("No se pudo insertar la imagen en el comentario", "error", 2600)
+          return
+        }
+      }
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      const input = document.getElementById(`comment-file-${ticketId}`)
+      if(input) input.value = ""
+      handleCommentMentionInput(ticketId)
+      showToast("Imagen integrada en el comentario", "ok", 1400)
+    }
+
     function renderCommentImagePreview(ticketId, file){
       const wrap = document.getElementById(`comment-image-preview-${ticketId}`)
       if(!wrap) return
@@ -9159,7 +9345,7 @@ Cliente B`)
       wrap.innerHTML = `<div class="feedItem" style="padding:8px"><div class="small" style="margin-bottom:6px">Vista previa de imagen</div><img src="${htmlEscape(previewUrl)}" alt="preview" style="max-width:220px;border-radius:8px;display:block;margin-bottom:6px"><div class="inline" style="justify-content:space-between"><span class="small">${htmlEscape(file.name || "imagen")}</span><button class="ghost" type="button" onclick="clearCommentImagePreview('${ticketId}')">Quitar</button></div></div>`
     }
 
-    function handleCommentFileChange(ticketId){
+    async function handleCommentFileChange(ticketId){
       const file = document.getElementById(`comment-file-${ticketId}`)?.files?.[0] || null
       if(!file){ clearCommentImagePreview(ticketId); return }
       if(!String(file.type || "").startsWith("image/")){
@@ -9167,7 +9353,8 @@ Cliente B`)
         clearCommentImagePreview(ticketId)
         return
       }
-      renderCommentImagePreview(ticketId, file)
+      await insertInlineImageIntoComment(ticketId, file)
+      clearCommentImagePreview(ticketId)
     }
 
     function handleCommentComposerDragOver(ev, ticketId){
@@ -9182,7 +9369,7 @@ Cliente B`)
       if(composer) composer.classList.remove("dropActive")
     }
 
-    function handleCommentComposerDrop(ev, ticketId){
+    async function handleCommentComposerDrop(ev, ticketId){
       ev.preventDefault()
       const composer = document.getElementById(`comment-composer-${ticketId}`)
       if(composer) composer.classList.remove("dropActive")
@@ -9193,13 +9380,7 @@ Cliente B`)
         showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
         return
       }
-      const input = document.getElementById(`comment-file-${ticketId}`)
-      if(!input) return
-      const transfer = new DataTransfer()
-      transfer.items.add(image)
-      input.files = transfer.files
-      renderCommentImagePreview(ticketId, image)
-      showToast(`Imagen lista para comentar: ${image.name}`, "ok", 1800)
+      await insertInlineImageIntoComment(ticketId, image)
     }
 
     async function addComment(id){
@@ -9452,6 +9633,7 @@ Cliente B`)
       const payload = {
         key: emailKey(email),
         email, password: "", role, active: true,
+        adminLevel: role === "admin" ? 2 : null,
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
         analystTeam: role === "analista" ? analystTeam : "",
         ...secureFields,
@@ -9890,7 +10072,9 @@ Cliente B`)
         const aa = String(a.assignedTo || "zzzz").toLowerCase()
         const bb = String(b.assignedTo || "zzzz").toLowerCase()
         if(aa !== bb) return aa.localeCompare(bb)
-        return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0)
+        const createdDiff = new Date(a.createdAt||0).getTime() - new Date(b.createdAt||0).getTime()
+        if(createdDiff !== 0) return createdDiff
+        return String(a.id || "").localeCompare(String(b.id || ""))
       })
       adminAgendaCurrentRows = [...scoped]
 
@@ -9943,11 +10127,11 @@ Cliente B`)
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. atención</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del admin</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del analista</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. modificación agenda</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
               </tr>
@@ -9975,11 +10159,11 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysSince === null ? "-" : `${daysSince} día(s)`}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.adminComment||"")}" title="${htmlEscape(t.adminComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'adminComment', this.value)" oninput="this.title=this.value" placeholder="Comentario interno"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrow ? "✅" : "—"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
                 </tr>`
@@ -10838,32 +11022,16 @@ Cliente B`)
             const trend = prevCount ? (((monthTickets.length - prevCount) / prevCount) * 100) : (monthTickets.length ? 100 : 0)
 
             const byAnalyst = {}
-            const byConsultor = {}
-            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0, "Sáb":0, "Dom":0 }
+            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0 }
             monthTickets.forEach(t => {
               const analyst = String(t.assignedTo||"sin_asignar").toLowerCase()
-              const consultor = resolveInformerEmail(t) || "sin_consultor"
               byAnalyst[analyst] = (byAnalyst[analyst] || 0) + 1
-              byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
               const d = new Date(t.createdAt || Date.now())
               const wk = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][d.getDay()]
-              byWeekday[wk] = (byWeekday[wk] || 0) + 1
+              if(Object.prototype.hasOwnProperty.call(byWeekday, wk)){
+                byWeekday[wk] = (byWeekday[wk] || 0) + 1
+              }
             })
-
-            const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
-            const renderPie = (title, mapObj, formatter) => {
-              const entries = Object.entries(mapObj).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
-              const total = entries.reduce((a,[,v])=>a+v,0)
-              if(!total) return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4><p class="small">Sin datos.</p></div>`
-              let acc = 0
-              const stops = entries.map(([_,v],i) => {
-                const start = acc
-                acc += (v/total)*360
-                return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
-              }).join(", ")
-              const hoverDetail = entries.map(([k,v]) => `${formatter(k)}: ${v}`).join(" | ")
-              return `<div class="card" style="padding:10px;margin:0" title="${htmlEscape(hoverDetail)}"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
-            }
 
             const renderAnalystTicketStatus = () => {
               const analysts = users
@@ -10892,33 +11060,47 @@ Cliente B`)
                 </div>
               `).join("")}</div>`
             }
-            const activeAnalystEmails = users
-              .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
-              .map(u => String(u?.email || "").toLowerCase())
-              .filter(Boolean)
-            const analystsWithLoad = activeAnalystEmails.filter(email => Number(byAnalyst[email] || 0) > 0).length
-            const ticketsAssignedToAnalysts = activeAnalystEmails.reduce((acc, email) => acc + Number(byAnalyst[email] || 0), 0)
-            const avgTicketsByLoadedAnalyst = analystsWithLoad ? (ticketsAssignedToAnalysts / analystsWithLoad) : 0
+            const renderWeekdayTicketStatus = () => {
+              const weekdayOrder = ["Lun", "Mar", "Mié", "Jue", "Vie"]
+              const rows = weekdayOrder.map(day => ({ day, total: Number(byWeekday[day] || 0) }))
+              const max = Math.max(1, ...rows.map(r => r.total))
+              return `<div class="analystTicketsList">${rows.map((row, index) => `
+                <div class="analystTicketsItem">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div class="small" style="color:var(--text-2)">${htmlEscape(row.day)}</div>
+                    <strong>${row.total}</strong>
+                  </div>
+                  <div class="analystTicketsBar"><div class="analystTicketsBarFill" style="width:${Math.round((row.total / max) * 100)}%"></div></div>
+                </div>
+              `).join("")}</div>`
+            }
+            const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+            const surveysByMonth = Object.values(surveyMap).filter(s => String(s?.createdAt || "").slice(0,7) === selectedMonth)
+            const analystScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "analista").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const consultorScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "consultor").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const renderSatisfactionMiniChart = (title, scores, color) => {
+              const avg = scores.length ? (scores.reduce((acc, val) => acc + val, 0) / scores.length) : 0
+              const deg = Math.max(0, Math.min(360, (avg / 10) * 360))
+              return `<div style="display:flex;align-items:center;gap:8px;min-width:170px"><div style="width:48px;height:48px;border-radius:50%;background:conic-gradient(${color} ${deg}deg, rgba(99,132,199,.18) ${deg}deg 360deg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${scores.length ? avg.toFixed(1) : "-"}</div><div><div class="small" style="color:var(--text-2)">${htmlEscape(title)}</div><div class="small">Encuestas: ${scores.length}</div></div></div>`
+            }
 
             chartsArea.innerHTML = `
               <div class="kpiGrid adminOverviewRow">
                 <div class="kpi" title="Total de tickets creados en el mes seleccionado"><div class="label">Tickets del mes</div><div class="value">${monthTickets.length}</div><div class="meta">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
                 <div class="kpi" title="Variación porcentual respecto al mes anterior"><div class="label">Tendencia mensual</div><div class="value">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="meta">Comparado con ${htmlEscape(prevKey)}</div></div>
-                <div class="kpi" title="Cantidad de analistas activos con tickets en el período"><div class="label">Analistas con carga</div><div class="value">${analystsWithLoad}</div><div class="meta">Mes seleccionado</div></div>
-                <div class="kpi" title="Promedio de tickets por analista con carga"><div class="label">Promedio por analista</div><div class="value">${avgTicketsByLoadedAnalyst.toFixed(1)}</div><div class="meta">Tickets asignados / analistas con tickets</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del analista"><div class="label">Satisfacción analista</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Analista", analystScores, "#3d6ef5")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del consultor"><div class="label">Satisfacción consultor</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Consultor", consultorScores, "#22d4bf")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
               </div>
               <div class="adminOverviewLayout">
                 <div class="adminOverviewMain">
-                  <h4 style="margin:0 0 8px">Distribución mensual</h4>
-                  <div class="row" style="margin:0">
-                    <div>${renderPie("Tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
-                    <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
-                  </div>
-                </div>
-                <div class="adminOverviewSide">
                   <h4 style="margin:0">Cantidad de tickets por analista</h4>
                   <div class="small">Todos los analistas activos del sistema (${htmlEscape(selectedMonth)}).</div>
                   ${renderAnalystTicketStatus()}
+                </div>
+                <div class="adminOverviewSide">
+                  <h4 style="margin:0 0 8px">Tickets por día de semana</h4>
+                  <div class="small">Mes seleccionado (${htmlEscape(selectedMonth)}).</div>
+                  ${renderWeekdayTicketStatus()}
                 </div>
               </div>
             `
@@ -11087,7 +11269,7 @@ Cliente B`)
         if(savedEmail){
           const user = await getUserFromDb(savedEmail)
           if(user && user.active !== false){
-            currentUser = { email: user.email }
+            currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
             currentRole = user.role || savedRole || "consultor"
             persistSession()
             renderApp()
