@@ -514,6 +514,11 @@
       background: rgba(8,12,22,.28);
     }
     .agendaSection h4 { margin: 0 0 8px; }
+    body.light #adminAgendaTableWrap thead th,
+    body.light #analystAgendaTableWrap thead th {
+      background: #f3f6fb;
+      color: #0f172a;
+    }
     .agendaMiniDash .kpi { min-height: 96px; }
     @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .9fr; } }
 
@@ -1212,7 +1217,7 @@
       </div>
       <div class="row">
         <div><label>Email</label><input id="userEditEmail" type="text" disabled></div>
-        <div><label>Rol</label><select id="userEditRole" onchange="toggleUserEditTeamVisibility()"><option value="admin">Admin</option><option value="consultor">Consultor</option><option value="analista">Analista</option></select></div>
+        <div><label>Rol</label><select id="userEditRole" onchange="toggleUserEditTeamVisibility()"><option value="admin">Admin - Nivel 1</option><option value="admin_lvl2">Admin - Nivel 2</option><option value="consultor">Consultor</option><option value="analista">Analista</option></select></div>
         <div id="userEditTeamWrap"><label>Equipo (si es analista)</label><select id="userEditTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div>
       </div>
       <label>Actualizar foto (opcional)</label>
@@ -1631,6 +1636,8 @@
     var analystAgendaFilters = { ticketId: "", title: "", status: [], client: "", consultor: "" }
     var analystAgendaVisible = true
     var analystAgendaTodayOnly = false
+    var dailyAdminRows = []
+    var dailyAnalystRows = []
     var analystPendingRequestsExpanded = false
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
@@ -1937,7 +1944,7 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys"].includes(tab) ? tab : "tickets"
       if(mainViewTab === nextTab){
         if(nextTab === "tickets"){
           if(currentRole === "analista" && analystPanelTab !== "panel") analystPanelTab = "panel"
@@ -2138,6 +2145,20 @@
       if(normalized === "analista") return "Analista"
       if(normalized === "consultor") return "Consultor"
       return role || "-"
+    }
+
+    function normalizeUserRoleInput(rawRole){
+      const value = String(rawRole || "").toLowerCase()
+      if(value === "admin_lvl2") return { role: "admin", adminLevel: 2 }
+      if(value === "admin") return { role: "admin", adminLevel: 1 }
+      return { role: value || "consultor", adminLevel: null }
+    }
+
+    function roleDisplayWithLevel(user){
+      const role = String(user?.role || "").toLowerCase()
+      if(role !== "admin") return roleLabel(role)
+      const adminLevel = Number(user?.adminLevel)
+      return adminLevel === 2 ? "Admin - Nivel 2" : "Admin - Nivel 1"
     }
 
     function welcomeBySex(user){
@@ -2927,12 +2948,13 @@ Cliente B`)
       for(const row of rows.slice(1)){
         const email = String(row[iEmail]||'').trim().toLowerCase()
         const password = String(row[iPass]||'').trim()
-        const role = String(row[iRole]||'consultor').trim().toLowerCase()
+        const roleInput = String(row[iRole]||'consultor').trim().toLowerCase()
+        const normalizedRole = normalizeUserRoleInput(roleInput)
         if(!email || !password) continue
         const policy = passwordPolicyError(password)
         if(policy) continue
         const secureFields = await buildPasswordFields(password)
-        const payload = { key: emailKey(email), email, password: "", role, adminLevel: role === "admin" ? 2 : null, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
+        const payload = { key: emailKey(email), email, password: "", role: normalizedRole.role, adminLevel: normalizedRole.adminLevel, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
         await adminWrite('upsertUser', payload)
         await db.ref('users_by_email').child(payload.key).set(payload)
         count++
@@ -4217,9 +4239,9 @@ Cliente B`)
       }, 0))
       const totalExecutedToDate = executedSeries.reduce((acc, v) => acc + Number(v || 0), 0)
       const periodUtilizationPct = totalTheoreticalToDate > 0 ? (totalExecutedToDate / totalTheoreticalToDate) * 100 : 0
-      const totalTheoreticalForGap = totalTheoreticalToDate * Math.max(1, activeAnalystCount)
+      const totalTheoreticalForGap = totalTheoreticalToDate
       const gapPeople = (activeAnalystCount > 0 && totalTheoreticalForGap > 0)
-        ? (activeAnalystCount - (((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap)))
+        ? ((((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap)) - activeAnalystCount)
         : 0
       const byClientCurrentMinutes = {}
       const byClientToDateMinutes = {}
@@ -4265,7 +4287,7 @@ Cliente B`)
           total_executed: { title: "Tiempo total ejecutado", formula: "Suma de horas ejecutadas por todos los analistas para el período filtrado.", detailsHtml: `<div class="small">Total ejecutado del área en ${htmlEscape(monthKey)}: <strong>${totalExecutedHours.toFixed(2)} h</strong>.</div>` },
           gap_idle: { title: "Utilización del período", formula: "(Ejecutado acumulado del período / Horas disponibles acumuladas del período) × 100.", detailsHtml: `<div class="small">Período: 1er día hábil del mes → hoy.<br>Horas disponibles del período: <strong>${totalTheoreticalToDate.toFixed(2)} h</strong> · Ejecutado del período: <strong>${totalExecutedToDate.toFixed(2)} h</strong> · Utilización del período: <strong>${periodUtilizationPct.toFixed(2)}%</strong>.</div>` },
           capacity_use: { title: "Utilización del mes", formula: "(Tiempo total ejecutado mensual / Tiempo total teórico mensual) × 100.", detailsHtml: `<div class="small">(${totalExecutedHours.toFixed(2)} h / ${totalMonthlyTheoretical.toFixed(2)} h) × 100 = <strong>${usedCapacityPct.toFixed(2)}%</strong>.</div>` },
-          gap_people: { title: "GAP", formula: "Analistas activos - ((Ejecutado acumulado del período × analistas activos) / (Teórico acumulado del período × analistas activos)).", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado para GAP: ${totalTheoreticalToDate.toFixed(2)} × ${activeAnalystCount} = <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = ${activeAnalystCount} - resultado = <strong>${gapPeople.toFixed(2)}</strong>.</div>` },
+          gap_people: { title: "GAP", formula: "((Ejecutado acumulado del período × analistas activos) / Teórico acumulado del período) - analistas activos.", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado del período: <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = resultado - ${activeAnalystCount} = <strong>${gapPeople.toFixed(2)}</strong>.</div>` },
           increased_clients: { title: "Clientes que han aumentado el consumo", formula: "Clientes cuyo consumo del mes actual aumentó más del 50% respecto del mes anterior.", detailsHtml: `<div class="small">Detectados: <strong>${adminCapacityIncreasedClients.length}</strong> clientes con aumento mayor al 50%.</div><div style="margin-top:8px"><button class="ghost" onclick="openCapacityIncreasedClientsModal()">Ver detalle</button></div>` }
         }
         const kpiCard = (key, label, value, small) => `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('${key}')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">${label}</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('${key}')">?</button></div><div class="value">${value}</div><div class="small">${small}</div></div>`
@@ -5954,12 +5976,14 @@ Cliente B`)
       const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
       const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
+      const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          { icon: "🗂️", label: "Daily's", action: "setAdminTab('dailys')" },
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
           { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" },
@@ -5997,6 +6021,7 @@ Cliente B`)
           ...(isAnalyst ? [{ icon: "◍", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
           ...(isAnalyst ? [{ icon: "≣", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(isAnalyst ? [{ icon: "◷", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
+          ...(isAnalyst ? [{ icon: "◫", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
           ...(isAnalyst ? [{ icon: "◎", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
           ...(currentRole === "analista" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : [])
         ].filter(Boolean)}
@@ -6068,6 +6093,8 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3>${currentRole === "analista" ? `<div class="inline" style="gap:8px;margin-bottom:10px"><button class="${qualityResultsMode==='satisfaction'?'':'ghost'}" onclick="setQualityResultsMode('satisfaction')">Encuesta de satisfacción</button><button class="${qualityResultsMode==='internal'?'':'ghost'}" onclick="setQualityResultsMode('internal')">Calidad interna</button></div>` : ""}<div id="qualityResultsContainer" class="small"></div></div>
         ` : showSupportCasesView ? `
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
+        ` : showDailysView ? `
+          <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAnalystWrap" class="small"></div></div>
         ` : showConsultorGuidelines ? `
           <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div id="consultorGuidelinesList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
@@ -6096,12 +6123,12 @@ Cliente B`)
           <div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de personas</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
-            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Equipo (si es analista)</label><select id="uTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
+            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin - Nivel 1</option><option value="admin_lvl2">Admin - Nivel 2</option></select></div><div><label>Equipo (si es analista)</label><select id="uTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
             <div class="row" style="align-items:end"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button><button class="ghost helpIcon" onclick="showImportFormatHelp('users')">?</button></div></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -6249,9 +6276,11 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'announcements'){ loadAnnouncementsAdmin() }
       if(isAdmin && adminPanelTab === 'agenda'){ loadAdminAgenda() }
       if(isAdmin && adminPanelTab === 'comments'){ loadAdminComments() }
+      if(isAdmin && adminPanelTab === 'dailys'){ loadDailysAdmin() }
       if(isAnalyst && analystPanelTab === 'agenda'){ loadAnalystAgenda() }
       if(isAnalyst && analystPanelTab === 'guidelines'){ loadAnalystGuidelines() }
       if(isAnalyst && analystPanelTab === 'manuals'){ loadManualsAnalyst() }
+      if(currentRole === "analista" && mainViewTab === "dailys"){ loadDailysAnalyst() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
       if(!showProfileView){
         loadFilterOptions()
@@ -7685,7 +7714,7 @@ Cliente B`)
       const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
-      const header = `<div class="small" style="display:flex;justify-content:flex-end;padding:4px 2px 8px;border-bottom:1px solid rgba(148,163,184,.15)"><button class="ghost" style="padding:4px 8px" onclick="markAllRoleNotificationsRead(event)" title="Marcar todas como leídas">✅</button></div>`
+      const header = `<div class="small" style="display:flex;justify-content:flex-end;padding:4px 2px 8px;border-bottom:1px solid rgba(148,163,184,.15)"><button class="ghost" style="padding:4px 8px" onclick="markAllRoleNotificationsRead(event)" title="Marcar todas como leídas">✅ Limpiar</button></div>`
       const listHtml = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
       dd.innerHTML = header + listHtml
     }
@@ -9610,7 +9639,9 @@ Cliente B`)
       if(currentRole !== "admin") return alert("Solo admin puede crear usuarios")
       const email = document.getElementById("uEmail").value.trim().toLowerCase()
       const password = document.getElementById("uPassword").value.trim()
-      const role = document.getElementById("uRole").value
+      const roleInput = document.getElementById("uRole").value
+      const normalizedRole = normalizeUserRoleInput(roleInput)
+      const role = normalizedRole.role
       const analystTeam = document.getElementById("uTeam")?.value || ""
       const photoFile = document.getElementById("uPhoto")?.files?.[0] || null
       if(!email || !password) return alert("Completá email y contraseña")
@@ -9633,7 +9664,7 @@ Cliente B`)
       const payload = {
         key: emailKey(email),
         email, password: "", role, active: true,
-        adminLevel: role === "admin" ? 2 : null,
+        adminLevel: normalizedRole.adminLevel,
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
         analystTeam: role === "analista" ? analystTeam : "",
         ...secureFields,
@@ -9663,7 +9694,7 @@ Cliente B`)
         const isSelf = (u.email||"").toLowerCase() === (currentUser.email||"").toLowerCase()
         const team = String(u.analystTeam || "")
         const enabled = u.active !== false
-        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""} · Estado: ${enabled ? "Activo" : "Apagado"}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="ghost" ${isSelf?"disabled":""} onclick="toggleUserAccessActive('${key}', ${enabled ? "false" : "true"}, this)">${enabled ? "Apagar" : "Encender"}</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
+        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(roleDisplayWithLevel(u))} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""} · Estado: ${enabled ? "Activo" : "Apagado"}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="ghost" ${isSelf?"disabled":""} onclick="toggleUserAccessActive('${key}', ${enabled ? "false" : "true"}, this)">${enabled ? "Apagar" : "Encender"}</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
       }).join("")
     }
 
@@ -9703,7 +9734,10 @@ Cliente B`)
       const teamSelect = document.getElementById("userEditTeam")
       const photoInput = document.getElementById("userEditPhoto")
       if(emailInput) emailInput.value = String(user.email || "")
-      if(roleSelect) roleSelect.value = String(user.role || "consultor")
+      if(roleSelect){
+        const roleValue = String(user.role || "consultor")
+        roleSelect.value = roleValue === "admin" ? (Number(user.adminLevel) === 2 ? "admin_lvl2" : "admin") : roleValue
+      }
       if(teamSelect) teamSelect.value = String(user.analystTeam || "")
       if(photoInput) photoInput.value = ""
       toggleUserEditTeamVisibility()
@@ -9726,7 +9760,9 @@ Cliente B`)
       const key = userEditContext.key
       const user = (await db.ref("users_by_email").child(key).once("value")).val()
       if(!user) return alert("No se encontró el usuario.")
-      const role = String(document.getElementById("userEditRole")?.value || user.role || "consultor")
+      const roleInput = String(document.getElementById("userEditRole")?.value || user.role || "consultor")
+      const normalizedRole = normalizeUserRoleInput(roleInput)
+      const role = normalizedRole.role
       const analystTeam = role === "analista" ? String(document.getElementById("userEditTeam")?.value || "") : ""
       const file = document.getElementById("userEditPhoto")?.files?.[0] || null
       let photoPayload = {}
@@ -9742,6 +9778,7 @@ Cliente B`)
         ...user,
         key,
         role,
+        adminLevel: normalizedRole.adminLevel,
         analystTeam,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email,
@@ -9763,6 +9800,138 @@ Cliente B`)
       await adminWrite("deleteUser", { key })
       await loadUsersAdmin()
       await loadFilterOptions()
+    }
+
+    function getDailyGroupKey(user){
+      const role = String(user?.dailyRole || "analista").toLowerCase()
+      const email = String(user?.email || "").toLowerCase()
+      if(!email) return ""
+      if(role === "referente") return email
+      return String(user?.dailyReferente || "").toLowerCase()
+    }
+
+    async function saveDailyUserMeta(userKey){
+      if(currentRole !== "admin") return
+      const user = (await db.ref("users_by_email").child(userKey).once("value")).val()
+      if(!user) return
+      const roleValue = String(document.getElementById(`dailyRole_${userKey}`)?.value || "analista")
+      const referente = String(document.getElementById(`dailyRef_${userKey}`)?.value || "").toLowerCase()
+      const payload = { ...user, dailyRole: roleValue === "referente" ? "referente" : "analista", dailyReferente: roleValue === "referente" ? "" : referente, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
+      await db.ref("users_by_email").child(userKey).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast("Asignación de Daily guardada.", "ok", 1600)
+      await loadDailysAdmin()
+    }
+
+    async function addDailyEntryFromAdmin(){
+      if(currentRole !== "admin") return
+      const analystEmail = String(document.getElementById("dailyAdminAnalyst")?.value || "").toLowerCase()
+      const ticketId = String(document.getElementById("dailyAdminTicket")?.value || "").trim()
+      const client = String(document.getElementById("dailyAdminClient")?.value || "").trim()
+      const title = String(document.getElementById("dailyAdminTitle")?.value || "").trim()
+      const agendaComment = String(document.getElementById("dailyAdminComment")?.value || "").trim()
+      if(!analystEmail) return alert("Seleccioná un analista.")
+      const id = generateId()
+      const payload = { id, analystEmail, ticketId, client, title, agendaComment, referenteObservation: "", status: "draft", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase(), updatedAt: new Date().toISOString() }
+      await db.ref("daily_entries").child(id).set(payload)
+      ;["dailyAdminTicket","dailyAdminClient","dailyAdminTitle","dailyAdminComment"].forEach(id => { const el = document.getElementById(id); if(el) el.value = "" })
+      await loadDailysAdmin()
+    }
+
+    async function loadDailysAdmin(){
+      const wrap = document.getElementById("dailysAdminWrap")
+      if(!wrap || currentRole !== "admin") return
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const referents = users.filter(u => String(u?.dailyRole || "").toLowerCase() === "referente")
+      const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
+      const escalations = Object.values((await db.ref("daily_escalations").once("value")).val() || {}).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")))
+      dailyAdminRows = entries
+      const referentOptions = `<option value="">Sin referente</option>${referents.map(r => `<option value="${htmlEscape(String(r.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(r.email||"") || r.email || "-")}</option>`).join("")}`
+      wrap.innerHTML = `
+        <div class="feedItem">
+          <h4 style="margin:0 0 8px">Asignación de analistas / referentes</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Nivel Daily</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Referente asignado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${users.map(u => { const key = emailKey(u.email||""); const dailyRole = String(u.dailyRole||"analista").toLowerCase(); const ref = String(u.dailyReferente||"").toLowerCase(); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRole_${key}" style="margin:0"><option value="analista" ${dailyRole!=="referente"?"selected":""}>Analista</option><option value="referente" ${dailyRole==="referente"?"selected":""}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRef_${key}" style="margin:0">${referentOptions.replace(`value=\"${htmlEscape(ref)}\"`, `value=\"${htmlEscape(ref)}\" selected`)}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="saveDailyUserMeta('${key}')">Guardar</button></td></tr>` }).join("")}</tbody></table></div>
+        </div>
+        <div class="feedItem" style="margin-top:10px">
+          <h4 style="margin:0 0 8px">Nueva fila Daily</h4>
+          <div class="row"><div><label>Analista</label><select id="dailyAdminAnalyst">${users.map(u => `<option value="${htmlEscape(String(u.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</option>`).join("")}</select></div><div><label>Número de ticket</label><input id="dailyAdminTicket"></div><div><label>Cliente</label><input id="dailyAdminClient"></div><div><label>Título de tarea</label><input id="dailyAdminTitle"></div><div><label>Comentario agenda</label><input id="dailyAdminComment"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyEntryFromAdmin()">Agregar fila</button></div></div>
+        </div>
+        <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Elevaciones</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${escalations.map(e => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(e.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e.analystEmail||"") || e.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.title || "-")} · ${htmlEscape(e.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.status || "pending")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(e.status||"pending")==="pending" ? `<div class=\"inline\"><button class=\"ghost\" onclick=\"reviewDailyEscalation('${e.id}', true)\">Aprobar</button><button class=\"danger\" onclick=\"reviewDailyEscalation('${e.id}', false)\">Rechazar</button></div>` : "-"}</td></tr>`).join("") || `<tr><td colspan="6" class="small" style="padding:8px">Sin elevaciones.</td></tr>`}</tbody></table></div></div>
+      `
+    }
+
+    async function addDailyEntryForAnalyst(){
+      if(currentRole !== "analista") return
+      const analystEmail = String(document.getElementById("dailysAnalystSelect")?.value || "").toLowerCase()
+      const ticketId = String(document.getElementById("dailysTicket")?.value || "").trim()
+      const client = String(document.getElementById("dailysClient")?.value || "").trim()
+      const title = String(document.getElementById("dailysTitle")?.value || "").trim()
+      const agendaComment = String(document.getElementById("dailysAgendaComment")?.value || "").trim()
+      if(!analystEmail) return
+      const id = generateId()
+      await db.ref("daily_entries").child(id).set({ id, analystEmail, ticketId, client, title, agendaComment, referenteObservation: "", status: "draft", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase(), updatedAt: new Date().toISOString() })
+      ;["dailysTicket","dailysClient","dailysTitle","dailysAgendaComment"].forEach(id => { const el = document.getElementById(id); if(el) el.value = "" })
+      await loadDailysAnalyst()
+    }
+
+    async function saveDailyObservation(entryId){
+      if(currentRole !== "analista") return
+      const obs = String(document.getElementById(`dailysObs_${entryId}`)?.value || "").trim()
+      const ref = db.ref("daily_entries").child(String(entryId || ""))
+      const item = (await ref.once("value")).val()
+      if(!item) return
+      await ref.update({ referenteObservation: obs, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Observación guardada.", "ok", 1400)
+      await loadDailysAnalyst()
+    }
+
+    async function escalateDailyEntry(entryId){
+      if(currentRole !== "analista") return
+      const item = (await db.ref("daily_entries").child(String(entryId || "")).once("value")).val()
+      if(!item) return
+      const id = generateId()
+      await db.ref("daily_escalations").child(id).set({ ...item, id, entryId, status: "pending", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      await db.ref("daily_entries").child(String(entryId || "")).update({ status: "elevated", updatedAt: new Date().toISOString() })
+      showToast("Elevado a Team Leader.", "ok", 1500)
+      await loadDailysAnalyst()
+    }
+
+    async function reviewDailyEscalation(escalationId, approved){
+      if(currentRole !== "admin") return
+      const ref = db.ref("daily_escalations").child(String(escalationId || ""))
+      const esc = (await ref.once("value")).val()
+      if(!esc) return
+      const status = approved ? "approved" : "rejected"
+      await ref.update({ status, reviewedAt: new Date().toISOString(), reviewedBy: String(currentUser?.email || "").toLowerCase() })
+      if(esc.entryId){
+        await db.ref("daily_entries").child(String(esc.entryId)).update({ status, updatedAt: new Date().toISOString() })
+      }
+      await loadDailysAdmin()
+    }
+
+    async function loadDailysAnalyst(){
+      const wrap = document.getElementById("dailysAnalystWrap")
+      if(!wrap || currentRole !== "analista") return
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
+      const me = usersMap[emailKey(currentUser?.email || "")] || { email: currentUser?.email || "" }
+      const meEmail = String(me.email || currentUser?.email || "").toLowerCase()
+      const isReferente = String(me.dailyRole || "").toLowerCase() === "referente"
+      const groupKey = isReferente ? meEmail : String(me.dailyReferente || "").toLowerCase()
+      const analysts = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const scopedAnalysts = analysts.filter(u => {
+        const userGroup = getDailyGroupKey(u)
+        return groupKey && userGroup === groupKey
+      })
+      const scopedEmails = new Set(scopedAnalysts.map(u => String(u.email || "").toLowerCase()))
+      const scopedRows = entries.filter(e => scopedEmails.has(String(e.analystEmail || "").toLowerCase()))
+      dailyAnalystRows = scopedRows
+      wrap.innerHTML = `
+        <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar filas al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
+        ${isReferente ? `<div class="row"><div><label>Analista</label><select id="dailysAnalystSelect">${scopedAnalysts.map(u => `<option value="${htmlEscape(String(u.email || "").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</option>`).join("")}</select></div><div><label>Número de ticket</label><input id="dailysTicket"></div><div><label>Cliente</label><input id="dailysClient"></div><div><label>Título tarea</label><input id="dailysTitle"></div><div><label>Comentario agenda</label><input id="dailysAgendaComment"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyEntryForAnalyst()">Agregar fila</button></div></div>` : ""}
+        <div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${isReferente ? `<input id=\"dailysObs_${r.id}\" value=\"${htmlEscape(r.referenteObservation || "")}\" style=\"margin:0\"><button class=\"ghost\" style=\"margin-left:6px\" onclick=\"saveDailyObservation('${r.id}')\">Guardar</button>` : htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${isReferente ? `<button class=\"ghost\" onclick=\"escalateDailyEntry('${r.id}')\">⬆️ Elevar a Team Leader</button>` : "-"}</td></tr>`).join("") || `<tr><td colspan="8" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>
+      `
     }
 
     function setAnalystActivityTab(tab){
