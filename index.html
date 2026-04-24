@@ -513,6 +513,21 @@
       margin-top: 10px;
       background: rgba(8,12,22,.28);
     }
+    .dailyWeekStripWrap{display:grid;grid-template-columns:42px minmax(0,1fr) 42px;align-items:center;gap:8px;margin-bottom:12px;width:100%}
+    .dailyWeekStripWrap > button{width:42px;height:42px;display:flex;align-items:center;justify-content:center}
+    .dailyWeekStrip{display:flex;gap:8px;overflow-x:auto;scroll-behavior:smooth;padding:2px 2px 6px;width:100%}
+    .dailyWeekChip{min-width:108px;flex:1 0 120px;border:1px solid var(--stroke);border-radius:10px;padding:8px;background:var(--surface-2);text-align:center}
+    .dailyWeekChipToday{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset;background:rgba(61,110,245,.16)}
+    .dailyWeekChipActive{background:rgba(34,212,191,.15);border-color:var(--accent-2)}
+    .dailyMemberGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+    .dailyMemberCard{border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2);cursor:pointer;display:flex;align-items:center;gap:10px}
+    .dailyMemberCard.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset}
+    .dailyMemberAvatar{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--stroke)}
+    body.light .dailyWeekChip{background:#fff;color:#0f172a;border-color:rgba(71,85,105,.25)}
+    body.light .dailyWeekChipToday{background:rgba(37,99,235,.15);border-color:rgba(37,99,235,.55)}
+    body.light .dailyWeekChipActive{background:rgba(13,148,136,.16);border-color:rgba(13,148,136,.55)}
+    body.light #dailysAdminWrap,
+    body.light #dailysAnalystWrap{color:#0f172a}
     .agendaSection h4 { margin: 0 0 8px; }
     body.light #adminAgendaTableWrap thead th,
     body.light #analystAgendaTableWrap thead th {
@@ -1638,6 +1653,13 @@
     var analystAgendaTodayOnly = false
     var dailyAdminRows = []
     var dailyAnalystRows = []
+    var dailyWeekStripScroll = {}
+    var dailyWeekOffsetByScope = { admin: 0, analyst: 0 }
+    var dailyAdminSelectedDate = ""
+    var dailyAdminViewMode = "details"
+    var dailyAdminEscalationDetailId = ""
+    var dailyReferenteSelectedDate = toLocalDateOnly(new Date())
+    var dailyReferenteSelectedAnalyst = ""
     var analystPendingRequestsExpanded = false
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
@@ -2613,6 +2635,15 @@
       return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
     }
 
+    function buildGenderDefaultAvatar(sex){
+      const s = String(sex || "").toLowerCase()
+      const isWoman = s === "mujer"
+      const bg = isWoman ? "#be185d" : "#1d4ed8"
+      const icon = isWoman ? "♀" : "♂"
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='100%' height='100%' rx='40' fill='${bg}'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='34' fill='#ffffff'>${icon}</text></svg>`
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+    }
+
     function buildAvatarUrl(user,email){
       const fileId = String(user?.photoFileId || getDriveFileIdFromUrl(user?.photoUrl || "")).trim()
       if(fileId) return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
@@ -2620,7 +2651,8 @@
       if(direct) return direct
       const inline = String(user?.photoDataUrl || "").trim()
       if(inline) return inline
-      return buildInitialAvatar(email)
+      const sex = String(user?.sex || "").toLowerCase()
+      return buildGenderDefaultAvatar(sex)
     }
 
     function userAvatarByEmail(email){
@@ -6009,21 +6041,22 @@ Cliente B`)
         ].filter(Boolean)}
       ] : [
         { title: "General", items: [
-          { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
-          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "⊙", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
-          { icon: "◩", label: "Guardados", action: "setMainViewTab('saved')" }
+          { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
+          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
-          ...(currentRole === "consultor" ? [{ icon: "◎", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "□", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(isAnalyst ? [{ icon: "◫", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-          ...(isAnalyst ? [{ icon: "◍", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "≣", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
-          ...(isAnalyst ? [{ icon: "◷", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "◫", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
-          ...(isAnalyst ? [{ icon: "◎", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : [])
+          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
+          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
         ].filter(Boolean)}
       ]
 
@@ -6035,7 +6068,7 @@ Cliente B`)
             <div class="sideNavList">
               ${sidebarSections.map(section => `<div class="sideSection"><div class="sideSectionTitle">${section.title}</div>${(section.items || []).map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}</div>`).join("")}
             </div>
-            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden" onclick="setMainViewTab('quality_results')" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">-</div><div class="smallLabel"></div></div></div>` : ""}
+            <div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -8144,7 +8177,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${String(ticketWithRead.status||"")==="done" ? `<button class="ghost" onclick="reopenTicketAsConsultor('${ticketWithRead.id}')">Reabrir ticket</button>` : ""}${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${ticketActivityType ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${(ticketActivityType && currentRole !== 'consultor') ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -9810,16 +9843,83 @@ Cliente B`)
       return String(user?.dailyReferente || "").toLowerCase()
     }
 
-    async function saveDailyUserMeta(userKey){
+    function getDailyWeekDays(scope){
+      const today = new Date()
+      const day = today.getDay()
+      const mondayOffset = day === 0 ? -6 : (1 - day)
+      const monday = new Date(today)
+      const extraOffset = Number(dailyWeekOffsetByScope?.[scope] || 0)
+      monday.setDate(today.getDate() + mondayOffset + extraOffset)
+      return Array.from({ length: 14 }, (_,ix) => {
+        const d = new Date(monday)
+        d.setDate(monday.getDate() + ix)
+        return d
+      })
+    }
+
+    function renderDailyWeekStrip(scope, selectedDate, onClickFnName, toggleable){
+      const todayIso = toLocalDateOnly(new Date())
+      const days = getDailyWeekDays(scope)
+      return `<div class="dailyWeekStripWrap"><button class="ghost" onclick="shiftDailyWeek('${scope}',-1)">◀</button><div id="dailyWeekStrip_${scope}" class="dailyWeekStrip">${days.map(d => { const iso = toLocalDateOnly(d); return `<button class="dailyWeekChip ${iso===todayIso?'dailyWeekChipToday':''} ${iso===selectedDate?'dailyWeekChipActive':''}" onclick="${onClickFnName}('${iso}', ${toggleable ? 'true' : 'false'})"><div style="font-weight:700">${htmlEscape(d.toLocaleDateString('es-AR',{ weekday:'short'}))}</div><div class="small">${htmlEscape(formatDateDMY(iso))}</div></button>` }).join('')}</div><button class="ghost" onclick="shiftDailyWeek('${scope}',1)">▶</button></div>`
+    }
+
+    function shiftDailyWeek(scope, direction){
+      const current = Number(dailyWeekOffsetByScope?.[scope] || 0)
+      dailyWeekOffsetByScope[scope] = current + (Number(direction || 0) * 7)
+      if(scope === "admin") loadDailysAdmin()
+      if(scope === "analyst") loadDailysAnalyst()
+    }
+
+    function setDailyAdminDateFilter(iso, toggleable){
+      if(toggleable && String(dailyAdminSelectedDate || "") === String(iso || "")){
+        dailyAdminSelectedDate = ""
+      }else{
+        dailyAdminSelectedDate = String(iso || "")
+      }
+      loadDailysAdmin()
+    }
+
+    function setDailyReferenteDate(iso){
+      dailyReferenteSelectedDate = String(iso || "")
+      loadDailysAnalyst()
+    }
+
+    function setDailyReferenteAnalyst(email){
+      dailyReferenteSelectedAnalyst = String(email || "").toLowerCase()
+      loadDailysAnalyst()
+    }
+
+    function setDailyAdminViewMode(mode){
+      dailyAdminViewMode = ["assign","details","history"].includes(String(mode||"")) ? String(mode) : "details"
+      loadDailysAdmin()
+    }
+
+    function toggleDailyAdminEscalationDetail(id){
+      const next = String(id || "")
+      dailyAdminEscalationDetailId = dailyAdminEscalationDetailId === next ? "" : next
+      loadDailysAdmin()
+    }
+
+    async function saveAllDailyUserMeta(){
       if(currentRole !== "admin") return
-      const user = (await db.ref("users_by_email").child(userKey).once("value")).val()
-      if(!user) return
-      const roleValue = String(document.getElementById(`dailyRole_${userKey}`)?.value || "analista")
-      const referente = String(document.getElementById(`dailyRef_${userKey}`)?.value || "").toLowerCase()
-      const payload = { ...user, dailyRole: roleValue === "referente" ? "referente" : "analista", dailyReferente: roleValue === "referente" ? "" : referente, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
-      await db.ref("users_by_email").child(userKey).update(payload)
-      await adminWrite("upsertUser", payload).catch(()=>{})
-      showToast("Asignación de Daily guardada.", "ok", 1600)
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const nowIso = new Date().toISOString()
+      const changed = []
+      for(const user of users){
+        const key = emailKey(user.email || "")
+        const roleValue = String(document.getElementById(`dailyRole_${key}`)?.value || "analista")
+        const referente = String(document.getElementById(`dailyRef_${key}`)?.value || "").toLowerCase()
+        const next = { ...user, dailyRole: roleValue === "referente" ? "referente" : "analista", dailyReferente: roleValue === "referente" ? "" : referente, updatedAt: nowIso, updatedBy: String(currentUser?.email || "").toLowerCase() }
+        if(String(user.dailyRole||"analista") !== String(next.dailyRole||"analista") || String(user.dailyReferente||"") !== String(next.dailyReferente||"")){
+          changed.push({ key, payload: next })
+        }
+      }
+      for(const item of changed){
+        await db.ref("users_by_email").child(item.key).update(item.payload)
+        await adminWrite("upsertUser", item.payload).catch(()=>{})
+      }
+      showToast(changed.length ? `Asignaciones guardadas (${changed.length}).` : "No hubo cambios para guardar.", "ok", 1600)
       await loadDailysAdmin()
     }
 
@@ -9838,6 +9938,176 @@ Cliente B`)
       await loadDailysAdmin()
     }
 
+    async function addDailyAdminAnnotation(){
+      if(currentRole !== 'admin') return
+      const date = String(document.getElementById('dailyAdminPendingDate')?.value || toLocalDateOnly(new Date()))
+      const analystEmail = String(document.getElementById('dailyAdminPendingAnalyst')?.value || '').toLowerCase()
+      const team = String(document.getElementById('dailyAdminPendingTeam')?.value || 'equipo_1')
+      const ticketId = String(document.getElementById('dailyAdminPendingTicket')?.value || '').trim()
+      const client = String(document.getElementById('dailyAdminPendingClient')?.value || '').trim()
+      const title = String(document.getElementById('dailyAdminPendingTitle')?.value || '').trim()
+      const adminComment = String(document.getElementById('dailyAdminPendingAdminComment')?.value || '').trim()
+      const analystComment = String(document.getElementById('dailyAdminPendingAnalystComment')?.value || '').trim()
+      const problemStatus = String(document.getElementById('dailyAdminPendingStatus')?.value || 'con_inconveniente')
+      const problemDetail = String(document.getElementById('dailyAdminPendingDetail')?.value || '').trim()
+      const escalateTo = String(document.getElementById('dailyAdminPendingEscalateTo')?.value || '').trim()
+      const escalated = !!document.getElementById('dailyAdminPendingEscalated')?.checked
+      const pendingOwner = String(document.getElementById('dailyAdminPendingOwner')?.value || '')
+      const extraObservations = String(document.getElementById('dailyAdminPendingObservations')?.value || '').trim()
+      const solutionDetail = String(document.getElementById('dailyAdminPendingSolution')?.value || '').trim()
+      if(!ticketId && !title && !problemDetail && !extraObservations) return alert('Completá al menos ticket, título, detalle u observaciones.')
+      const id = generateId()
+      await db.ref('daily_pending').child(id).set({ id, date, analystEmail, team, ticketId, client, title, adminComment, analystComment, problemStatus, problemDetail, escalateTo, escalated, pendingOwner, extraObservations, solutionDetail, sourceType: 'admin_manual', createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || '').toLowerCase() })
+      await loadDailysAdmin()
+    }
+
+    async function removeDailyWatchItem(id){
+      if(currentRole !== 'admin') return
+      const ref = db.ref('daily_pending').child(String(id || ''))
+      const row = (await ref.once('value')).val() || {}
+      await ref.update({
+        problemStatus: 'ya_resuelto',
+        solutionDetail: String(row.solutionDetail || '').trim() || 'Quitado por admin',
+        removedFromPendingAt: new Date().toISOString(),
+        removedFromPendingBy: String(currentUser?.email || '').toLowerCase(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(currentUser?.email || '').toLowerCase()
+      })
+      await loadDailysAdmin()
+    }
+
+    async function saveDailyPendingField(id, field, rawValue){
+      if(currentRole !== 'admin') return
+      const allowed = new Set(['date','analystEmail','team','ticketId','client','problemStatus','problemDetail','escalateTo','escalated','pendingOwner','extraObservations','solutionDetail'])
+      if(!allowed.has(String(field||''))) return
+      const value = field === 'escalated' ? !!rawValue : String(rawValue || '')
+      await db.ref('daily_pending').child(String(id || '')).update({ [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || '').toLowerCase() })
+    }
+
+    async function saveDailyAdminPrivateNote(){
+      if(currentRole !== 'admin') return
+      const note = String(document.getElementById('dailyAdminPrivateNote')?.value || '').trim()
+      if(!note) return
+      const id = generateId()
+      await db.ref('daily_admin_private_notes').child(id).set({ id, note, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || '').toLowerCase() })
+      const input = document.getElementById('dailyAdminPrivateNote')
+      if(input) input.value = ''
+      await loadDailysAdmin()
+    }
+
+    async function escalateGenericDailyItem(payload){
+      const id = generateId()
+      await db.ref("daily_escalations").child(id).set({ ...payload, id, status: "pending", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Elevado a Team Leader.", "ok", 1500)
+    }
+
+    async function escalateDailyTask(ticketId, analystEmail, sourceType){
+      if(currentRole !== 'analista') return
+      const ticket = (cachedTickets || []).find(t => String(t.id||'') === String(ticketId||''))
+      if(!ticket) return
+      await escalateGenericDailyItem({
+        sourceType,
+        ticketId: String(ticket.id || ''),
+        analystEmail: String(analystEmail || '').toLowerCase(),
+        title: String(ticket.title || ''),
+        client: String(ticket.client || ''),
+        adminComment: String(ticket.adminComment || ''),
+        analystComment: String(ticket.analystComment || ''),
+        referenteObservation: ''
+      })
+      await loadDailysAnalyst()
+    }
+
+    async function addReferenteNote(analystEmail){
+      if(currentRole !== 'analista') return
+      const meKey = emailKey(currentUser?.email || '')
+      const note = String(document.getElementById(`dailyNoteInput_${emailKey(analystEmail||'')}`)?.value || '').trim()
+      if(!note) return
+      const id = generateId()
+      await db.ref('daily_referente_notes').child(meKey).child(emailKey(analystEmail || '')).child(id).set({ id, note, analystEmail: String(analystEmail || '').toLowerCase(), createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || '').toLowerCase() })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateReferenteNote(analystEmail, noteId){
+      if(currentRole !== 'analista') return
+      const meKey = emailKey(currentUser?.email || '')
+      const note = (await db.ref('daily_referente_notes').child(meKey).child(emailKey(analystEmail || '')).child(String(noteId || '')).once('value')).val()
+      if(!note) return
+      await escalateGenericDailyItem({ sourceType: 'referente_note', analystEmail: String(analystEmail || '').toLowerCase(), title: 'Anotación de referente', referenteObservation: String(note.note || '') })
+      await loadDailysAnalyst()
+    }
+
+    async function saveDailyIssueField(analystEmail, dateIso, ticketId, field, rawValue){
+      if(currentRole !== 'analista') return
+      const allowed = new Set(["hadProblem","problemDescription","escalateTo","escalated","solved","solutionDetail"])
+      if(!allowed.has(String(field || ""))) return
+      const referenteKey = emailKey(currentUser?.email || "")
+      const analystKey = emailKey(analystEmail || "")
+      const dateKey = String(dateIso || "")
+      const ticketKey = emailKey(ticketId || "")
+      const ref = db.ref("daily_issue_tracking").child(referenteKey).child(analystKey).child(dateKey).child(ticketKey)
+      const current = (await ref.once("value")).val() || {}
+      const value = (field === "hadProblem" || field === "escalated" || field === "solved") ? !!rawValue : String(rawValue || "")
+      await ref.set({ ...current, analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(ticketId || ""), date: dateKey, [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+    }
+
+    async function solveDailyIssueFromPending(analystEmail, dateIso, ticketId){
+      if(currentRole !== "analista") return
+      const inputId = `pendingSolve_${emailKey(analystEmail || "")}_${String(dateIso || "").replaceAll("-","")}_${emailKey(ticketId || "")}`
+      const detail = String(document.getElementById(inputId)?.value || "").trim()
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "solutionDetail", detail)
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "solved", true)
+      await loadDailysAnalyst()
+    }
+
+    async function addReferenteStructuredNote(analystEmail, dateIso){
+      if(currentRole !== "analista") return
+      const note = {
+        ticketId: String(document.getElementById("noteTicketId")?.value || "").trim(),
+        client: String(document.getElementById("noteClient")?.value || "").trim(),
+        title: String(document.getElementById("noteTitle")?.value || "").trim(),
+        adminComment: String(document.getElementById("noteAdminComment")?.value || "").trim(),
+        analystComment: String(document.getElementById("noteAnalystComment")?.value || "").trim(),
+        hadProblem: String(document.getElementById("noteHadProblem")?.value || "no") === "si",
+        problemDescription: String(document.getElementById("noteProblemDesc")?.value || "").trim(),
+        escalateTo: String(document.getElementById("noteEscalateTo")?.value || "").trim(),
+        escalated: !!document.getElementById("noteEscalated")?.checked,
+        solved: !!document.getElementById("noteSolved")?.checked,
+        solutionDetail: String(document.getElementById("noteSolutionDetail")?.value || "").trim()
+      }
+      const id = generateId()
+      const ref = db.ref("daily_referente_notes_struct").child(emailKey(currentUser?.email || "")).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(id)
+      await ref.set({ ...note, id, analystEmail: String(analystEmail || "").toLowerCase(), date: String(dateIso || ""), createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateStructuredReferenteNote(analystEmail, dateIso, noteId){
+      if(currentRole !== "analista") return
+      const note = (await db.ref("daily_referente_notes_struct").child(emailKey(currentUser?.email || "")).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(String(noteId || "")).once("value")).val()
+      if(!note) return
+      await escalateGenericDailyItem({ sourceType: "referente_structured_note", analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(note.ticketId || ""), title: String(note.title || "Anotación referente"), client: String(note.client || ""), referenteObservation: String(note.problemDescription || note.solutionDetail || ""), escalateTo: String(note.escalateTo || ""), hadProblem: !!note.hadProblem })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateDailyTaskForReferente(ticketId, analystEmail, dateIso){
+      if(currentRole !== 'analista') return
+      const referenteKey = emailKey(currentUser?.email || "")
+      const row = (await db.ref("daily_issue_tracking").child(referenteKey).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(emailKey(ticketId || "")).once("value")).val() || {}
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "escalated", true)
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      await escalateGenericDailyItem({
+        sourceType: "referente_ticket_issue",
+        analystEmail: String(analystEmail || "").toLowerCase(),
+        ticketId: String(ticketId || ""),
+        title: String(ticket?.title || ""),
+        client: String(ticket?.client || ""),
+        referenteObservation: String(row.problemDescription || ""),
+        escalateTo: String(row.escalateTo || ""),
+        hadProblem: !!row.hadProblem
+      })
+      await loadDailysAnalyst()
+    }
+
     async function loadDailysAdmin(){
       const wrap = document.getElementById("dailysAdminWrap")
       if(!wrap || currentRole !== "admin") return
@@ -9845,20 +10115,39 @@ Cliente B`)
       const users = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
       const referents = users.filter(u => String(u?.dailyRole || "").toLowerCase() === "referente")
       const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
-      const escalations = Object.values((await db.ref("daily_escalations").once("value")).val() || {}).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")))
+      const escalations = Object.values((await db.ref("daily_escalations").once("value")).val() || {})
+      const pendingRows = Object.values((await db.ref('daily_pending').once('value')).val() || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+      const privateNotes = Object.values((await db.ref('daily_admin_private_notes').once('value')).val() || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
       dailyAdminRows = entries
       const referentOptions = `<option value="">Sin referente</option>${referents.map(r => `<option value="${htmlEscape(String(r.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(r.email||"") || r.email || "-")}</option>`).join("")}`
-      wrap.innerHTML = `
-        <div class="feedItem">
-          <h4 style="margin:0 0 8px">Asignación de analistas / referentes</h4>
-          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Nivel Daily</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Referente asignado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${users.map(u => { const key = emailKey(u.email||""); const dailyRole = String(u.dailyRole||"analista").toLowerCase(); const ref = String(u.dailyReferente||"").toLowerCase(); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRole_${key}" style="margin:0"><option value="analista" ${dailyRole!=="referente"?"selected":""}>Analista</option><option value="referente" ${dailyRole==="referente"?"selected":""}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRef_${key}" style="margin:0">${referentOptions.replace(`value=\"${htmlEscape(ref)}\"`, `value=\"${htmlEscape(ref)}\" selected`)}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="saveDailyUserMeta('${key}')">Guardar</button></td></tr>` }).join("")}</tbody></table></div>
+      const selectedDate = String(dailyAdminSelectedDate || "")
+      const pendingEscalations = escalations.filter(e => String(e?.status || 'pending') === 'pending' && (!selectedDate || String(e.createdAt || '').slice(0,10) === selectedDate))
+      const filteredPendingRows = selectedDate ? pendingRows.filter(r => String(r.date || r.createdAt || '').slice(0,10) === selectedDate) : pendingRows
+      const isResolvedPending = (row) => ['ya_resuelto','ya_resuelto_informar'].includes(String(row?.problemStatus || '')) || !!String(row?.solutionDetail || '').trim()
+      const activePendingRows = filteredPendingRows.filter(r => !isResolvedPending(r))
+      const historyRows = filteredPendingRows.filter(r => isResolvedPending(r))
+
+      const teams = ["equipo_1","equipo_2"].map(team => {
+        const members = users.filter(u => String(u.analystTeam || "") === team)
+        const refs = members.filter(u => String(u.dailyRole || "").toLowerCase() === "referente")
+        return { team, members, refs }
+      })
+      const teamsHtml = `<div class="feedItem" style="margin-bottom:10px"><h4 style="margin:0 0 8px">Conformación de equipos</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">${teams.map(t => `<div style="border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2)"><div style="font-weight:700">${t.team === "equipo_1" ? "Equipo 1" : "Equipo 2"}</div><div class="small" style="margin-top:4px"><strong>Referente(s):</strong> ${t.refs.length ? t.refs.map(r => htmlEscape(userDisplayNameByEmail(r.email||"") || r.email || "-")).join(", ") : "Sin referente"}</div><div class="small" style="margin-top:4px"><strong>Analistas:</strong> ${t.members.length ? t.members.map(m => htmlEscape(userDisplayNameByEmail(m.email||"") || m.email || "-")).join(", ") : "Sin analistas"}</div></div>`).join("")}</div></div>`
+      const assignSection = `<div class="feedItem"><h4 style="margin:0 0 8px">Asignación de analistas / referentes</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Nivel Daily</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Referente asignado</th></tr></thead><tbody>${users.map(u => { const key = emailKey(u.email||""); const dailyRole = String(u.dailyRole||"analista").toLowerCase(); const ref = String(u.dailyReferente||"").toLowerCase(); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRole_${key}" style="margin:0"><option value="analista" ${dailyRole!=="referente"?"selected":""}>Analista</option><option value="referente" ${dailyRole==="referente"?"selected":""}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRef_${key}" style="margin:0">${referentOptions.replace(`value="${htmlEscape(ref)}"`, `value="${htmlEscape(ref)}" selected`)}</select></td></tr>` }).join("")}</tbody></table></div><div class="inline" style="margin-top:8px"><button onclick="saveAllDailyUserMeta()">Guardar asignaciones</button></div></div>`
+
+      const detailsSection = `
+        <div class="feedItem" style="margin-top:10px;border-left:4px solid #f59e0b;background:rgba(245,158,11,.08)">
+          <h4 style="margin:0 0 8px">Elevaciones de referentes (preview completa)</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Hubo problema</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle inconveniente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Se elevó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${pendingEscalations.length ? pendingEscalations.map(e => { const user = usersMap[emailKey(e.analystEmail || '')] || {}; const teamLabel = user.analystTeam === 'equipo_1' ? 'Equipo 1' : user.analystTeam === 'equipo_2' ? 'Equipo 2' : 'Sin equipo'; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(e.createdAt||''))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e.analystEmail||'') || e.analystEmail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(teamLabel)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${e.hadProblem ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.referenteObservation || e.problemDescription || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.escalateTo || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${e.escalated ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${e.solved ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(e.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div class="inline"><button class="ghost" onclick="reviewDailyEscalation('${e.id}', true)">Aprobar</button><button class="danger" onclick="reviewDailyEscalation('${e.id}', false)">Rechazar</button></div></td></tr>` }).join('') : `<tr><td colspan="15" class="small" style="padding:8px">Sin elevaciones pendientes.</td></tr>`}</tbody></table></div>
         </div>
-        <div class="feedItem" style="margin-top:10px">
-          <h4 style="margin:0 0 8px">Nueva fila Daily</h4>
-          <div class="row"><div><label>Analista</label><select id="dailyAdminAnalyst">${users.map(u => `<option value="${htmlEscape(String(u.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</option>`).join("")}</select></div><div><label>Número de ticket</label><input id="dailyAdminTicket"></div><div><label>Cliente</label><input id="dailyAdminClient"></div><div><label>Título de tarea</label><input id="dailyAdminTitle"></div><div><label>Comentario agenda</label><input id="dailyAdminComment"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyEntryFromAdmin()">Agregar fila</button></div></div>
-        </div>
-        <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Elevaciones</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${escalations.map(e => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(e.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e.analystEmail||"") || e.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.title || "-")} · ${htmlEscape(e.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.status || "pending")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(e.status||"pending")==="pending" ? `<div class=\"inline\"><button class=\"ghost\" onclick=\"reviewDailyEscalation('${e.id}', true)\">Aprobar</button><button class=\"danger\" onclick=\"reviewDailyEscalation('${e.id}', false)\">Rechazar</button></div>` : "-"}</td></tr>`).join("") || `<tr><td colspan="6" class="small" style="padding:8px">Sin elevaciones.</td></tr>`}</tbody></table></div></div>
+
+        <div class="feedItem" style="margin-top:10px;border-left:4px solid #22c55e;background:rgba(34,197,94,.08)"><h4 style="margin:0 0 8px">Pendientes</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado de problema</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle del inconveniente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Se elevó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Pendiente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones / consultas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cómo se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${activePendingRows.length ? activePendingRows.map(item => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="date" value="${htmlEscape(String(item.date || '').slice(0,10))}" onchange="saveDailyPendingField('${item.id}','date',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','analystEmail',this.value)"><option value="">-</option>${users.map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}" ${String(item.analystEmail||'').toLowerCase()===String(u.email||'').toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(u.email||'') || u.email || '-')}</option>`).join('')}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','team',this.value)"><option value="equipo_1" ${item.team==='equipo_1'?'selected':''}>Equipo 1</option><option value="equipo_2" ${item.team==='equipo_2'?'selected':''}>Equipo 2</option><option value="sin_equipo" ${item.team==='sin_equipo'?'selected':''}>Sin equipo</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.ticketId || '')}" onblur="saveDailyPendingField('${item.id}','ticketId',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.client || '')}" onblur="saveDailyPendingField('${item.id}','client',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','problemStatus',this.value)"><option value="con_inconveniente" ${item.problemStatus==='con_inconveniente'?'selected':''}>Con inconveniente</option><option value="con_inconveniente_informar" ${item.problemStatus==='con_inconveniente_informar'?'selected':''}>Con inconveniente - se debe informar</option><option value="ya_resuelto" ${item.problemStatus==='ya_resuelto'?'selected':''}>Ya se resolvió</option><option value="sin_inconveniente" ${item.problemStatus==='sin_inconveniente'?'selected':''}>No hay inconveniente</option><option value="ya_resuelto_informar" ${item.problemStatus==='ya_resuelto_informar'?'selected':''}>Ya se resolvió - se debe informar</option><option value="sin_inconveniente_elevar" ${item.problemStatus==='sin_inconveniente_elevar'?'selected':''}>No hay inconveniente - elevar</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.problemDetail || '')}" onblur="saveDailyPendingField('${item.id}','problemDetail',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','escalateTo',this.value)"><option value="">-</option><option value="Lau" ${item.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${item.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Alan" ${item.escalateTo==='Alan'?'selected':''}>Alan</option><option value="analista" ${item.escalateTo==='analista'?'selected':''}>Analista</option><option value="consultor" ${item.escalateTo==='consultor'?'selected':''}>Consultor</option><option value="cliente" ${item.escalateTo==='cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="checkbox" ${item.escalated?'checked':''} onchange="saveDailyPendingField('${item.id}','escalated',this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','pendingOwner',this.value)"><option value="">-</option><option value="Trini" ${item.pendingOwner==='Trini'?'selected':''}>Trini</option><option value="Alan" ${item.pendingOwner==='Alan'?'selected':''}>Alan</option><option value="Lau" ${item.pendingOwner==='Lau'?'selected':''}>Lau</option><option value="analista" ${item.pendingOwner==='analista'?'selected':''}>Analista</option><option value="consultor" ${item.pendingOwner==='consultor'?'selected':''}>Consultor</option><option value="cliente" ${item.pendingOwner==='cliente'?'selected':''}>Cliente</option><option value="referente" ${item.pendingOwner==='referente'?'selected':''}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.extraObservations || '')}" onblur="saveDailyPendingField('${item.id}','extraObservations',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.solutionDetail || '')}" onblur="saveDailyPendingField('${item.id}','solutionDetail',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(item.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeDailyWatchItem('${item.id}')">Quitar</button></td></tr>`).join('') : `<tr><td colspan="14" class="small" style="padding:8px">Sin pendientes para el criterio actual.</td></tr>`}</tbody></table></div></div>
+
+        <div class="feedItem" style="margin-top:10px;border-left:4px solid #3b82f6;background:rgba(59,130,246,.08)"><h4 style="margin:0 0 8px">Agregar a pendientes (carga manual admin)</h4><div class="row"><div><label>Fecha</label><input id="dailyAdminPendingDate" type="date" value="${htmlEscape(toLocalDateOnly(new Date()))}"></div><div><label>Analista</label><select id="dailyAdminPendingAnalyst"><option value="">-</option>${users.map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||'') || u.email || '-')}</option>`).join('')}</select></div><div><label>Equipo</label><select id="dailyAdminPendingTeam"><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option><option value="sin_equipo">Sin equipo</option></select></div><div><label>Ticket</label><input id="dailyAdminPendingTicket"></div><div><label>Cliente</label><input id="dailyAdminPendingClient"></div><div><label>Título</label><input id="dailyAdminPendingTitle"></div><div><label>Comentario admin</label><input id="dailyAdminPendingAdminComment"></div><div><label>Comentario analista</label><input id="dailyAdminPendingAnalystComment"></div><div><label>Estado de problema</label><select id="dailyAdminPendingStatus"><option value="con_inconveniente">Con inconveniente</option><option value="con_inconveniente_informar">Con inconveniente - se debe informar</option><option value="ya_resuelto">Ya se resolvió</option><option value="sin_inconveniente">No hay inconveniente</option><option value="ya_resuelto_informar">Ya se resolvió - se debe informar</option><option value="sin_inconveniente_elevar">No hay inconveniente - elevar</option></select></div><div><label>Detalle del inconveniente</label><input id="dailyAdminPendingDetail"></div><div><label>Elevar</label><select id="dailyAdminPendingEscalateTo"><option value="">-</option><option value="Lau">Lau</option><option value="Trini">Trini</option><option value="Alan">Alan</option><option value="analista">Analista</option><option value="consultor">Consultor</option><option value="cliente">Cliente</option></select></div><div><label>Se elevó</label><div class="inline"><input id="dailyAdminPendingEscalated" type="checkbox" style="width:auto"></div></div><div><label>Pendiente</label><select id="dailyAdminPendingOwner"><option value="">-</option><option value="Trini">Trini</option><option value="Alan">Alan</option><option value="Lau">Lau</option><option value="analista">Analista</option><option value="consultor">Consultor</option><option value="cliente">Cliente</option><option value="referente">Referente</option></select></div><div><label>Observaciones / consultas</label><input id="dailyAdminPendingObservations"></div><div><label>Cómo se solucionó</label><input id="dailyAdminPendingSolution"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyAdminAnnotation()">Agregar pendiente</button></div></div></div>
+
+                <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Notas propias</h4><div class="inline"><input id="dailyAdminPrivateNote" placeholder="Escribí una nota personal del admin"><button onclick="saveDailyAdminPrivateNote()">Guardar nota</button></div><div style="margin-top:8px">${privateNotes.length ? privateNotes.map(n => `<div class="small" style="padding:8px;border:1px solid var(--stroke-2);border-radius:8px;margin-top:6px">${htmlEscape(formatDateTime24(n.createdAt || ''))} · ${htmlEscape(n.note || '')}</div>`).join('') : `<div class="small">Sin notas propias.</div>`}</div></div>
       `
+      wrap.innerHTML = `${teamsHtml}${renderDailyWeekStrip('admin', selectedDate, 'setDailyAdminDateFilter', true)}<div class="inline" style="margin-bottom:8px"><button class="${dailyAdminViewMode==='details'?'':'ghost'}" onclick="setDailyAdminViewMode('details')">Ver detalle</button><button class="${dailyAdminViewMode==='assign'?'':'ghost'}" onclick="setDailyAdminViewMode('assign')">Asignar referente</button><button class="${dailyAdminViewMode==='history'?'':'ghost'}" onclick="setDailyAdminViewMode('history')">Historial</button></div><div class="small" style="margin-bottom:8px">${selectedDate ? `Filtro activo: ${htmlEscape(formatDateDMY(selectedDate))} (tocá de nuevo para quitarlo).` : "Sin filtro de fecha: mostrando todo."}</div>${dailyAdminViewMode==='assign' ? assignSection : dailyAdminViewMode==='history' ? `<div class="feedItem"><h4 style="margin:0 0 8px">Historial</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cómo se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th></tr></thead><tbody>${historyRows.length ? historyRows.map(item => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateDMY(item.date || String(item.createdAt||'').slice(0,10)))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(item.analystEmail || '') || item.analystEmail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.team === 'equipo_1' ? 'Equipo 1' : item.team === 'equipo_2' ? 'Equipo 2' : 'Sin equipo')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.problemStatus || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.solutionDetail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(item.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td></tr>`).join('') : `<tr><td colspan="8" class="small" style="padding:8px">Sin historial para el criterio actual.</td></tr>`}</tbody></table></div></div>` : detailsSection}`
     }
 
     async function addDailyEntryForAnalyst(){
@@ -9890,10 +10179,8 @@ Cliente B`)
       if(currentRole !== "analista") return
       const item = (await db.ref("daily_entries").child(String(entryId || "")).once("value")).val()
       if(!item) return
-      const id = generateId()
-      await db.ref("daily_escalations").child(id).set({ ...item, id, entryId, status: "pending", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      await escalateGenericDailyItem({ ...item, entryId, sourceType: 'daily_entry' })
       await db.ref("daily_entries").child(String(entryId || "")).update({ status: "elevated", updatedAt: new Date().toISOString() })
-      showToast("Elevado a Team Leader.", "ok", 1500)
       await loadDailysAnalyst()
     }
 
@@ -9907,6 +10194,31 @@ Cliente B`)
       if(esc.entryId){
         await db.ref("daily_entries").child(String(esc.entryId)).update({ status, updatedAt: new Date().toISOString() })
       }
+      if(approved){
+        const id = generateId()
+        const user = (await db.ref('users_by_email').child(emailKey(esc.analystEmail || '')).once('value')).val() || {}
+        await db.ref('daily_pending').child(id).set({
+          id,
+          date: toLocalDateOnly(new Date()),
+          analystEmail: String(esc.analystEmail || '').toLowerCase(),
+          team: String(user.analystTeam || 'sin_equipo'),
+          ticketId: String(esc.ticketId || ''),
+          client: String(esc.client || ''),
+          title: String(esc.title || ''),
+          adminComment: String(esc.adminComment || ''),
+          analystComment: String(esc.analystComment || ''),
+          problemStatus: !!esc.hadProblem ? 'con_inconveniente' : 'sin_inconveniente',
+          problemDetail: String(esc.referenteObservation || esc.problemDescription || ''),
+          escalateTo: String(esc.escalateTo || ''),
+          escalated: true,
+          pendingOwner: 'referente',
+          extraObservations: '',
+          solutionDetail: '',
+          sourceType: String(esc.sourceType || 'daily'),
+          createdAt: new Date().toISOString(),
+          createdBy: String(esc.createdBy || '')
+        })
+      }
       await loadDailysAdmin()
     }
 
@@ -9914,7 +10226,13 @@ Cliente B`)
       const wrap = document.getElementById("dailysAnalystWrap")
       if(!wrap || currentRole !== "analista") return
       const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      let tickets = cachedTickets || []
+      if(!tickets.length){
+        try{ tickets = await fetchTicketsFromDb() }catch(_){ tickets = [] }
+      }
       const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
+      const notesMap = (await db.ref('daily_referente_notes').child(emailKey(currentUser?.email || '')).once('value')).val() || {}
+      const notesStructMap = (await db.ref('daily_referente_notes_struct').child(emailKey(currentUser?.email || '')).once('value')).val() || {}
       const me = usersMap[emailKey(currentUser?.email || "")] || { email: currentUser?.email || "" }
       const meEmail = String(me.email || currentUser?.email || "").toLowerCase()
       const isReferente = String(me.dailyRole || "").toLowerCase() === "referente"
@@ -9927,10 +10245,57 @@ Cliente B`)
       const scopedEmails = new Set(scopedAnalysts.map(u => String(u.email || "").toLowerCase()))
       const scopedRows = entries.filter(e => scopedEmails.has(String(e.analystEmail || "").toLowerCase()))
       dailyAnalystRows = scopedRows
+      const selectedDate = String(dailyReferenteSelectedDate || toLocalDateOnly(new Date()))
+      const todayIso = toLocalDateOnly(new Date())
+      const issuesMap = (await db.ref("daily_issue_tracking").child(emailKey(currentUser?.email || "")).once("value")).val() || {}
+      const selectedAnalystEmail = String(dailyReferenteSelectedAnalyst || "").toLowerCase()
+
+      const memberCards = scopedAnalysts.map(u => {
+        const email = String(u.email || "").toLowerCase()
+        return `<button class="dailyMemberCard ${selectedAnalystEmail===email?'active':''}" onclick="setDailyReferenteAnalyst('${email}')"><img class="dailyMemberAvatar" src="${htmlEscape(userAvatarByEmail(email))}" data-fallback="${htmlEscape(buildInitialAvatar(email || 'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div style="font-weight:700">${htmlEscape(userDisplayNameByEmail(email) || email)}</div></button>`
+      }).join('') || `<div class="small">Sin miembros asignados.</div>`
+
+      const selectedAnalyst = scopedAnalysts.find(u => String(u.email || "").toLowerCase() === selectedAnalystEmail)
+      let selectedAnalystSection = ""
+      if(selectedAnalyst){
+        const email = String(selectedAnalyst.email || '').toLowerCase()
+        const dayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === selectedDate)
+        const yDate = new Date(`${selectedDate}T00:00:00`); yDate.setDate(yDate.getDate() - 1)
+        const yesterdayIso = toLocalDateOnly(yDate)
+        const yesterdayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === yesterdayIso)
+        const noteRows = Object.values(notesMap[emailKey(email)] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+        const noteRowsStruct = Object.values(notesStructMap[emailKey(email)]?.[selectedDate] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+        const dayIssues = issuesMap[emailKey(email)]?.[selectedDate] || {}
+        const yIssues = issuesMap[emailKey(email)]?.[yesterdayIso] || {}
+        const renderDailyTaskRow = (t, issue, dateIso, label) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','hadProblem', this.value==='si')"><option value="no" ${issue.hadProblem ? '' : 'selected'}>No</option><option value="si" ${issue.hadProblem ? 'selected' : ''}>Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(issue.problemDescription || '')}" placeholder="Descripción" onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','problemDescription', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','escalateTo', this.value)"><option value="">-</option><option value="Alan" ${issue.escalateTo==='Alan'?'selected':''}>Alan</option><option value="Lau" ${issue.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${issue.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Consultor" ${issue.escalateTo==='Consultor'?'selected':''}>Consultor</option><option value="Cliente" ${issue.escalateTo==='Cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.escalated ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','escalated', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.solved ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','solved', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTaskForReferente('${t.id}','${email}','${dateIso}')">Elevar TL</button></td></tr>`
+        selectedAnalystSection = `<div class="agendaSection"><h4 style="margin-bottom:8px">${htmlEscape(userDisplayNameByEmail(email) || email)} · ${htmlEscape(formatDateDMY(selectedDate))}</h4>
+          <div class="small" style="margin:6px 0"><strong>AYER (${htmlEscape(formatDateDMY(yesterdayIso))})</strong></div>
+          <div style="overflow:auto;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.55);border-radius:10px;padding:6px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${yesterdayTasks.length ? yesterdayTasks.map(t => renderDailyTaskRow(t, yIssues[emailKey(t.id || '')] || {}, yesterdayIso, 'AYER')).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas de AYER.</td></tr>`}</tbody></table></div>
+          <div class="small" style="margin:10px 0 6px"><strong>HOY (${htmlEscape(formatDateDMY(selectedDate))})</strong></div>
+          <div style="overflow:auto;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.55);border-radius:10px;padding:6px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${dayTasks.length ? dayTasks.map(t => renderDailyTaskRow(t, dayIssues[emailKey(t.id || '')] || {}, selectedDate, 'HOY')).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas de HOY.</td></tr>`}</tbody></table></div>
+          <div style="margin-top:8px"><div class="small" style="margin-bottom:6px"><strong>Anotaciones del referente</strong></div>
+            <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody><tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteTicketId" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteClient" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteTitle" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteAdminComment" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteAnalystComment" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="noteHadProblem"><option value="no">No</option><option value="si">Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteProblemDesc" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="noteEscalateTo"><option value="">-</option><option value="Alan">Alan</option><option value="Lau">Lau</option><option value="Trini">Trini</option><option value="Consultor">Consultor</option><option value="Cliente">Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input id="noteEscalated" type="checkbox"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input id="noteSolved" type="checkbox"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="addReferenteStructuredNote('${email}','${selectedDate}')">Guardar</button></td></tr>${noteRowsStruct.map(n => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.hadProblem ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.problemDescription || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.escalateTo || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.escalated ? '✅' : '—'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.solved ? '✅' : '—'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateStructuredReferenteNote('${email}','${selectedDate}','${n.id}')">Elevar TL</button></td></tr>`).join('') || `<tr><td colspan="11" class="small" style="padding:8px">Sin anotaciones estructuradas.</td></tr>`}</tbody></table></div>
+            ${noteRows.length ? `<div class="small" style="margin-top:6px">Anotaciones texto previas: ${noteRows.length}</div>` : ""}
+          </div>
+        </div>`
+      }
+
+      const pendingIssues = []
+      Object.values(issuesMap || {}).forEach(byDate => {
+        Object.values(byDate || {}).forEach(ticketMap => {
+          Object.values(ticketMap || {}).forEach(issue => {
+            const unresolved = issue && !issue.solved && (issue.hadProblem || String(issue.problemDescription || "").trim() || issue.escalated)
+            if(unresolved) pendingIssues.push(issue)
+          })
+        })
+      })
+
       wrap.innerHTML = `
-        <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar filas al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
-        ${isReferente ? `<div class="row"><div><label>Analista</label><select id="dailysAnalystSelect">${scopedAnalysts.map(u => `<option value="${htmlEscape(String(u.email || "").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</option>`).join("")}</select></div><div><label>Número de ticket</label><input id="dailysTicket"></div><div><label>Cliente</label><input id="dailysClient"></div><div><label>Título tarea</label><input id="dailysTitle"></div><div><label>Comentario agenda</label><input id="dailysAgendaComment"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyEntryForAnalyst()">Agregar fila</button></div></div>` : ""}
-        <div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${isReferente ? `<input id=\"dailysObs_${r.id}\" value=\"${htmlEscape(r.referenteObservation || "")}\" style=\"margin:0\"><button class=\"ghost\" style=\"margin-left:6px\" onclick=\"saveDailyObservation('${r.id}')\">Guardar</button>` : htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${isReferente ? `<button class=\"ghost\" onclick=\"escalateDailyEntry('${r.id}')\">⬆️ Elevar a Team Leader</button>` : "-"}</td></tr>`).join("") || `<tr><td colspan="8" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>
+        ${renderDailyWeekStrip('analyst', selectedDate, 'setDailyReferenteDate', false)}
+        <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar información al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
+        <div class="agendaSection"><h4 style="margin-bottom:8px">Miembros asignados</h4><div class="dailyMemberGrid">${memberCards}</div></div>
+        ${isReferente ? (selectedAnalystSection || `<div class="agendaSection"><div class="small">Seleccioná un analista para ver su información.</div></div>`) : `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td></tr>`).join("") || `<tr><td colspan="7" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>`}
+        ${isReferente ? `<div class="agendaSection"><h4 style="margin-bottom:8px">Pendientes por elevar / no solucionados</h4>${pendingIssues.length ? pendingIssues.map(issue => { const solveInputId = `pendingSolve_${emailKey(issue.analystEmail || '')}_${String(issue.date || '').replaceAll('-','')}_${emailKey(issue.ticketId || '')}`; return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(issue.ticketId || '-') } · ${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')}</div><div class="feedMeta">${htmlEscape(formatDateDMY(issue.date || todayIso))} · Escalar a: ${htmlEscape(issue.escalateTo || '-')}</div></div><span class="badge ${issue.solved ? 'ok' : 'off'}">${issue.solved ? 'Solucionado' : 'Pendiente'}</span></div><div>${htmlEscape(issue.problemDescription || 'Sin descripción')}</div><div class="inline" style="margin-top:6px"><input id="${solveInputId}" value="${htmlEscape(issue.solutionDetail || '')}" placeholder="Detalle de solución"><button class="ghost" onclick="solveDailyIssueFromPending('${String(issue.analystEmail || '').toLowerCase()}','${issue.date || ''}','${issue.ticketId || ''}')">Marcar solucionado</button></div></div>` }).join('') : `<div class="small">No hay pendientes abiertos.</div>`}</div>` : ""}
       `
     }
 
@@ -10270,10 +10635,11 @@ Cliente B`)
       if(s1) s1.classList.toggle("ghost", adminAgendaTeam !== "equipo_1")
       if(s2) s2.classList.toggle("ghost", adminAgendaTeam !== "equipo_2")
 
-      if(!scoped.length){
-        wrap.innerHTML = `<p class="small">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</p>`
-        return
-      }
+      const analystsWithoutTasks = teamAnalysts.filter(email => !scoped.some(t => {
+        const owner = String(t.assignedTo || "").toLowerCase()
+        const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h || "").toLowerCase()) : []
+        return owner === email || helpers.includes(email)
+      }))
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
       const savedHistory = await getAdminAgendaHistory(adminAgendaTeam)
       const historyHtml = await renderAgendaCommentHistoryTable()
@@ -10337,6 +10703,8 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
                 </tr>`
               }).join("")}
+              ${analystsWithoutTasks.map(email => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">—</td><td colspan="17" style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(userDisplayNameByEmail(email) || email)}</strong>: No tiene tareas asignadas.</td></tr>`).join("")}
+              ${(!scoped.length && !analystsWithoutTasks.length) ? `<tr><td colspan="18" class="small" style="padding:8px">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</td></tr>` : ""}
             </tbody>
           </table>
           </div>
@@ -11097,24 +11465,18 @@ Cliente B`)
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
           if(orb && orbValue){
-            if(surveys.length){
-              const qualityDeg = Math.max(0, Math.min(360, (avgRaw / 10) * 360))
-              orb.classList.remove("hidden")
-              orb.style.setProperty("--quality-deg", `${qualityDeg}deg`)
-              orbValue.textContent = `${avgRaw.toFixed(1)}`
-            }else{
-              orb.classList.add("hidden")
-            }
+            const qualityDeg = Math.max(0, Math.min(360, (avgRaw / 10) * 360))
+            orb.classList.remove("hidden")
+            orb.style.setProperty("--quality-deg", `${qualityDeg}deg`)
+            orbValue.textContent = `${avgRaw.toFixed(1)}`
           }
         }catch(_){
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
-          if(orb && orbValue && (currentRole === "analista" || currentRole === "consultor")){
+          if(orb && orbValue){
             orb.classList.remove("hidden")
             orb.style.setProperty("--quality-deg", "0deg")
             orbValue.textContent = "0.0"
-          }else if(orb){
-            orb.classList.add("hidden")
           }
         }
 
