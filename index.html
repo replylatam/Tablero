@@ -1262,6 +1262,15 @@
       <div id="adminRecommendationDetailBody"></div>
     </div>
   </div>
+  <div id="adminReassignWindowModal" class="modalBack hidden" onclick="if(event.target===this) closeAdminReassignWindowModal()">
+    <div class="card modal" style="max-width:1200px">
+      <div class="inline" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="margin:0">Recomendación de reasignación</h3>
+        <button class="secondary" onclick="closeAdminReassignWindowModal()">Cerrar</button>
+      </div>
+      <div id="adminReassignWindowBody"></div>
+    </div>
+  </div>
 
   <div id="urgentCapacityWarningModal" class="modalBack hidden" onclick="if(event.target===this) closeUrgentCapacityWarningDialog()">
     <div class="card modal" style="max-width:560px">
@@ -1652,6 +1661,7 @@
     var analystAgendaVisible = true
     var analystAgendaTodayOnly = false
     var dailyAdminRows = []
+    var dailyHistoryRowsCache = []
     var dailyAnalystRows = []
     var dailyWeekStripScroll = {}
     var dailyWeekOffsetByScope = { admin: 0, analyst: 0 }
@@ -1915,6 +1925,11 @@
     }
 
     function setAdminTab(tab){
+      const menuKey = `admin:${String(tab || "")}`
+      if(!canCurrentRoleSeeMenu(menuKey)){
+        showToast("No tenés permisos para ver este menú.", "error", 1600)
+        return
+      }
       if(!canAccessAdminTab(tab)){
         showToast("No tenés permisos para acceder a esta sección.", "error", 1800)
         if(adminPanelTab !== "panel"){
@@ -1989,7 +2004,7 @@
 
     function setMainViewTab(tab){
       const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys","top_performer"].includes(tab) ? tab : "tickets"
-      if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(nextTab)){
+      if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
         showToast("No tenés permisos para ver este menú.", "error", 1600)
         return
       }
@@ -6008,6 +6023,7 @@ Cliente B`)
       const isAdmin = currentRole === "admin"
       const adminCanAccess = (tab) => canAccessAdminTab(tab)
       if(isAdmin && !adminCanAccess(adminPanelTab)) adminPanelTab = "panel"
+      if(isAdmin && adminPanelTab !== "panel" && !canCurrentRoleSeeMenu(`admin:${adminPanelTab}`)) adminPanelTab = "panel"
       const isAnalyst = currentRole === "analista"
       if(isAnalyst) loadAnalystBoardSettings()
       if(isAnalyst && analystMoodDateLoaded && analystMoodDateLoaded !== toLocalDateOnly(new Date())){
@@ -6040,9 +6056,11 @@ Cliente B`)
       const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView || showTopPerformer
       const isSidebarItemVisible = (item) => {
         const action = String(item?.action || "")
-        const match = action.match(/setMainViewTab\\('([^']+)'\\)/)
-        if(!match) return true
-        return canCurrentRoleSeeMenu(match[1])
+        const mainMatch = action.match(/setMainViewTab\\('([^']+)'\\)/)
+        if(mainMatch) return canCurrentRoleSeeMenu(`main:${mainMatch[1]}`)
+        const adminMatch = action.match(/setAdminTab\\('([^']+)'\\)/)
+        if(adminMatch) return canCurrentRoleSeeMenu(`admin:${adminMatch[1]}`)
+        return true
       }
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
@@ -6303,14 +6321,14 @@ Cliente B`)
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
-                     ${currentRole === "admin" ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="toggleAdminReassignPanel()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">${adminReassignPanelVisible ? "Ocultar detalle" : "Saturación semanal (abrir detalle)"}</div></div>` : ""}`
+                     ${currentRole === "admin" ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>` : ""}
-              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div>${adminReassignPanelVisible ? `<h4 style="margin:12px 0 0">Recomendación de reasignación</h4><div id="adminReassignPanel" style="margin-top:8px"></div>` : `<div class="small" style="margin-top:10px">Abrí “Recomendación de reasignación” desde el indicador para ver el detalle.</div>`}` : ""}
+              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><div class="small" style="margin-top:10px">Abrí “Recomendación de reasignación” para ver el detalle en ventana.</div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
@@ -6539,6 +6557,9 @@ Cliente B`)
       const feed = document.getElementById("encuentroFeed")
       const membersWrap = document.getElementById("encuentroMembers")
       if(!feed || !membersWrap) return
+      if(!Object.keys(cachedUsersByEmail || {}).length){
+        cachedUsersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
+      }
       const rows = Object.entries((await encuentroRef().once("value")).val() || {}).map(([k,v]) => ({ id: k, ...(v||{}) }))
         .sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
       const myEmail = String(currentUser?.email || "").toLowerCase()
@@ -6550,7 +6571,7 @@ Cliente B`)
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
-        .filter(u => u && u.active !== false && ["analista","consultor","admin"].includes(String(u.role||"")))
+        .filter(u => u && u.active !== false && ["analista","consultor","admin","admin_lvl2"].includes(String(u.role||"")))
       const profileEmail = String(encuentroProfileUserEmail || "").toLowerCase()
       const profileCongrats = rows.filter(r => String(r?.type || "") === "felicitacion" && String(r?.message || "").toLowerCase().includes(userDisplayNameByEmail(profileEmail || "").toLowerCase())).length
       const profileComments = Object.values((await db.ref("encuentro_member_comments").child(emailKey(profileEmail)).once("value")).val() || {})
@@ -10131,7 +10152,10 @@ Cliente B`)
     async function saveAdminMenuPermissions(){
       if(!isAdminLevel1()) return alert("Solo admin nivel 1 puede editar permisos.")
       const roles = ["admin","analista","consultor"]
-      const menuKeys = ["tickets","saved","encuentro","top_performer","portfolio","support","quality_results","my_ticket_status","registro_horas","dailys","portfolio_overview","consultor_guidelines"]
+      const menuKeys = [
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines",
+        "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines","admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center","admin:people","admin:user_management","admin:settings","admin:control_center_accesses","admin:control_center_permissions"
+      ]
       const payload = { admin: {}, analista: {}, consultor: {} }
       roles.forEach(role => {
         menuKeys.forEach(key => {
@@ -10149,9 +10173,14 @@ Cliente B`)
       if(!wrap) return
       const roles = [{key:"admin",label:"Admin"},{key:"analista",label:"Analista"},{key:"consultor",label:"Consultor"}]
       const items = [
-        { key:"tickets", label:"Tickets" }, { key:"saved", label:"Guardados" }, { key:"encuentro", label:"Encuentro" }, { key:"top_performer", label:"Top performer" },
-        { key:"portfolio", label:"Cartera" }, { key:"support", label:"Soporte" }, { key:"quality_results", label:"Calidad" }, { key:"my_ticket_status", label:"Estado tickets" },
-        { key:"registro_horas", label:"Registro horas" }, { key:"dailys", label:"Daily's" }, { key:"portfolio_overview", label:"Cartera consultores" }, { key:"consultor_guidelines", label:"Lineamientos consultor" }
+        { key:"main:tickets", label:"Tickets" }, { key:"main:saved", label:"Guardados" }, { key:"main:encuentro", label:"Encuentro" }, { key:"main:top_performer", label:"Top performer" },
+        { key:"main:portfolio", label:"Cartera" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
+        { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" },
+        { key:"admin:dailys", label:"Admin · Daily's" }, { key:"admin:agenda", label:"Admin · Organizar agendas" }, { key:"admin:comments", label:"Admin · Comentarios" }, { key:"admin:capacity", label:"Admin · Capacidad instalada" },
+        { key:"admin:announcements", label:"Admin · Comunicados" }, { key:"admin:guidelines", label:"Admin · Lineamientos" }, { key:"admin:manuals", label:"Admin · Manuales" }, { key:"admin:internal_quality", label:"Admin · Calidad interna" },
+        { key:"admin:quality", label:"Admin · Encuesta calidad" }, { key:"admin:support", label:"Admin · Soporte técnico" }, { key:"admin:help", label:"Admin · Ayuda" }, { key:"admin:connections", label:"Admin · Conexiones" },
+        { key:"admin:control_center", label:"Admin · Centro de control" }, { key:"admin:people", label:"Admin · Gestión personas" }, { key:"admin:user_management", label:"Admin · Gestión clientes" }, { key:"admin:settings", label:"Admin · Configuración tickets" },
+        { key:"admin:control_center_accesses", label:"Admin · Accesos" }, { key:"admin:control_center_permissions", label:"Admin · Permisos" }
       ]
       const disabled = !isAdminLevel1()
       wrap.innerHTML = `<div class="small" style="margin-bottom:8px">${disabled ? "Solo admin nivel 1 puede editar." : "Definí qué opciones de menú puede ver cada rol."}</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Opción</th>${roles.map(r=>`<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">${r.label}</th>`).join("")}</tr></thead><tbody>${items.map(item => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.label}</td>${roles.map(r => `<td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="perm_${r.key}_${item.key}" type="checkbox" ${(menuPermissionsByRole?.[r.key]?.[item.key] !== false) ? "checked" : ""} ${disabled ? "disabled" : ""}></td>`).join("")}</tr>`).join("")}</tbody></table></div>${disabled ? "" : `<div class="inline" style="margin-top:10px"><button onclick="saveAdminMenuPermissions()">Guardar permisos</button></div>`}`
@@ -10223,6 +10252,7 @@ Cliente B`)
       const isResolvedPending = (row) => ['ya_resuelto','ya_resuelto_informar'].includes(String(row?.problemStatus || '')) || !!String(row?.solutionDetail || '').trim()
       const activePendingRows = filteredPendingRows.filter(r => !isResolvedPending(r))
       const historyRows = filteredPendingRows.filter(r => isResolvedPending(r))
+      dailyHistoryRowsCache = historyRows
 
       const teams = ["equipo_1","equipo_2"].map(team => {
         const members = users.filter(u => String(u.analystTeam || "") === team)
@@ -10244,11 +10274,11 @@ Cliente B`)
 
                 <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Notas propias</h4><div class="inline"><input id="dailyAdminPrivateNote" placeholder="Escribí una nota personal del admin"><button onclick="saveDailyAdminPrivateNote()">Guardar nota</button></div><div style="margin-top:8px">${privateNotes.length ? privateNotes.map(n => `<div class="small" style="padding:8px;border:1px solid var(--stroke-2);border-radius:8px;margin-top:6px">${htmlEscape(formatDateTime24(n.createdAt || ''))} · ${htmlEscape(n.note || '')}</div>`).join('') : `<div class="small">Sin notas propias.</div>`}</div></div>
       `
-      wrap.innerHTML = `${teamsHtml}${renderDailyWeekStrip('admin', selectedDate, 'setDailyAdminDateFilter', true)}<div class="inline" style="margin-bottom:8px"><button class="${dailyAdminViewMode==='details'?'':'ghost'}" onclick="setDailyAdminViewMode('details')">Ver detalle</button><button class="${dailyAdminViewMode==='assign'?'':'ghost'}" onclick="setDailyAdminViewMode('assign')">Asignar referente</button><button class="${dailyAdminViewMode==='history'?'':'ghost'}" onclick="setDailyAdminViewMode('history')">Historial</button></div><div class="small" style="margin-bottom:8px">${selectedDate ? `Filtro activo: ${htmlEscape(formatDateDMY(selectedDate))} (tocá de nuevo para quitarlo).` : "Sin filtro de fecha: mostrando todo."}</div>${dailyAdminViewMode==='assign' ? assignSection : dailyAdminViewMode==='history' ? `<div class="feedItem"><h4 style="margin:0 0 8px">Historial</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cómo se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${historyRows.length ? historyRows.map(item => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateDMY(item.date || String(item.createdAt||'').slice(0,10)))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(item.analystEmail || '') || item.analystEmail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.team === 'equipo_1' ? 'Equipo 1' : item.team === 'equipo_2' ? 'Equipo 2' : 'Sin equipo')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.problemStatus || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.solutionDetail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(item.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="openDailyHistoryDetail('${item.id}')">Ver completo</button></td></tr>`).join('') : `<tr><td colspan="9" class="small" style="padding:8px">Sin historial para el criterio actual.</td></tr>`}</tbody></table></div></div>` : detailsSection}`
+      wrap.innerHTML = `${teamsHtml}${renderDailyWeekStrip('admin', selectedDate, 'setDailyAdminDateFilter', true)}<div class="inline" style="margin-bottom:8px"><button class="${dailyAdminViewMode==='details'?'':'ghost'}" onclick="setDailyAdminViewMode('details')">Ver detalle</button><button class="${dailyAdminViewMode==='assign'?'':'ghost'}" onclick="setDailyAdminViewMode('assign')">Asignar referente</button><button class="${dailyAdminViewMode==='history'?'':'ghost'}" onclick="setDailyAdminViewMode('history')">Historial</button></div><div class="small" style="margin-bottom:8px">${selectedDate ? `Filtro activo: ${htmlEscape(formatDateDMY(selectedDate))} (tocá de nuevo para quitarlo).` : "Sin filtro de fecha: mostrando todo."}</div>${dailyAdminViewMode==='assign' ? assignSection : dailyAdminViewMode==='history' ? `<div class="feedItem"><h4 style="margin:0 0 8px">Historial</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cómo se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${historyRows.length ? historyRows.map((item, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateDMY(item.date || String(item.createdAt||'').slice(0,10)))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(item.analystEmail || '') || item.analystEmail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.team === 'equipo_1' ? 'Equipo 1' : item.team === 'equipo_2' ? 'Equipo 2' : 'Sin equipo')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.problemStatus || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.solutionDetail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(item.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="openDailyHistoryDetail(idx)">Ver completo</button></td></tr>`).join('') : `<tr><td colspan="9" class="small" style="padding:8px">Sin historial para el criterio actual.</td></tr>`}</tbody></table></div></div>` : detailsSection}`
     }
 
-    function openDailyHistoryDetail(rowId){
-      const row = Object.values(dailyAdminRows || []).find(r => String(r?.id || "") === String(rowId || ""))
+    function openDailyHistoryDetail(rowIndex){
+      const row = (dailyHistoryRowsCache || [])[Number(rowIndex)]
       if(!row) return
       const detail = [
         `Ticket: ${row.ticketId || "-"}`,
@@ -10561,11 +10591,16 @@ Cliente B`)
       if(btnSurveys) btnSurveys.classList.toggle("ghost", consultorActivityTab !== "surveys")
     }
 
-    function toggleAdminReassignPanel(){
+    function openAdminReassignWindowModal(){
       if(currentRole !== "admin") return
-      adminReassignPanelVisible = !adminReassignPanelVisible
-      renderApp()
-      if(adminReassignPanelVisible) setTimeout(()=>loadDashboard(), 80)
+      document.getElementById("adminReassignWindowModal")?.classList.remove("hidden")
+      loadDashboard().then(() => {
+        renderAdminReassignmentPanel({ byAnalyst: adminReassignAnalystCache || [], recommendations: adminReassignRecommendationCache || [] }, true)
+      }).catch(()=>{})
+    }
+
+    function closeAdminReassignWindowModal(){
+      document.getElementById("adminReassignWindowModal")?.classList.add("hidden")
     }
 
     function setAdminAgendaTeam(team){
@@ -11372,8 +11407,8 @@ Cliente B`)
       loadDashboard()
     }
 
-    function renderAdminReassignmentPanel(data){
-      const panel = document.getElementById("adminReassignPanel")
+    function renderAdminReassignmentPanel(data, forceModal){
+      const panel = forceModal ? document.getElementById("adminReassignWindowBody") : document.getElementById("adminReassignPanel")
       const summary = document.getElementById("adminReassignSummary")
       if(!summary) return
       const validRecs = (data.recommendations || []).filter(r => !adminReassignIgnoredIds[String(r.id || "")])
