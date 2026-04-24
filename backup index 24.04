@@ -95,14 +95,14 @@
     .container { max-width: none; margin: 0; position: relative; z-index: 1; }
     .layoutShell { display: block; }
     .mainShell {
-      margin-left: 88px;
+      margin-left: 84px;
       min-width: 0;
       padding: 14px;
     }
     .leftSidebar {
       position: fixed;
       inset: 0 auto 0 0;
-      width: 78px;
+      width: 72px;
       background: linear-gradient(180deg, #0f172a 0%, #14213d 60%, #1f3b67 100%);
       border-right: 1px solid rgba(110, 152, 228, 0.24);
       transition: width .24s ease;
@@ -112,7 +112,7 @@
       flex-direction: column;
       min-height: 100vh;
     }
-    .leftSidebar.expanded { width: 220px; }
+    .leftSidebar.expanded { width: 224px; }
     .sideBrand {
       padding: 14px 12px 8px;
       font-weight: 800;
@@ -513,7 +513,27 @@
       margin-top: 10px;
       background: rgba(8,12,22,.28);
     }
+    .dailyWeekStripWrap{display:grid;grid-template-columns:42px minmax(0,1fr) 42px;align-items:center;gap:8px;margin-bottom:12px;width:100%}
+    .dailyWeekStripWrap > button{width:42px;height:42px;display:flex;align-items:center;justify-content:center}
+    .dailyWeekStrip{display:flex;gap:8px;overflow-x:auto;scroll-behavior:smooth;padding:2px 2px 6px;width:100%}
+    .dailyWeekChip{min-width:108px;flex:1 0 120px;border:1px solid var(--stroke);border-radius:10px;padding:8px;background:var(--surface-2);text-align:center}
+    .dailyWeekChipToday{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset;background:rgba(61,110,245,.16)}
+    .dailyWeekChipActive{background:rgba(34,212,191,.15);border-color:var(--accent-2)}
+    .dailyMemberGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+    .dailyMemberCard{border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2);cursor:pointer;display:flex;align-items:center;gap:10px}
+    .dailyMemberCard.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset}
+    .dailyMemberAvatar{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--stroke)}
+    body.light .dailyWeekChip{background:#fff;color:#0f172a;border-color:rgba(71,85,105,.25)}
+    body.light .dailyWeekChipToday{background:rgba(37,99,235,.15);border-color:rgba(37,99,235,.55)}
+    body.light .dailyWeekChipActive{background:rgba(13,148,136,.16);border-color:rgba(13,148,136,.55)}
+    body.light #dailysAdminWrap,
+    body.light #dailysAnalystWrap{color:#0f172a}
     .agendaSection h4 { margin: 0 0 8px; }
+    body.light #adminAgendaTableWrap thead th,
+    body.light #analystAgendaTableWrap thead th {
+      background: #f3f6fb;
+      color: #0f172a;
+    }
     .agendaMiniDash .kpi { min-height: 96px; }
     @media (min-width: 980px) { .grid { grid-template-columns: 1.2fr .9fr; } }
 
@@ -537,6 +557,7 @@
     /* ── KPI Grid ──────────────────────────────────────────────────── */
     .kpiGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .kpiGrid.adminRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .kpiGrid.adminOverviewRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .kpiGrid.singleRow { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
     .kpiGrid.analystDashRow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .kpiGrid.analystDashRow .kpi { padding: 7px 8px; }
@@ -562,6 +583,64 @@
     }
     .kpi .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
     .kpi .value { font-size: 24px; font-weight: 700; margin-top: 5px; color: var(--text); }
+    .kpi .meta { margin-top: 6px; font-size: 12px; color: var(--muted); }
+    .adminOverviewLayout {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .adminOverviewMain {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      padding: 12px;
+      max-height: 420px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .adminOverviewSide {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: var(--surface-2);
+      padding: 12px;
+      max-height: 420px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .analystTicketsList {
+      margin-top: 8px;
+      overflow-y: auto;
+      padding-right: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .analystTicketsItem {
+      padding: 8px;
+      border: 1px solid var(--stroke-2);
+      border-radius: 10px;
+      background: rgba(8, 12, 22, 0.34);
+    }
+    .analystTicketsBar {
+      margin-top: 6px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.14);
+      overflow: hidden;
+    }
+    .analystTicketsBarFill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    @media (max-width: 980px) {
+      .kpiGrid.adminOverviewRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .adminOverviewLayout { grid-template-columns: 1fr; }
+      .adminOverviewSide { max-height: none; }
+    }
     .kpiControl input, .kpiControl button { margin: 0; }
     .kpiControl .inline { margin-top: 8px; }
 
@@ -1086,7 +1165,16 @@
         <div><label>Título</label><input id="tTitle" /></div>
         <div><label>Prioridad</label><select id="tPriority"><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option></select></div>
       </div>
-      <div><label>Detalle</label><textarea id="tDescription"></textarea></div>
+      <div>
+        <label>Detalle</label>
+        <div id="tDescriptionEditor" class="commentEditor" contenteditable="true" data-placeholder="Escribí el detalle del ticket" oninput="syncRichEditorToTextarea('tDescriptionEditor','tDescription')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'tDescriptionEditor','tDescription')"></div>
+        <textarea id="tDescription" class="hidden"></textarea>
+        <div class="inline" style="margin-top:6px;gap:6px;align-items:center">
+          <label class="ghost attachBtn" for="tDescriptionFile" title="Insertar imagen en el detalle">🖼️</label>
+          <input id="tDescriptionFile" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('tDescriptionFile','tDescriptionEditor','tDescription')">
+          <span class="small">Podés arrastrar y soltar imágenes en el detalle</span>
+        </div>
+      </div>
       <div class="row">
         <div><label>Cliente</label><select id="tClient"></select></div>
         <div><label>Deadline</label><input id="tDeadline" type="date" onkeydown="return false" onfocus="this.showPicker && this.showPicker()" /></div>
@@ -1144,7 +1232,7 @@
       </div>
       <div class="row">
         <div><label>Email</label><input id="userEditEmail" type="text" disabled></div>
-        <div><label>Rol</label><select id="userEditRole" onchange="toggleUserEditTeamVisibility()"><option value="admin">Admin</option><option value="consultor">Consultor</option><option value="analista">Analista</option></select></div>
+        <div><label>Rol</label><select id="userEditRole" onchange="toggleUserEditTeamVisibility()"><option value="admin">Admin - Nivel 1</option><option value="admin_lvl2">Admin - Nivel 2</option><option value="consultor">Consultor</option><option value="analista">Analista</option></select></div>
         <div id="userEditTeamWrap"><label>Equipo (si es analista)</label><select id="userEditTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div>
       </div>
       <label>Actualizar foto (opcional)</label>
@@ -1501,6 +1589,8 @@
     const COMMON_LEAKED_PASSWORDS = new Set([
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
+    const ADMIN_LEVEL1_EMAILS = ["admin@tablero.local"]
+    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support"])
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -1561,6 +1651,15 @@
     var analystAgendaFilters = { ticketId: "", title: "", status: [], client: "", consultor: "" }
     var analystAgendaVisible = true
     var analystAgendaTodayOnly = false
+    var dailyAdminRows = []
+    var dailyAnalystRows = []
+    var dailyWeekStripScroll = {}
+    var dailyWeekOffsetByScope = { admin: 0, analyst: 0 }
+    var dailyAdminSelectedDate = ""
+    var dailyAdminViewMode = "assign"
+    var dailyAdminEscalationDetailId = ""
+    var dailyReferenteSelectedDate = toLocalDateOnly(new Date())
+    var dailyReferenteSelectedAnalyst = ""
     var analystPendingRequestsExpanded = false
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
@@ -1770,7 +1869,40 @@
       if(btn) btn.textContent = uiTheme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro"
     }
 
+    function getCurrentAdminLevel(){
+      if(String(currentRole || "").toLowerCase() !== "admin") return 0
+      const userLevel = Number(currentUser?.adminLevel)
+      if(userLevel === 1 || userLevel === 2) return userLevel
+      const email = String(currentUser?.email || "").toLowerCase()
+      if(ADMIN_LEVEL1_EMAILS.includes(email)) return 1
+      return 2
+    }
+
+    function isAdminLevel1(){
+      return getCurrentAdminLevel() === 1
+    }
+
+    function isAdminLevel2(){
+      return getCurrentAdminLevel() === 2
+    }
+
+    function canAccessAdminTab(tab){
+      if(String(currentRole || "").toLowerCase() !== "admin") return false
+      if(isAdminLevel1()) return true
+      return !ADMIN_LEVEL2_BLOCKED_TABS.has(String(tab || ""))
+    }
+
     function setAdminTab(tab){
+      if(!canAccessAdminTab(tab)){
+        showToast("No tenés permisos para acceder a esta sección.", "error", 1800)
+        if(adminPanelTab !== "panel"){
+          adminPanelTab = "panel"
+          mainViewTab = "tickets"
+          closeHeaderMenu()
+          renderApp()
+        }
+        return
+      }
       if(adminPanelTab === tab && mainViewTab === "tickets") return
       adminPanelTab = tab
       if(tab !== "guidelines" && tab !== "continuous_improvement") adminGuidelinesClient = ""
@@ -1834,7 +1966,7 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys"].includes(tab) ? tab : "tickets"
       if(mainViewTab === nextTab){
         if(nextTab === "tickets"){
           if(currentRole === "analista" && analystPanelTab !== "panel") analystPanelTab = "panel"
@@ -2035,6 +2167,20 @@
       if(normalized === "analista") return "Analista"
       if(normalized === "consultor") return "Consultor"
       return role || "-"
+    }
+
+    function normalizeUserRoleInput(rawRole){
+      const value = String(rawRole || "").toLowerCase()
+      if(value === "admin_lvl2") return { role: "admin", adminLevel: 2 }
+      if(value === "admin") return { role: "admin", adminLevel: 1 }
+      return { role: value || "consultor", adminLevel: null }
+    }
+
+    function roleDisplayWithLevel(user){
+      const role = String(user?.role || "").toLowerCase()
+      if(role !== "admin") return roleLabel(role)
+      const adminLevel = Number(user?.adminLevel)
+      return adminLevel === 2 ? "Admin - Nivel 2" : "Admin - Nivel 1"
     }
 
     function welcomeBySex(user){
@@ -2489,6 +2635,15 @@
       return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
     }
 
+    function buildGenderDefaultAvatar(sex){
+      const s = String(sex || "").toLowerCase()
+      const isWoman = s === "mujer"
+      const bg = isWoman ? "#be185d" : "#1d4ed8"
+      const icon = isWoman ? "♀" : "♂"
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='100%' height='100%' rx='40' fill='${bg}'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='34' fill='#ffffff'>${icon}</text></svg>`
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+    }
+
     function buildAvatarUrl(user,email){
       const fileId = String(user?.photoFileId || getDriveFileIdFromUrl(user?.photoUrl || "")).trim()
       if(fileId) return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
@@ -2496,7 +2651,8 @@
       if(direct) return direct
       const inline = String(user?.photoDataUrl || "").trim()
       if(inline) return inline
-      return buildInitialAvatar(email)
+      const sex = String(user?.sex || "").toLowerCase()
+      return buildGenderDefaultAvatar(sex)
     }
 
     function userAvatarByEmail(email){
@@ -2824,12 +2980,13 @@ Cliente B`)
       for(const row of rows.slice(1)){
         const email = String(row[iEmail]||'').trim().toLowerCase()
         const password = String(row[iPass]||'').trim()
-        const role = String(row[iRole]||'consultor').trim().toLowerCase()
+        const roleInput = String(row[iRole]||'consultor').trim().toLowerCase()
+        const normalizedRole = normalizeUserRoleInput(roleInput)
         if(!email || !password) continue
         const policy = passwordPolicyError(password)
         if(policy) continue
         const secureFields = await buildPasswordFields(password)
-        const payload = { key: emailKey(email), email, password: "", role, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
+        const payload = { key: emailKey(email), email, password: "", role: normalizedRole.role, adminLevel: normalizedRole.adminLevel, active: true, createdAt: new Date().toISOString(), createdBy: currentUser.email, ...secureFields, photoUrl:'', photoFileId:'' }
         await adminWrite('upsertUser', payload)
         await db.ref('users_by_email').child(payload.key).set(payload)
         count++
@@ -3479,16 +3636,47 @@ Cliente B`)
       }
       const selected = consultors.find(c => String(c.email||"").toLowerCase() === portfolioViewerConsultor) || consultors[0]
       const clientsObj = (await db.ref("clients").once("value")).val() || {}
-      const selectedKeys = Object.entries(clientsObj).filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
+      const allClientEntries = Object.entries(clientsObj)
+      const selectedKeys = allClientEntries.filter(([_,c]) => String(c?.assignedConsultor || "").toLowerCase() === String(selected.email||"").toLowerCase()).map(([k]) => k)
       const selectedClients = selectedKeys.map(k => String(clientsObj?.[k]?.name || k))
       const tickets = (cachedTickets || []).filter(t => selectedClients.includes(String(t.client || "")))
+      const byConsultor = {}
+      ;(cachedTickets || []).forEach(t => {
+        const consultor = resolveInformerEmail(t) || "sin_consultor"
+        byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
+      })
+      const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
+      const renderConsultorPie = () => {
+        const entries = Object.entries(byConsultor).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
+        const total = entries.reduce((a,[,v])=>a+v,0)
+        if(!total) return `<div class="small">Sin datos.</div>`
+        let acc = 0
+        const stops = entries.map(([_,v],i) => {
+          const start = acc
+          acc += (v/total)*360
+          return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
+        }).join(", ")
+        return `<div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</span><strong>${v}</strong></div>`).join("")}</div></div>`
+      }
       wrap.innerHTML = `
+        ${currentRole === "admin" ? `<div class="card" style="padding:10px;margin:0 0 10px"><h4 style="margin:0 0 8px">Cantidad de tickets por consultores</h4>${renderConsultorPie()}</div>` : ""}
         <div class="row">
           <div><label>Consultor</label><select onchange="setPortfolioViewerConsultor(this.value)">${consultors.map(c => `<option value="${htmlEscape(String(c.email||"").toLowerCase())}" ${String(c.email||"").toLowerCase()===portfolioViewerConsultor?"selected":""}>${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</option>`).join("")}</select></div>
         </div>
         <div style="margin-top:8px">
-          <h4 style="margin:0 0 8px">Clientes asignados</h4>
-          ${selectedKeys.length ? selectedKeys.map(key => `<div class="portfolioItem"><span class="name">${htmlEscape(String(clientsObj?.[key]?.name || key))}</span>${currentRole === "admin" ? `<label class="switch"><input type="checkbox" checked onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label>` : ""}</div>`).join("") : `<div class="small">Sin clientes asignados.</div>`}
+          <h4 style="margin:0 0 8px">${currentRole === "admin" ? "Asignar clientes a la cartera" : "Clientes asignados"}</h4>
+          ${currentRole === "admin"
+            ? (allClientEntries.length
+              ? allClientEntries
+                .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+                .map(([key, client]) => {
+                  const isAssigned = String(client?.assignedConsultor || "").toLowerCase() === String(selected.email || "").toLowerCase()
+                  return `<div class="portfolioItem"><span class="name">${htmlEscape(String(client?.name || key))}</span><label class="switch"><input type="checkbox" ${isAssigned ? "checked" : ""} onchange="toggleConsultorPortfolioClientAsAdmin('${htmlEscape(String(selected.email||"").toLowerCase())}','${key}', this.checked)"><span class="slider"></span></label></div>`
+                }).join("")
+              : `<div class="small">No hay clientes disponibles.</div>`)
+            : (selectedKeys.length
+              ? selectedKeys.map(key => `<div class="portfolioItem"><span class="name">${htmlEscape(String(clientsObj?.[key]?.name || key))}</span></div>`).join("")
+              : `<div class="small">Sin clientes asignados.</div>`)}
         </div>
         <div style="margin-top:12px">
           <h4 style="margin:0 0 8px">Tickets según cartera (${tickets.length})</h4>
@@ -4082,10 +4270,10 @@ Cliente B`)
         return acc + dateHours
       }, 0))
       const totalExecutedToDate = executedSeries.reduce((acc, v) => acc + Number(v || 0), 0)
-      const gapIdlePct = totalTheoreticalToDate > 0 ? ((totalTheoreticalToDate - totalExecutedToDate) / totalTheoreticalToDate) * 100 : 0
-      const totalTheoreticalForGap = totalTheoreticalToDate * Math.max(1, activeAnalystCount)
+      const periodUtilizationPct = totalTheoreticalToDate > 0 ? (totalExecutedToDate / totalTheoreticalToDate) * 100 : 0
+      const totalTheoreticalForGap = totalTheoreticalToDate
       const gapPeople = (activeAnalystCount > 0 && totalTheoreticalForGap > 0)
-        ? (activeAnalystCount - (((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap)))
+        ? ((((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap)) - activeAnalystCount)
         : 0
       const byClientCurrentMinutes = {}
       const byClientToDateMinutes = {}
@@ -4129,9 +4317,9 @@ Cliente B`)
           days_elapsed: { title: "Días hábiles transcurridos", formula: "Cantidad de días hábiles del período hasta la fecha actual.", detailsHtml: `<div class="small">Período: <strong>${htmlEscape(monthKey)}</strong> · Días hábiles transcurridos: <strong>${daysElapsed}</strong>.</div>` },
           total_theoretical: { title: "Tiempo total teórico mensual", formula: "Suma para cada analista: (días hábiles del mes - días ausentes) × horas diarias ajustadas.", detailsHtml: `<div class="small">Total mensual teórico del área: <strong>${totalMonthlyTheoretical.toFixed(2)} h</strong>.</div>` },
           total_executed: { title: "Tiempo total ejecutado", formula: "Suma de horas ejecutadas por todos los analistas para el período filtrado.", detailsHtml: `<div class="small">Total ejecutado del área en ${htmlEscape(monthKey)}: <strong>${totalExecutedHours.toFixed(2)} h</strong>.</div>` },
-          gap_idle: { title: "Utilización del día", formula: "((Teórico acumulado desde el 1er día hábil del mes hasta hoy - Ejecutado acumulado en ese período) / Teórico acumulado del período) × 100.", detailsHtml: `<div class="small">Período: 1er día hábil del mes → hoy.<br>Teórico al día: <strong>${totalTheoreticalToDate.toFixed(2)} h</strong> · Ejecutado al día: <strong>${totalExecutedToDate.toFixed(2)} h</strong> · Utilización del día: <strong>${gapIdlePct.toFixed(2)}%</strong>.</div>` },
+          gap_idle: { title: "Utilización del período", formula: "(Ejecutado acumulado del período / Horas disponibles acumuladas del período) × 100.", detailsHtml: `<div class="small">Período: 1er día hábil del mes → hoy.<br>Horas disponibles del período: <strong>${totalTheoreticalToDate.toFixed(2)} h</strong> · Ejecutado del período: <strong>${totalExecutedToDate.toFixed(2)} h</strong> · Utilización del período: <strong>${periodUtilizationPct.toFixed(2)}%</strong>.</div>` },
           capacity_use: { title: "Utilización del mes", formula: "(Tiempo total ejecutado mensual / Tiempo total teórico mensual) × 100.", detailsHtml: `<div class="small">(${totalExecutedHours.toFixed(2)} h / ${totalMonthlyTheoretical.toFixed(2)} h) × 100 = <strong>${usedCapacityPct.toFixed(2)}%</strong>.</div>` },
-          gap_people: { title: "GAP", formula: "Analistas activos - ((Ejecutado acumulado del 1er día hábil a hoy × analistas activos) / (Teórico acumulado del 1er día hábil a hoy × analistas activos)).", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado total para GAP: ${totalTheoreticalToDate.toFixed(2)} × ${activeAnalystCount} = <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = ${activeAnalystCount} - resultado = <strong>${gapPeople.toFixed(2)}</strong>.</div>` },
+          gap_people: { title: "GAP", formula: "((Ejecutado acumulado del período × analistas activos) / Teórico acumulado del período) - analistas activos.", detailsHtml: `<div class="small">Analistas activos: <strong>${activeAnalystCount}</strong>.<br>Teórico acumulado del período: <strong>${totalTheoreticalForGap.toFixed(2)}</strong>.<br>((${totalExecutedToDate.toFixed(2)} × ${activeAnalystCount}) / ${totalTheoreticalForGap.toFixed(2)}) = <strong>${(totalTheoreticalForGap > 0 ? ((totalExecutedToDate * activeAnalystCount) / totalTheoreticalForGap) : 0).toFixed(2)}</strong>.<br>GAP = resultado - ${activeAnalystCount} = <strong>${gapPeople.toFixed(2)}</strong>.</div>` },
           increased_clients: { title: "Clientes que han aumentado el consumo", formula: "Clientes cuyo consumo del mes actual aumentó más del 50% respecto del mes anterior.", detailsHtml: `<div class="small">Detectados: <strong>${adminCapacityIncreasedClients.length}</strong> clientes con aumento mayor al 50%.</div><div style="margin-top:8px"><button class="ghost" onclick="openCapacityIncreasedClientsModal()">Ver detalle</button></div>` }
         }
         const kpiCard = (key, label, value, small) => `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('${key}')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">${label}</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('${key}')">?</button></div><div class="value">${value}</div><div class="small">${small}</div></div>`
@@ -4235,7 +4423,7 @@ Cliente B`)
         </div>
         <div style="overflow:auto;margin-bottom:12px">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => { const d = new Date(`${date}T00:00:00`); const lbl = ["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()] || ""; return `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${lbl}<br>${String(date).slice(-2)}</th>` }).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días hábiles trabajados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado hasta ahora</th></tr></thead>
+            <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>${businessDates.map(date => { const d = new Date(`${date}T00:00:00`); const lbl = ["Do","Lu","Ma","Mi","Ju","Vi","Sa"][d.getDay()] || ""; return `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">${lbl}<br>${String(date).slice(-2)}</th>` }).join("")}<th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días hábiles trabajados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad de horas disponibles</th></tr></thead>
             <tbody>${visibleAnalysts.map(u => {
               const email = String(u.email || "").toLowerCase()
               const row = getAdminHoursRowValues(email)
@@ -4252,17 +4440,18 @@ Cliente B`)
         <div style="overflow:auto">
           <table style="width:100%;border-collapse:collapse">
             <thead><tr>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Factor de ajuste</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas trabajadas</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas diarias ajustadas</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad de días hábiles del mes</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días ausentes <span class="tinyHelpIcon" title="Este campo abarca feriados, licencias y días no trabajados por motivos personales por el analista.">?</span></th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">TIempo mensual teorico</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado (h)</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Utilización del día</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Utilización del mes</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Analista</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Factor de ajuste</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Horas trabajadas</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Horas diarias ajustadas</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cantidad de días hábiles del mes</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Días ausentes <span class="tinyHelpIcon" title="Este campo abarca feriados, licencias y días no trabajados por motivos personales por el analista.">?</span></th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">TIempo mensual teorico</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Tiempo total ejecutado (h)</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cantidad de horas disponibles</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Utilización del período</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Utilización del mes</th>
+              <th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Acción</th>
             </tr></thead>
             <tbody>
               ${visibleAnalysts.map(u => {
@@ -4271,13 +4460,13 @@ Cliente B`)
                 const autoMonthly = Math.max(0, row.monthDays - row.holidays) * row.adjustedHours
                 const executedHours = Number((executedByAnalyst[email] || 0) / 60)
                 const elapsedAnalystDates = businessDates.filter(date => date <= today)
-                const theoreticalToDate = elapsedAnalystDates.reduce((acc, date) => acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0)
+                const availablePeriodHours = elapsedAnalystDates.reduce((acc, date) => acc + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0)
                 const executedToDate = (entriesByAnalyst[email] || []).filter(r => String(r.date || "").slice(0,10) <= today).reduce((sum, r) => sum + (Number(r.minutes || 0) / 60), 0)
-                const gapPct = theoreticalToDate > 0 ? ((theoreticalToDate - executedToDate) / theoreticalToDate) * 100 : 0
+                const periodUsePct = availablePeriodHours > 0 ? (executedToDate / availablePeriodHours) * 100 : 0
                 const capacityUse = autoMonthly > 0 ? (executedHours / autoMonthly) * 100 : 0
-                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:110px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:90px"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:130px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${gapPct.toFixed(2)}%" disabled style="margin:0;max-width:100px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)}%" disabled style="margin:0;max-width:120px;opacity:.8"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div style="display:inline-flex;align-items:center;gap:6px"><button class="ghost" style="padding:6px 8px;font-size:12px;line-height:1" title="Enviar advertencia por baja carga" onclick="openCapacityLowHoursModal('${email}')">⚠️</button><button class="danger" style="padding:6px 10px;font-size:12px;line-height:1" onclick="removeAnalystFromHoursTable('${email}')">X</button></div></td></tr>`
+                return `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(email) || email)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.factor}" onchange="updateAdminHoursValue('${email}','factor', this.value)" style="margin:0;max-width:82px"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.workedHours}" onchange="updateAdminHoursValue('${email}','workedHours', this.value)" style="margin:0;max-width:82px"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${row.adjustedHours.toFixed(2)}" disabled style="margin:0;max-width:98px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.monthDays}" disabled style="margin:0;max-width:98px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" value="${row.holidays}" onchange="updateAdminHoursValue('${email}','holidays', this.value)" style="margin:0;max-width:82px"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${autoMonthly.toFixed(2)}" disabled style="margin:0;max-width:108px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${executedHours.toFixed(2)}" disabled style="margin:0;max-width:108px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="number" min="0" step="0.01" value="${availablePeriodHours.toFixed(2)}" disabled style="margin:0;max-width:108px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${periodUsePct.toFixed(2)}%" disabled style="margin:0;max-width:94px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input type="text" value="${capacityUse.toFixed(2)}%" disabled style="margin:0;max-width:94px;opacity:.8"></td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><div style="display:inline-flex;align-items:center;gap:6px"><button class="ghost" style="padding:6px 8px;font-size:12px;line-height:1" title="Enviar advertencia por baja carga" onclick="openCapacityLowHoursModal('${email}')">⚠️</button><button class="danger" style="padding:6px 10px;font-size:12px;line-height:1" onclick="removeAnalystFromHoursTable('${email}')">X</button></div></td></tr>`
               }).join("")}
-              ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); return acc }, { theoretical: 0, executed: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
+              ${(() => { const totals = visibleAnalysts.reduce((acc, u) => { const email = String(u.email || "").toLowerCase(); const row = getAdminHoursRowValues(email); const elapsedAnalystDates = businessDates.filter(date => date <= today); const availablePeriodHours = elapsedAnalystDates.reduce((sum, date) => sum + ((attendanceMonth[email] || {})[date] ? row.adjustedHours : 0), 0); acc.theoretical += Math.max(0, row.monthDays - row.holidays) * row.adjustedHours; acc.executed += Number((executedByAnalyst[email] || 0) / 60); acc.available += availablePeriodHours; return acc }, { theoretical: 0, executed: 0, available: 0 }); return `<tr style="background:rgba(61,110,245,.12)"><td colspan="6" style="padding:8px;border-top:1px solid var(--stroke)"><strong>Total general</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.theoretical.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.executed.toFixed(2)} h</strong></td><td style="padding:8px;border-top:1px solid var(--stroke)"><strong>${totals.available.toFixed(2)} h</strong></td><td colspan="3" style="padding:8px;border-top:1px solid var(--stroke)"></td></tr>` })()}
             </tbody>
           </table>
         </div>
@@ -4464,6 +4653,7 @@ Cliente B`)
             email: user.email,
             password: "",
             role: user.role,
+            adminLevel: user.role === "admin" ? 1 : 2,
             active: true,
             createdAt: new Date().toISOString(),
             createdBy: "system",
@@ -5546,7 +5736,7 @@ Cliente B`)
           adminWrite("upsertUser", migrated).catch(()=>{})
         }
 
-        currentUser = { email: user.email }
+        currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
         currentRole = user.role
         persistSession()
 
@@ -5619,11 +5809,11 @@ Cliente B`)
       const msg = new ArrayBuffer(8)
       const view = new DataView(msg)
       view.setUint32(0, Math.floor(counter / 0x100000000), false)
-      view.setUint32(4, counter >>> 0, false)
+      view.setUint32(4, counter % 0x100000000, false)
       const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
       const sig = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msg))
       const offset = sig[sig.length - 1] & 0x0f
-      const bin = ((sig[offset] & 0x7f) << 24) | (sig[offset+1] << 16) | (sig[offset+2] << 8) | sig[offset+3]
+      const bin = ((sig[offset] & 0x7f) * 16777216) + (sig[offset+1] * 65536) + (sig[offset+2] * 256) + sig[offset+3]
       return String(bin % 1000000).padStart(6, "0")
     }
 
@@ -5790,6 +5980,9 @@ Cliente B`)
 
     function renderApp(){
       const isAdmin = currentRole === "admin"
+      const adminCanAccess = (tab) => canAccessAdminTab(tab)
+      const showAdminConfigButton = isAdmin && adminCanAccess("config_home")
+      if(isAdmin && !adminCanAccess(adminPanelTab)) adminPanelTab = "panel"
       const isAnalyst = currentRole === "analista"
       if(isAnalyst) loadAnalystBoardSettings()
       if(isAnalyst && analystMoodDateLoaded && analystMoodDateLoaded !== toLocalDateOnly(new Date())){
@@ -5815,12 +6008,14 @@ Cliente B`)
       const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
       const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
+      const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          { icon: "🗂️", label: "Daily's", action: "setAdminTab('dailys')" },
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
           { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" },
@@ -5839,27 +6034,29 @@ Cliente B`)
           { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" }
         ]},
         { title: "Técnico", items: [
-          { icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" },
+          ...(adminCanAccess("support") ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
           { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
-          { icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" },
+          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : []),
           { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
-        ]}
+        ].filter(Boolean)}
       ] : [
         { title: "General", items: [
-          { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
-          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "⊙", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
-          { icon: "◩", label: "Guardados", action: "setMainViewTab('saved')" }
+          { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
+          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
-          ...(currentRole === "consultor" ? [{ icon: "◎", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "□", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(isAnalyst ? [{ icon: "◫", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-          ...(isAnalyst ? [{ icon: "◍", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "≣", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
-          ...(isAnalyst ? [{ icon: "◷", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "◎", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : [])
+          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
+          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
         ].filter(Boolean)}
       ]
 
@@ -5871,7 +6068,7 @@ Cliente B`)
             <div class="sideNavList">
               ${sidebarSections.map(section => `<div class="sideSection"><div class="sideSectionTitle">${section.title}</div>${(section.items || []).map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}</div>`).join("")}
             </div>
-            ${(currentRole === "analista" || currentRole === "consultor") ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb hidden" onclick="setMainViewTab('quality_results')" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">-</div><div class="smallLabel"></div></div></div>` : ""}
+            <div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -5888,7 +6085,7 @@ Cliente B`)
               ${canCreateTicket?`<button onclick="openTicketModal()">+ Nuevo ticket</button>`:""}${(isAnalyst || currentRole === "consultor" || isAdmin) ? `<div class="menuWrap notifWrap" onclick="event.stopPropagation()"><button class="ghost" title="Notificaciones" onclick="toggleAnalystNotifications(event)">🔔</button><span id="analystNotifBadge" class="notifBadge">0</span><div id="analystNotifDropdown" class="menuDropdown hidden"></div></div>` : ""}
               ${showSavedItems ? `<button class="ghost" onclick="setMainViewTab('tickets')">Volver a tickets</button>` : ""}
               ${(isAdmin && showAdminPanel) || (isAnalyst && (showAnalystProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings)) ? `<button class="ghost" onclick="${isAdmin ? "setAdminTab('panel')" : "setAnalystTab('panel')"}">Volver al panel</button>` : ""}
-              ${isAdmin ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
+              ${showAdminConfigButton ? `<button class="ghost" title="Configuración" onclick="setAdminTab('config_home')">⚙️</button>` : ""}
               ${isAnalyst ? `<button class="ghost" title="Configuración del tablero" onclick="setAnalystTab('board_settings')">⚙️</button>` : ""}
               <button class="secondary" onclick="logout()">Cerrar sesión</button>
             </div>
@@ -5929,6 +6126,8 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3>${currentRole === "analista" ? `<div class="inline" style="gap:8px;margin-bottom:10px"><button class="${qualityResultsMode==='satisfaction'?'':'ghost'}" onclick="setQualityResultsMode('satisfaction')">Encuesta de satisfacción</button><button class="${qualityResultsMode==='internal'?'':'ghost'}" onclick="setQualityResultsMode('internal')">Calidad interna</button></div>` : ""}<div id="qualityResultsContainer" class="small"></div></div>
         ` : showSupportCasesView ? `
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
+        ` : showDailysView ? `
+          <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAnalystWrap" class="small"></div></div>
         ` : showConsultorGuidelines ? `
           <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div id="consultorGuidelinesList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
@@ -5945,7 +6144,7 @@ Cliente B`)
           </div>
         ` : showPortfolioOverview ? `
           <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
-        ` : showAdminPanel ? (adminPanelTab==='config_home' ? `
+        ` : showAdminPanel ? (adminPanelTab==='config_home' && showAdminConfigButton ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
             <div class="row">
               <div class="feedItem" style="cursor:pointer" onclick="setAdminTab('people')"><div class="feedType">Gestión de personas</div><div class="feedMeta">Crear/importar usuarios y ver usuarios creados.</div></div>
@@ -5957,12 +6156,12 @@ Cliente B`)
           <div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de personas</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div>
             <h4 style="margin:0 0 8px">Gestión de usuarios</h4>
             <div class="row"><div><label>Usuario</label><input id="uEmail"></div><div><label>Contraseña</label><input id="uPassword" type="text"></div></div>
-            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin</option></select></div><div><label>Equipo (si es analista)</label><select id="uTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
+            <div class="row" style="align-items:end"><div><label>Rol</label><select id="uRole"><option value="consultor">Consultor</option><option value="analista">Analista</option><option value="admin">Admin - Nivel 1</option><option value="admin_lvl2">Admin - Nivel 2</option></select></div><div><label>Equipo (si es analista)</label><select id="uTeam"><option value="">Sin equipo</option><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option></select></div><div><label>Foto</label><input id="uPhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveUserAccess()">Guardar usuario</button></div></div>
             <div class="row" style="align-items:end"><div><label>Importar usuarios (Excel/CSV)</label><input id="uImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end;gap:6px"><button class="ghost" onclick="importUsersFromFile()">Importar usuarios</button><button class="ghost helpIcon" onclick="showImportFormatHelp('users')">?</button></div></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -6066,7 +6265,7 @@ Cliente B`)
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>` : ""}
-              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Analytics</h4><div id="adminChartsArea" style="margin-top:8px"></div><h4 style="margin:12px 0 0">Recomendación de reasignación</h4><div id="adminReassignPanel" style="margin-top:8px"></div>` : ""}
+              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><h4 style="margin:12px 0 0">Recomendación de reasignación</h4><div id="adminReassignPanel" style="margin-top:8px"></div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
@@ -6110,9 +6309,11 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'announcements'){ loadAnnouncementsAdmin() }
       if(isAdmin && adminPanelTab === 'agenda'){ loadAdminAgenda() }
       if(isAdmin && adminPanelTab === 'comments'){ loadAdminComments() }
+      if(isAdmin && adminPanelTab === 'dailys'){ loadDailysAdmin() }
       if(isAnalyst && analystPanelTab === 'agenda'){ loadAnalystAgenda() }
       if(isAnalyst && analystPanelTab === 'guidelines'){ loadAnalystGuidelines() }
       if(isAnalyst && analystPanelTab === 'manuals'){ loadManualsAnalyst() }
+      if(currentRole === "analista" && mainViewTab === "dailys"){ loadDailysAnalyst() }
       if(currentRole === "consultor") startConsultorAutoRefresh(); else stopConsultorAutoRefresh()
       if(!showProfileView){
         loadFilterOptions()
@@ -7546,12 +7747,19 @@ Cliente B`)
       const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       dd.style.maxHeight = "300px"
       dd.style.overflowY = "auto"
-      dd.innerHTML = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      const header = `<div class="small" style="display:flex;justify-content:flex-end;padding:4px 2px 8px;border-bottom:1px solid rgba(148,163,184,.15)"><button class="ghost" style="padding:4px 8px" onclick="markAllRoleNotificationsRead(event)" title="Marcar todas como leídas">✅ Limpiar</button></div>`
+      const listHtml = items.length ? items.map(i => `<div class="small" style="padding:6px 2px;border-bottom:1px solid rgba(148,163,184,.15);cursor:${i.ticketId ? "pointer" : "default"};min-height:54px" onclick="${i.ticketId ? `openAlertTicket('${jsStringEscape(i.ticketId)}','comments')` : ''}"><div>${htmlEscape(i.text)}</div><div style="opacity:.8">${htmlEscape(i.detail || "")}${i.ts ? ` · ${htmlEscape(formatDateTime24(i.ts))}` : ""}</div></div>`).join("") : `<div class="small">Sin notificaciones.</div>`
+      dd.innerHTML = header + listHtml
+    }
+
+    async function markAllRoleNotificationsRead(ev){
+      ev?.stopPropagation?.()
+      const items = currentRole === "admin" ? await fetchAdminNotifications() : await fetchAnalystNotifications()
       const newest = items[0]?.ts || ""
-      if(newest){
-        const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
-        localStorage.setItem(seenKey, String(newest))
-      }
+      const seenKey = `role_notif_seen_${String(currentUser?.email||"").toLowerCase()}`
+      if(newest) localStorage.setItem(seenKey, String(newest))
+      await renderAnalystNotificationsDropdown()
+      refreshAnalystNotificationBadge()
     }
 
     async function openAlertTicket(ticketId, tab = "comments"){
@@ -7596,6 +7804,8 @@ Cliente B`)
     function closeTicketModal(){
       document.getElementById("tTitle").value = ""
       document.getElementById("tDescription").value = ""
+      const descEditor = document.getElementById("tDescriptionEditor")
+      if(descEditor) descEditor.innerHTML = ""
       document.getElementById("tPriority").value = "Media"
       document.getElementById("tClient").value = ""
       document.getElementById("tDeadline").value = ""
@@ -7607,7 +7817,9 @@ Cliente B`)
 
     async function saveTicket(){
       const title = document.getElementById("tTitle").value.trim()
+      syncRichEditorToTextarea("tDescriptionEditor", "tDescription")
       const description = document.getElementById("tDescription").value.trim()
+      const descriptionHtml = String(document.getElementById("tDescriptionEditor")?.innerHTML || "").trim()
       const priority = document.getElementById("tPriority").value
       const client = document.getElementById("tClient").value.trim()
       const deadline = document.getElementById("tDeadline").value
@@ -7639,7 +7851,7 @@ Cliente B`)
       const code = buildTicketCode(cachedTickets)
       const ticket = {
         id: code,
-        title, description, priority, client, deadline,
+        title, description, descriptionHtml, priority, client, deadline,
         publicationCountConsultor: currentRole === "consultor" ? publicationCount : 0,
         publicationCountAnalyst: currentRole === "analista" ? publicationCount : 0,
         publicationCount,
@@ -7948,7 +8160,7 @@ Cliente B`)
                 </div>
               </div>
             </div>
-            <div><label>Detalle</label><textarea id="detail-description-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${htmlEscape(ticketWithRead.description||"")}</textarea></div>
+            <div><label>Detalle</label><div id="detail-description-editor-${ticketWithRead.id}" class="commentEditor" contenteditable="${canEdit ? "true" : "false"}" data-placeholder="Detalle del ticket" ${canEdit ? `oninput="syncRichEditorToTextarea('detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}')" onblur="autoSaveTicketDetail('${ticketWithRead.id}')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"` : ""}>${ticketWithRead.descriptionHtml ? safeCommentHtml(ticketWithRead.descriptionHtml) : htmlEscape(ticketWithRead.description||"").replace(/\n/g, "<br>")}</div><textarea id="detail-description-${ticketWithRead.id}" class="hidden">${htmlEscape(ticketWithRead.description||"")}</textarea>${canEdit ? `<div class="inline" style="margin-top:6px;gap:6px;align-items:center"><label class="ghost attachBtn" for="detail-description-file-${ticketWithRead.id}" title="Insertar imagen en el detalle">🖼️</label><input id="detail-description-file-${ticketWithRead.id}" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('detail-description-file-${ticketWithRead.id}','detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"><span class="small">Arrastrá imágenes o usá el botón</span></div>` : ""}</div>
             
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
@@ -7965,7 +8177,7 @@ Cliente B`)
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${String(ticketWithRead.status||"")==="done" ? `<button class="ghost" onclick="reopenTicketAsConsultor('${ticketWithRead.id}')">Reabrir ticket</button>` : ""}${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${ticketActivityType ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${(ticketActivityType && currentRole !== 'consultor') ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -8062,6 +8274,7 @@ Cliente B`)
         ...ticket,
         title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
         description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
+        descriptionHtml: canEditFields ? String(document.getElementById(`detail-description-editor-${id}`)?.innerHTML || ticket.descriptionHtml || "").trim() : (ticket.descriptionHtml || ""),
         priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
         client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
         informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
@@ -9093,6 +9306,96 @@ Cliente B`)
       if(input) input.value = ""
     }
 
+    function syncRichEditorToTextarea(editorId, textareaId){
+      const editor = document.getElementById(String(editorId || ""))
+      const textarea = document.getElementById(String(textareaId || ""))
+      if(!editor || !textarea) return
+      textarea.value = commentPlainTextFromHtml(editor.innerHTML || "")
+    }
+
+    async function insertInlineImageIntoRichEditor(editorId, textareaId, file, ticketId = ""){
+      const editor = document.getElementById(String(editorId || ""))
+      if(!editor || !file || !String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes", "warn", 2200)
+        return
+      }
+      showToast("Insertando imagen...", "info", 1200)
+      let imageUrl = ""
+      try{
+        imageUrl = await readFileAsDataUrl(file)
+      }catch(_){
+        showToast("No se pudo procesar la imagen", "error", 2200)
+        return
+      }
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      syncRichEditorToTextarea(editorId, textareaId)
+      if(ticketId) autoSaveTicketDetail(String(ticketId))
+      showToast("Imagen integrada en el texto", "ok", 1200)
+    }
+
+    function handleRichEditorImageDragOver(ev){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = "var(--accent)"
+    }
+
+    function handleRichEditorImageDragLeave(ev){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = ""
+    }
+
+    async function handleRichEditorImageDrop(ev, editorId, textareaId, ticketId = ""){
+      ev.preventDefault()
+      const target = ev?.currentTarget
+      if(target?.style) target.style.borderColor = ""
+      const files = Array.from(ev?.dataTransfer?.files || [])
+      const image = files.find(f => String(f?.type || "").startsWith("image/"))
+      if(!image){
+        showToast("Solo se permiten imágenes", "warn", 2200)
+        return
+      }
+      await insertInlineImageIntoRichEditor(editorId, textareaId, image, ticketId)
+    }
+
+    async function handleRichEditorImageFileChange(inputId, editorId, textareaId, ticketId = ""){
+      const input = document.getElementById(String(inputId || ""))
+      const file = input?.files?.[0] || null
+      if(!file) return
+      await insertInlineImageIntoRichEditor(editorId, textareaId, file, ticketId)
+      if(input) input.value = ""
+    }
+
+    async function insertInlineImageIntoComment(ticketId, file){
+      const editor = document.getElementById(`comment-editor-${ticketId}`)
+      if(!editor || !file) return
+      if(!String(file.type || "").startsWith("image/")){
+        showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
+        return
+      }
+      showToast("Subiendo imagen para integrarla al comentario...", "info", 1800)
+      let imageUrl = ""
+      try{
+        const uploaded = await uploadAttachmentFile(file)
+        imageUrl = String(uploaded?.url || "")
+      }catch(err){
+        console.error("Fallo upload inline image:", err)
+        try{
+          imageUrl = await readFileAsDataUrl(file)
+        }catch(_){
+          showToast("No se pudo insertar la imagen en el comentario", "error", 2600)
+          return
+        }
+      }
+      editor.focus()
+      document.execCommand("insertHTML", false, `<div><br></div><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(file.name || "Imagen")}" style="max-width:260px;border-radius:8px;display:block;margin:8px 0"><div><br></div>`)
+      const input = document.getElementById(`comment-file-${ticketId}`)
+      if(input) input.value = ""
+      handleCommentMentionInput(ticketId)
+      showToast("Imagen integrada en el comentario", "ok", 1400)
+    }
+
     function renderCommentImagePreview(ticketId, file){
       const wrap = document.getElementById(`comment-image-preview-${ticketId}`)
       if(!wrap) return
@@ -9104,7 +9407,7 @@ Cliente B`)
       wrap.innerHTML = `<div class="feedItem" style="padding:8px"><div class="small" style="margin-bottom:6px">Vista previa de imagen</div><img src="${htmlEscape(previewUrl)}" alt="preview" style="max-width:220px;border-radius:8px;display:block;margin-bottom:6px"><div class="inline" style="justify-content:space-between"><span class="small">${htmlEscape(file.name || "imagen")}</span><button class="ghost" type="button" onclick="clearCommentImagePreview('${ticketId}')">Quitar</button></div></div>`
     }
 
-    function handleCommentFileChange(ticketId){
+    async function handleCommentFileChange(ticketId){
       const file = document.getElementById(`comment-file-${ticketId}`)?.files?.[0] || null
       if(!file){ clearCommentImagePreview(ticketId); return }
       if(!String(file.type || "").startsWith("image/")){
@@ -9112,7 +9415,8 @@ Cliente B`)
         clearCommentImagePreview(ticketId)
         return
       }
-      renderCommentImagePreview(ticketId, file)
+      await insertInlineImageIntoComment(ticketId, file)
+      clearCommentImagePreview(ticketId)
     }
 
     function handleCommentComposerDragOver(ev, ticketId){
@@ -9127,7 +9431,7 @@ Cliente B`)
       if(composer) composer.classList.remove("dropActive")
     }
 
-    function handleCommentComposerDrop(ev, ticketId){
+    async function handleCommentComposerDrop(ev, ticketId){
       ev.preventDefault()
       const composer = document.getElementById(`comment-composer-${ticketId}`)
       if(composer) composer.classList.remove("dropActive")
@@ -9138,13 +9442,7 @@ Cliente B`)
         showToast("Solo se permiten imágenes en comentarios", "warn", 2200)
         return
       }
-      const input = document.getElementById(`comment-file-${ticketId}`)
-      if(!input) return
-      const transfer = new DataTransfer()
-      transfer.items.add(image)
-      input.files = transfer.files
-      renderCommentImagePreview(ticketId, image)
-      showToast(`Imagen lista para comentar: ${image.name}`, "ok", 1800)
+      await insertInlineImageIntoComment(ticketId, image)
     }
 
     async function addComment(id){
@@ -9374,7 +9672,9 @@ Cliente B`)
       if(currentRole !== "admin") return alert("Solo admin puede crear usuarios")
       const email = document.getElementById("uEmail").value.trim().toLowerCase()
       const password = document.getElementById("uPassword").value.trim()
-      const role = document.getElementById("uRole").value
+      const roleInput = document.getElementById("uRole").value
+      const normalizedRole = normalizeUserRoleInput(roleInput)
+      const role = normalizedRole.role
       const analystTeam = document.getElementById("uTeam")?.value || ""
       const photoFile = document.getElementById("uPhoto")?.files?.[0] || null
       if(!email || !password) return alert("Completá email y contraseña")
@@ -9397,6 +9697,7 @@ Cliente B`)
       const payload = {
         key: emailKey(email),
         email, password: "", role, active: true,
+        adminLevel: normalizedRole.adminLevel,
         createdAt: new Date().toISOString(), createdBy: currentUser.email,
         analystTeam: role === "analista" ? analystTeam : "",
         ...secureFields,
@@ -9426,7 +9727,7 @@ Cliente B`)
         const isSelf = (u.email||"").toLowerCase() === (currentUser.email||"").toLowerCase()
         const team = String(u.analystTeam || "")
         const enabled = u.active !== false
-        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(u.role||"-")} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""} · Estado: ${enabled ? "Activo" : "Apagado"}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="ghost" ${isSelf?"disabled":""} onclick="toggleUserAccessActive('${key}', ${enabled ? "false" : "true"}, this)">${enabled ? "Apagar" : "Encender"}</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
+        return `<div class="card" style="padding:10px;margin:6px 0"><div class="inline" style="justify-content:space-between"><div class="inline" style="gap:10px"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u, u.email||''))}" data-fallback="${htmlEscape(buildInitialAvatar(u.email||'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div><strong>${htmlEscape(u.email||"-")}</strong><br><span class="small">Rol: ${htmlEscape(roleDisplayWithLevel(u))} ${u.role === "analista" ? `· Equipo: ${htmlEscape(analystTeamLabel(team))}` : ""} · Estado: ${enabled ? "Activo" : "Apagado"}</span></div></div><div class="inline"><button class="ghost" onclick="openUserEditModal('${key}')">Editar</button><button class="ghost" ${isSelf?"disabled":""} onclick="toggleUserAccessActive('${key}', ${enabled ? "false" : "true"}, this)">${enabled ? "Apagar" : "Encender"}</button><button class="danger" ${isSelf?"disabled":""} onclick="deleteUserAccess('${key}','${u.email||''}')">Eliminar</button></div></div></div>`
       }).join("")
     }
 
@@ -9466,7 +9767,10 @@ Cliente B`)
       const teamSelect = document.getElementById("userEditTeam")
       const photoInput = document.getElementById("userEditPhoto")
       if(emailInput) emailInput.value = String(user.email || "")
-      if(roleSelect) roleSelect.value = String(user.role || "consultor")
+      if(roleSelect){
+        const roleValue = String(user.role || "consultor")
+        roleSelect.value = roleValue === "admin" ? (Number(user.adminLevel) === 2 ? "admin_lvl2" : "admin") : roleValue
+      }
       if(teamSelect) teamSelect.value = String(user.analystTeam || "")
       if(photoInput) photoInput.value = ""
       toggleUserEditTeamVisibility()
@@ -9489,7 +9793,9 @@ Cliente B`)
       const key = userEditContext.key
       const user = (await db.ref("users_by_email").child(key).once("value")).val()
       if(!user) return alert("No se encontró el usuario.")
-      const role = String(document.getElementById("userEditRole")?.value || user.role || "consultor")
+      const roleInput = String(document.getElementById("userEditRole")?.value || user.role || "consultor")
+      const normalizedRole = normalizeUserRoleInput(roleInput)
+      const role = normalizedRole.role
       const analystTeam = role === "analista" ? String(document.getElementById("userEditTeam")?.value || "") : ""
       const file = document.getElementById("userEditPhoto")?.files?.[0] || null
       let photoPayload = {}
@@ -9505,6 +9811,7 @@ Cliente B`)
         ...user,
         key,
         role,
+        adminLevel: normalizedRole.adminLevel,
         analystTeam,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email,
@@ -9526,6 +9833,461 @@ Cliente B`)
       await adminWrite("deleteUser", { key })
       await loadUsersAdmin()
       await loadFilterOptions()
+    }
+
+    function getDailyGroupKey(user){
+      const role = String(user?.dailyRole || "analista").toLowerCase()
+      const email = String(user?.email || "").toLowerCase()
+      if(!email) return ""
+      if(role === "referente") return email
+      return String(user?.dailyReferente || "").toLowerCase()
+    }
+
+    function getDailyWeekDays(scope){
+      const today = new Date()
+      const day = today.getDay()
+      const mondayOffset = day === 0 ? -6 : (1 - day)
+      const monday = new Date(today)
+      const extraOffset = Number(dailyWeekOffsetByScope?.[scope] || 0)
+      monday.setDate(today.getDate() + mondayOffset + extraOffset)
+      return Array.from({ length: 14 }, (_,ix) => {
+        const d = new Date(monday)
+        d.setDate(monday.getDate() + ix)
+        return d
+      })
+    }
+
+    function renderDailyWeekStrip(scope, selectedDate, onClickFnName, toggleable){
+      const todayIso = toLocalDateOnly(new Date())
+      const days = getDailyWeekDays(scope)
+      return `<div class="dailyWeekStripWrap"><button class="ghost" onclick="shiftDailyWeek('${scope}',-1)">◀</button><div id="dailyWeekStrip_${scope}" class="dailyWeekStrip">${days.map(d => { const iso = toLocalDateOnly(d); return `<button class="dailyWeekChip ${iso===todayIso?'dailyWeekChipToday':''} ${iso===selectedDate?'dailyWeekChipActive':''}" onclick="${onClickFnName}('${iso}', ${toggleable ? 'true' : 'false'})"><div style="font-weight:700">${htmlEscape(d.toLocaleDateString('es-AR',{ weekday:'short'}))}</div><div class="small">${htmlEscape(formatDateDMY(iso))}</div></button>` }).join('')}</div><button class="ghost" onclick="shiftDailyWeek('${scope}',1)">▶</button></div>`
+    }
+
+    function shiftDailyWeek(scope, direction){
+      const current = Number(dailyWeekOffsetByScope?.[scope] || 0)
+      dailyWeekOffsetByScope[scope] = current + (Number(direction || 0) * 7)
+      if(scope === "admin") loadDailysAdmin()
+      if(scope === "analyst") loadDailysAnalyst()
+    }
+
+    function setDailyAdminDateFilter(iso, toggleable){
+      if(toggleable && String(dailyAdminSelectedDate || "") === String(iso || "")){
+        dailyAdminSelectedDate = ""
+      }else{
+        dailyAdminSelectedDate = String(iso || "")
+      }
+      loadDailysAdmin()
+    }
+
+    function setDailyReferenteDate(iso){
+      dailyReferenteSelectedDate = String(iso || "")
+      loadDailysAnalyst()
+    }
+
+    function setDailyReferenteAnalyst(email){
+      dailyReferenteSelectedAnalyst = String(email || "").toLowerCase()
+      loadDailysAnalyst()
+    }
+
+    function setDailyAdminViewMode(mode){
+      dailyAdminViewMode = ["assign","details","history"].includes(String(mode||"")) ? String(mode) : "assign"
+      loadDailysAdmin()
+    }
+
+    function toggleDailyAdminEscalationDetail(id){
+      const next = String(id || "")
+      dailyAdminEscalationDetailId = dailyAdminEscalationDetailId === next ? "" : next
+      loadDailysAdmin()
+    }
+
+    async function saveAllDailyUserMeta(){
+      if(currentRole !== "admin") return
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const nowIso = new Date().toISOString()
+      const changed = []
+      for(const user of users){
+        const key = emailKey(user.email || "")
+        const roleValue = String(document.getElementById(`dailyRole_${key}`)?.value || "analista")
+        const referente = String(document.getElementById(`dailyRef_${key}`)?.value || "").toLowerCase()
+        const next = { ...user, dailyRole: roleValue === "referente" ? "referente" : "analista", dailyReferente: roleValue === "referente" ? "" : referente, updatedAt: nowIso, updatedBy: String(currentUser?.email || "").toLowerCase() }
+        if(String(user.dailyRole||"analista") !== String(next.dailyRole||"analista") || String(user.dailyReferente||"") !== String(next.dailyReferente||"")){
+          changed.push({ key, payload: next })
+        }
+      }
+      for(const item of changed){
+        await db.ref("users_by_email").child(item.key).update(item.payload)
+        await adminWrite("upsertUser", item.payload).catch(()=>{})
+      }
+      showToast(changed.length ? `Asignaciones guardadas (${changed.length}).` : "No hubo cambios para guardar.", "ok", 1600)
+      await loadDailysAdmin()
+    }
+
+    async function addDailyEntryFromAdmin(){
+      if(currentRole !== "admin") return
+      const analystEmail = String(document.getElementById("dailyAdminAnalyst")?.value || "").toLowerCase()
+      const ticketId = String(document.getElementById("dailyAdminTicket")?.value || "").trim()
+      const client = String(document.getElementById("dailyAdminClient")?.value || "").trim()
+      const title = String(document.getElementById("dailyAdminTitle")?.value || "").trim()
+      const agendaComment = String(document.getElementById("dailyAdminComment")?.value || "").trim()
+      if(!analystEmail) return alert("Seleccioná un analista.")
+      const id = generateId()
+      const payload = { id, analystEmail, ticketId, client, title, agendaComment, referenteObservation: "", status: "draft", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase(), updatedAt: new Date().toISOString() }
+      await db.ref("daily_entries").child(id).set(payload)
+      ;["dailyAdminTicket","dailyAdminClient","dailyAdminTitle","dailyAdminComment"].forEach(id => { const el = document.getElementById(id); if(el) el.value = "" })
+      await loadDailysAdmin()
+    }
+
+    async function addDailyAdminAnnotation(){
+      if(currentRole !== 'admin') return
+      const date = String(document.getElementById('dailyAdminPendingDate')?.value || toLocalDateOnly(new Date()))
+      const analystEmail = String(document.getElementById('dailyAdminPendingAnalyst')?.value || '').toLowerCase()
+      const team = String(document.getElementById('dailyAdminPendingTeam')?.value || 'equipo_1')
+      const ticketId = String(document.getElementById('dailyAdminPendingTicket')?.value || '').trim()
+      const client = String(document.getElementById('dailyAdminPendingClient')?.value || '').trim()
+      const title = String(document.getElementById('dailyAdminPendingTitle')?.value || '').trim()
+      const adminComment = String(document.getElementById('dailyAdminPendingAdminComment')?.value || '').trim()
+      const analystComment = String(document.getElementById('dailyAdminPendingAnalystComment')?.value || '').trim()
+      const problemStatus = String(document.getElementById('dailyAdminPendingStatus')?.value || 'con_inconveniente')
+      const problemDetail = String(document.getElementById('dailyAdminPendingDetail')?.value || '').trim()
+      const escalateTo = String(document.getElementById('dailyAdminPendingEscalateTo')?.value || '').trim()
+      const escalated = !!document.getElementById('dailyAdminPendingEscalated')?.checked
+      const pendingOwner = String(document.getElementById('dailyAdminPendingOwner')?.value || '')
+      const extraObservations = String(document.getElementById('dailyAdminPendingObservations')?.value || '').trim()
+      const solutionDetail = String(document.getElementById('dailyAdminPendingSolution')?.value || '').trim()
+      if(!ticketId && !title && !problemDetail && !extraObservations) return alert('Completá al menos ticket, título, detalle u observaciones.')
+      const id = generateId()
+      await db.ref('daily_pending').child(id).set({ id, date, analystEmail, team, ticketId, client, title, adminComment, analystComment, problemStatus, problemDetail, escalateTo, escalated, pendingOwner, extraObservations, solutionDetail, sourceType: 'admin_manual', createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || '').toLowerCase() })
+      await loadDailysAdmin()
+    }
+
+    async function removeDailyWatchItem(id){
+      if(currentRole !== 'admin') return
+      await db.ref('daily_pending').child(String(id || '')).remove()
+      await loadDailysAdmin()
+    }
+
+    async function saveDailyPendingField(id, field, rawValue){
+      if(currentRole !== 'admin') return
+      const allowed = new Set(['date','analystEmail','team','ticketId','client','problemStatus','problemDetail','escalateTo','escalated','pendingOwner','extraObservations','solutionDetail'])
+      if(!allowed.has(String(field||''))) return
+      const value = field === 'escalated' ? !!rawValue : String(rawValue || '')
+      await db.ref('daily_pending').child(String(id || '')).update({ [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || '').toLowerCase() })
+    }
+
+    async function saveDailyAdminPrivateNote(){
+      if(currentRole !== 'admin') return
+      const note = String(document.getElementById('dailyAdminPrivateNote')?.value || '').trim()
+      if(!note) return
+      const id = generateId()
+      await db.ref('daily_admin_private_notes').child(id).set({ id, note, createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || '').toLowerCase() })
+      const input = document.getElementById('dailyAdminPrivateNote')
+      if(input) input.value = ''
+      await loadDailysAdmin()
+    }
+
+    async function escalateGenericDailyItem(payload){
+      const id = generateId()
+      await db.ref("daily_escalations").child(id).set({ ...payload, id, status: "pending", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Elevado a Team Leader.", "ok", 1500)
+    }
+
+    async function escalateDailyTask(ticketId, analystEmail, sourceType){
+      if(currentRole !== 'analista') return
+      const ticket = (cachedTickets || []).find(t => String(t.id||'') === String(ticketId||''))
+      if(!ticket) return
+      await escalateGenericDailyItem({
+        sourceType,
+        ticketId: String(ticket.id || ''),
+        analystEmail: String(analystEmail || '').toLowerCase(),
+        title: String(ticket.title || ''),
+        client: String(ticket.client || ''),
+        adminComment: String(ticket.adminComment || ''),
+        analystComment: String(ticket.analystComment || ''),
+        referenteObservation: ''
+      })
+      await loadDailysAnalyst()
+    }
+
+    async function addReferenteNote(analystEmail){
+      if(currentRole !== 'analista') return
+      const meKey = emailKey(currentUser?.email || '')
+      const note = String(document.getElementById(`dailyNoteInput_${emailKey(analystEmail||'')}`)?.value || '').trim()
+      if(!note) return
+      const id = generateId()
+      await db.ref('daily_referente_notes').child(meKey).child(emailKey(analystEmail || '')).child(id).set({ id, note, analystEmail: String(analystEmail || '').toLowerCase(), createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || '').toLowerCase() })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateReferenteNote(analystEmail, noteId){
+      if(currentRole !== 'analista') return
+      const meKey = emailKey(currentUser?.email || '')
+      const note = (await db.ref('daily_referente_notes').child(meKey).child(emailKey(analystEmail || '')).child(String(noteId || '')).once('value')).val()
+      if(!note) return
+      await escalateGenericDailyItem({ sourceType: 'referente_note', analystEmail: String(analystEmail || '').toLowerCase(), title: 'Anotación de referente', referenteObservation: String(note.note || '') })
+      await loadDailysAnalyst()
+    }
+
+    async function saveDailyIssueField(analystEmail, dateIso, ticketId, field, rawValue){
+      if(currentRole !== 'analista') return
+      const allowed = new Set(["hadProblem","problemDescription","escalateTo","escalated","solved","solutionDetail"])
+      if(!allowed.has(String(field || ""))) return
+      const referenteKey = emailKey(currentUser?.email || "")
+      const analystKey = emailKey(analystEmail || "")
+      const dateKey = String(dateIso || "")
+      const ticketKey = emailKey(ticketId || "")
+      const ref = db.ref("daily_issue_tracking").child(referenteKey).child(analystKey).child(dateKey).child(ticketKey)
+      const current = (await ref.once("value")).val() || {}
+      const value = (field === "hadProblem" || field === "escalated" || field === "solved") ? !!rawValue : String(rawValue || "")
+      await ref.set({ ...current, analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(ticketId || ""), date: dateKey, [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+    }
+
+    async function solveDailyIssueFromPending(analystEmail, dateIso, ticketId){
+      if(currentRole !== "analista") return
+      const inputId = `pendingSolve_${emailKey(analystEmail || "")}_${String(dateIso || "").replaceAll("-","")}_${emailKey(ticketId || "")}`
+      const detail = String(document.getElementById(inputId)?.value || "").trim()
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "solutionDetail", detail)
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "solved", true)
+      await loadDailysAnalyst()
+    }
+
+    async function addReferenteStructuredNote(analystEmail, dateIso){
+      if(currentRole !== "analista") return
+      const note = {
+        ticketId: String(document.getElementById("noteTicketId")?.value || "").trim(),
+        client: String(document.getElementById("noteClient")?.value || "").trim(),
+        title: String(document.getElementById("noteTitle")?.value || "").trim(),
+        adminComment: String(document.getElementById("noteAdminComment")?.value || "").trim(),
+        analystComment: String(document.getElementById("noteAnalystComment")?.value || "").trim(),
+        hadProblem: String(document.getElementById("noteHadProblem")?.value || "no") === "si",
+        problemDescription: String(document.getElementById("noteProblemDesc")?.value || "").trim(),
+        escalateTo: String(document.getElementById("noteEscalateTo")?.value || "").trim(),
+        escalated: !!document.getElementById("noteEscalated")?.checked,
+        solved: !!document.getElementById("noteSolved")?.checked,
+        solutionDetail: String(document.getElementById("noteSolutionDetail")?.value || "").trim()
+      }
+      const id = generateId()
+      const ref = db.ref("daily_referente_notes_struct").child(emailKey(currentUser?.email || "")).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(id)
+      await ref.set({ ...note, id, analystEmail: String(analystEmail || "").toLowerCase(), date: String(dateIso || ""), createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateStructuredReferenteNote(analystEmail, dateIso, noteId){
+      if(currentRole !== "analista") return
+      const note = (await db.ref("daily_referente_notes_struct").child(emailKey(currentUser?.email || "")).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(String(noteId || "")).once("value")).val()
+      if(!note) return
+      await escalateGenericDailyItem({ sourceType: "referente_structured_note", analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(note.ticketId || ""), title: String(note.title || "Anotación referente"), client: String(note.client || ""), referenteObservation: String(note.problemDescription || note.solutionDetail || ""), escalateTo: String(note.escalateTo || ""), hadProblem: !!note.hadProblem })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateDailyTaskForReferente(ticketId, analystEmail, dateIso){
+      if(currentRole !== 'analista') return
+      const referenteKey = emailKey(currentUser?.email || "")
+      const row = (await db.ref("daily_issue_tracking").child(referenteKey).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(emailKey(ticketId || "")).once("value")).val() || {}
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "escalated", true)
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      await escalateGenericDailyItem({
+        sourceType: "referente_ticket_issue",
+        analystEmail: String(analystEmail || "").toLowerCase(),
+        ticketId: String(ticketId || ""),
+        title: String(ticket?.title || ""),
+        client: String(ticket?.client || ""),
+        referenteObservation: String(row.problemDescription || ""),
+        escalateTo: String(row.escalateTo || ""),
+        hadProblem: !!row.hadProblem
+      })
+      await loadDailysAnalyst()
+    }
+
+    async function loadDailysAdmin(){
+      const wrap = document.getElementById("dailysAdminWrap")
+      if(!wrap || currentRole !== "admin") return
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const referents = users.filter(u => String(u?.dailyRole || "").toLowerCase() === "referente")
+      const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
+      const escalations = Object.values((await db.ref("daily_escalations").once("value")).val() || {})
+      const pendingRows = Object.values((await db.ref('daily_pending').once('value')).val() || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+      const privateNotes = Object.values((await db.ref('daily_admin_private_notes').once('value')).val() || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+      dailyAdminRows = entries
+      const referentOptions = `<option value="">Sin referente</option>${referents.map(r => `<option value="${htmlEscape(String(r.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(r.email||"") || r.email || "-")}</option>`).join("")}`
+      const selectedDate = String(dailyAdminSelectedDate || "")
+      const pendingEscalations = escalations.filter(e => String(e?.status || 'pending') === 'pending' && (!selectedDate || String(e.createdAt || '').slice(0,10) === selectedDate))
+      const filteredPendingRows = selectedDate ? pendingRows.filter(r => String(r.date || r.createdAt || '').slice(0,10) === selectedDate) : pendingRows
+      const isResolvedPending = (row) => ['ya_resuelto','ya_resuelto_informar'].includes(String(row?.problemStatus || '')) || !!String(row?.solutionDetail || '').trim()
+      const activePendingRows = filteredPendingRows.filter(r => !isResolvedPending(r))
+      const historyRows = filteredPendingRows.filter(r => isResolvedPending(r))
+
+      const teams = ["equipo_1","equipo_2"].map(team => {
+        const members = users.filter(u => String(u.analystTeam || "") === team)
+        const refs = members.filter(u => String(u.dailyRole || "").toLowerCase() === "referente")
+        return { team, members, refs }
+      })
+      const teamsHtml = `<div class="feedItem" style="margin-bottom:10px"><h4 style="margin:0 0 8px">Conformación de equipos</h4><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">${teams.map(t => `<div style="border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2)"><div style="font-weight:700">${t.team === "equipo_1" ? "Equipo 1" : "Equipo 2"}</div><div class="small" style="margin-top:4px"><strong>Referente(s):</strong> ${t.refs.length ? t.refs.map(r => htmlEscape(userDisplayNameByEmail(r.email||"") || r.email || "-")).join(", ") : "Sin referente"}</div><div class="small" style="margin-top:4px"><strong>Analistas:</strong> ${t.members.length ? t.members.map(m => htmlEscape(userDisplayNameByEmail(m.email||"") || m.email || "-")).join(", ") : "Sin analistas"}</div></div>`).join("")}</div></div>`
+      const assignSection = `<div class="feedItem"><h4 style="margin:0 0 8px">Asignación de analistas / referentes</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Nivel Daily</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Referente asignado</th></tr></thead><tbody>${users.map(u => { const key = emailKey(u.email||""); const dailyRole = String(u.dailyRole||"analista").toLowerCase(); const ref = String(u.dailyReferente||"").toLowerCase(); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRole_${key}" style="margin:0"><option value="analista" ${dailyRole!=="referente"?"selected":""}>Analista</option><option value="referente" ${dailyRole==="referente"?"selected":""}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRef_${key}" style="margin:0">${referentOptions.replace(`value="${htmlEscape(ref)}"`, `value="${htmlEscape(ref)}" selected`)}</select></td></tr>` }).join("")}</tbody></table></div><div class="inline" style="margin-top:8px"><button onclick="saveAllDailyUserMeta()">Guardar asignaciones</button></div></div>`
+
+      const detailsSection = `
+        <div class="feedItem" style="margin-top:10px;border-left:4px solid #f59e0b;background:rgba(245,158,11,.08)">
+          <h4 style="margin:0 0 8px">Elevaciones de referentes (preview completa)</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Hubo problema</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle inconveniente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Se elevó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${pendingEscalations.length ? pendingEscalations.map(e => { const user = usersMap[emailKey(e.analystEmail || '')] || {}; const teamLabel = user.analystTeam === 'equipo_1' ? 'Equipo 1' : user.analystTeam === 'equipo_2' ? 'Equipo 2' : 'Sin equipo'; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(e.createdAt||''))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e.analystEmail||'') || e.analystEmail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(teamLabel)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${e.hadProblem ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.referenteObservation || e.problemDescription || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.escalateTo || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${e.escalated ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${e.solved ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(e.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div class="inline"><button class="ghost" onclick="reviewDailyEscalation('${e.id}', true)">Aprobar</button><button class="danger" onclick="reviewDailyEscalation('${e.id}', false)">Rechazar</button></div></td></tr>` }).join('') : `<tr><td colspan="15" class="small" style="padding:8px">Sin elevaciones pendientes.</td></tr>`}</tbody></table></div>
+        </div>
+
+        <div class="feedItem" style="margin-top:10px;border-left:4px solid #22c55e;background:rgba(34,197,94,.08)"><h4 style="margin:0 0 8px">Pendientes</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado de problema</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle del inconveniente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Se elevó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Pendiente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones / consultas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cómo se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${activePendingRows.length ? activePendingRows.map(item => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="date" value="${htmlEscape(String(item.date || '').slice(0,10))}" onchange="saveDailyPendingField('${item.id}','date',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','analystEmail',this.value)"><option value="">-</option>${users.map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}" ${String(item.analystEmail||'').toLowerCase()===String(u.email||'').toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(u.email||'') || u.email || '-')}</option>`).join('')}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','team',this.value)"><option value="equipo_1" ${item.team==='equipo_1'?'selected':''}>Equipo 1</option><option value="equipo_2" ${item.team==='equipo_2'?'selected':''}>Equipo 2</option><option value="sin_equipo" ${item.team==='sin_equipo'?'selected':''}>Sin equipo</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.ticketId || '')}" onblur="saveDailyPendingField('${item.id}','ticketId',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.client || '')}" onblur="saveDailyPendingField('${item.id}','client',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','problemStatus',this.value)"><option value="con_inconveniente" ${item.problemStatus==='con_inconveniente'?'selected':''}>Con inconveniente</option><option value="con_inconveniente_informar" ${item.problemStatus==='con_inconveniente_informar'?'selected':''}>Con inconveniente - se debe informar</option><option value="ya_resuelto" ${item.problemStatus==='ya_resuelto'?'selected':''}>Ya se resolvió</option><option value="sin_inconveniente" ${item.problemStatus==='sin_inconveniente'?'selected':''}>No hay inconveniente</option><option value="ya_resuelto_informar" ${item.problemStatus==='ya_resuelto_informar'?'selected':''}>Ya se resolvió - se debe informar</option><option value="sin_inconveniente_elevar" ${item.problemStatus==='sin_inconveniente_elevar'?'selected':''}>No hay inconveniente - elevar</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.problemDetail || '')}" onblur="saveDailyPendingField('${item.id}','problemDetail',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','escalateTo',this.value)"><option value="">-</option><option value="Lau" ${item.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${item.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Alan" ${item.escalateTo==='Alan'?'selected':''}>Alan</option><option value="analista" ${item.escalateTo==='analista'?'selected':''}>Analista</option><option value="consultor" ${item.escalateTo==='consultor'?'selected':''}>Consultor</option><option value="cliente" ${item.escalateTo==='cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="checkbox" ${item.escalated?'checked':''} onchange="saveDailyPendingField('${item.id}','escalated',this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyPendingField('${item.id}','pendingOwner',this.value)"><option value="">-</option><option value="Trini" ${item.pendingOwner==='Trini'?'selected':''}>Trini</option><option value="Alan" ${item.pendingOwner==='Alan'?'selected':''}>Alan</option><option value="Lau" ${item.pendingOwner==='Lau'?'selected':''}>Lau</option><option value="analista" ${item.pendingOwner==='analista'?'selected':''}>Analista</option><option value="consultor" ${item.pendingOwner==='consultor'?'selected':''}>Consultor</option><option value="cliente" ${item.pendingOwner==='cliente'?'selected':''}>Cliente</option><option value="referente" ${item.pendingOwner==='referente'?'selected':''}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.extraObservations || '')}" onblur="saveDailyPendingField('${item.id}','extraObservations',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(item.solutionDetail || '')}" onblur="saveDailyPendingField('${item.id}','solutionDetail',this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(item.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="danger" onclick="removeDailyWatchItem('${item.id}')">Quitar</button></td></tr>`).join('') : `<tr><td colspan="14" class="small" style="padding:8px">Sin pendientes para el criterio actual.</td></tr>`}</tbody></table></div></div>
+
+        <div class="feedItem" style="margin-top:10px;border-left:4px solid #3b82f6;background:rgba(59,130,246,.08)"><h4 style="margin:0 0 8px">Agregar a pendientes (carga manual admin)</h4><div class="row"><div><label>Fecha</label><input id="dailyAdminPendingDate" type="date" value="${htmlEscape(toLocalDateOnly(new Date()))}"></div><div><label>Analista</label><select id="dailyAdminPendingAnalyst"><option value="">-</option>${users.map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||'') || u.email || '-')}</option>`).join('')}</select></div><div><label>Equipo</label><select id="dailyAdminPendingTeam"><option value="equipo_1">Equipo 1</option><option value="equipo_2">Equipo 2</option><option value="sin_equipo">Sin equipo</option></select></div><div><label>Ticket</label><input id="dailyAdminPendingTicket"></div><div><label>Cliente</label><input id="dailyAdminPendingClient"></div><div><label>Título</label><input id="dailyAdminPendingTitle"></div><div><label>Comentario admin</label><input id="dailyAdminPendingAdminComment"></div><div><label>Comentario analista</label><input id="dailyAdminPendingAnalystComment"></div><div><label>Estado de problema</label><select id="dailyAdminPendingStatus"><option value="con_inconveniente">Con inconveniente</option><option value="con_inconveniente_informar">Con inconveniente - se debe informar</option><option value="ya_resuelto">Ya se resolvió</option><option value="sin_inconveniente">No hay inconveniente</option><option value="ya_resuelto_informar">Ya se resolvió - se debe informar</option><option value="sin_inconveniente_elevar">No hay inconveniente - elevar</option></select></div><div><label>Detalle del inconveniente</label><input id="dailyAdminPendingDetail"></div><div><label>Elevar</label><select id="dailyAdminPendingEscalateTo"><option value="">-</option><option value="Lau">Lau</option><option value="Trini">Trini</option><option value="Alan">Alan</option><option value="analista">Analista</option><option value="consultor">Consultor</option><option value="cliente">Cliente</option></select></div><div><label>Se elevó</label><div class="inline"><input id="dailyAdminPendingEscalated" type="checkbox" style="width:auto"></div></div><div><label>Pendiente</label><select id="dailyAdminPendingOwner"><option value="">-</option><option value="Trini">Trini</option><option value="Alan">Alan</option><option value="Lau">Lau</option><option value="analista">Analista</option><option value="consultor">Consultor</option><option value="cliente">Cliente</option><option value="referente">Referente</option></select></div><div><label>Observaciones / consultas</label><input id="dailyAdminPendingObservations"></div><div><label>Cómo se solucionó</label><input id="dailyAdminPendingSolution"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyAdminAnnotation()">Agregar pendiente</button></div></div></div>
+
+                <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Notas propias</h4><div class="inline"><input id="dailyAdminPrivateNote" placeholder="Escribí una nota personal del admin"><button onclick="saveDailyAdminPrivateNote()">Guardar nota</button></div><div style="margin-top:8px">${privateNotes.length ? privateNotes.map(n => `<div class="small" style="padding:8px;border:1px solid var(--stroke-2);border-radius:8px;margin-top:6px">${htmlEscape(formatDateTime24(n.createdAt || ''))} · ${htmlEscape(n.note || '')}</div>`).join('') : `<div class="small">Sin notas propias.</div>`}</div></div>
+      `
+      wrap.innerHTML = `${teamsHtml}${renderDailyWeekStrip('admin', selectedDate, 'setDailyAdminDateFilter', true)}<div class="inline" style="margin-bottom:8px"><button class="${dailyAdminViewMode==='details'?'':'ghost'}" onclick="setDailyAdminViewMode('details')">Ver detalle</button><button class="${dailyAdminViewMode==='assign'?'':'ghost'}" onclick="setDailyAdminViewMode('assign')">Asignar referente</button><button class="${dailyAdminViewMode==='history'?'':'ghost'}" onclick="setDailyAdminViewMode('history')">Historial</button></div><div class="small" style="margin-bottom:8px">${selectedDate ? `Filtro activo: ${htmlEscape(formatDateDMY(selectedDate))} (tocá de nuevo para quitarlo).` : "Sin filtro de fecha: mostrando todo."}</div>${dailyAdminViewMode==='assign' ? assignSection : dailyAdminViewMode==='history' ? `<div class="feedItem"><h4 style="margin:0 0 8px">Historial</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cómo se solucionó</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th></tr></thead><tbody>${historyRows.length ? historyRows.map(item => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateDMY(item.date || String(item.createdAt||'').slice(0,10)))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(item.analystEmail || '') || item.analystEmail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.team === 'equipo_1' ? 'Equipo 1' : item.team === 'equipo_2' ? 'Equipo 2' : 'Sin equipo')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.problemStatus || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.solutionDetail || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${String(item.sourceType||'') === 'admin_manual' ? '🛠️ Admin' : '🧑‍💻 Analista'}</td></tr>`).join('') : `<tr><td colspan="8" class="small" style="padding:8px">Sin historial para el criterio actual.</td></tr>`}</tbody></table></div></div>` : detailsSection}`
+    }
+
+    async function addDailyEntryForAnalyst(){
+      if(currentRole !== "analista") return
+      const analystEmail = String(document.getElementById("dailysAnalystSelect")?.value || "").toLowerCase()
+      const ticketId = String(document.getElementById("dailysTicket")?.value || "").trim()
+      const client = String(document.getElementById("dailysClient")?.value || "").trim()
+      const title = String(document.getElementById("dailysTitle")?.value || "").trim()
+      const agendaComment = String(document.getElementById("dailysAgendaComment")?.value || "").trim()
+      if(!analystEmail) return
+      const id = generateId()
+      await db.ref("daily_entries").child(id).set({ id, analystEmail, ticketId, client, title, agendaComment, referenteObservation: "", status: "draft", createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase(), updatedAt: new Date().toISOString() })
+      ;["dailysTicket","dailysClient","dailysTitle","dailysAgendaComment"].forEach(id => { const el = document.getElementById(id); if(el) el.value = "" })
+      await loadDailysAnalyst()
+    }
+
+    async function saveDailyObservation(entryId){
+      if(currentRole !== "analista") return
+      const obs = String(document.getElementById(`dailysObs_${entryId}`)?.value || "").trim()
+      const ref = db.ref("daily_entries").child(String(entryId || ""))
+      const item = (await ref.once("value")).val()
+      if(!item) return
+      await ref.update({ referenteObservation: obs, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Observación guardada.", "ok", 1400)
+      await loadDailysAnalyst()
+    }
+
+    async function escalateDailyEntry(entryId){
+      if(currentRole !== "analista") return
+      const item = (await db.ref("daily_entries").child(String(entryId || "")).once("value")).val()
+      if(!item) return
+      await escalateGenericDailyItem({ ...item, entryId, sourceType: 'daily_entry' })
+      await db.ref("daily_entries").child(String(entryId || "")).update({ status: "elevated", updatedAt: new Date().toISOString() })
+      await loadDailysAnalyst()
+    }
+
+    async function reviewDailyEscalation(escalationId, approved){
+      if(currentRole !== "admin") return
+      const ref = db.ref("daily_escalations").child(String(escalationId || ""))
+      const esc = (await ref.once("value")).val()
+      if(!esc) return
+      const status = approved ? "approved" : "rejected"
+      await ref.update({ status, reviewedAt: new Date().toISOString(), reviewedBy: String(currentUser?.email || "").toLowerCase() })
+      if(esc.entryId){
+        await db.ref("daily_entries").child(String(esc.entryId)).update({ status, updatedAt: new Date().toISOString() })
+      }
+      if(approved){
+        const id = generateId()
+        const user = (await db.ref('users_by_email').child(emailKey(esc.analystEmail || '')).once('value')).val() || {}
+        await db.ref('daily_pending').child(id).set({
+          id,
+          date: toLocalDateOnly(new Date()),
+          analystEmail: String(esc.analystEmail || '').toLowerCase(),
+          team: String(user.analystTeam || 'sin_equipo'),
+          ticketId: String(esc.ticketId || ''),
+          client: String(esc.client || ''),
+          title: String(esc.title || ''),
+          adminComment: String(esc.adminComment || ''),
+          analystComment: String(esc.analystComment || ''),
+          problemStatus: !!esc.hadProblem ? 'con_inconveniente' : 'sin_inconveniente',
+          problemDetail: String(esc.referenteObservation || esc.problemDescription || ''),
+          escalateTo: String(esc.escalateTo || ''),
+          escalated: true,
+          pendingOwner: 'referente',
+          extraObservations: '',
+          solutionDetail: '',
+          sourceType: String(esc.sourceType || 'daily'),
+          createdAt: new Date().toISOString(),
+          createdBy: String(esc.createdBy || '')
+        })
+      }
+      await loadDailysAdmin()
+    }
+
+    async function loadDailysAnalyst(){
+      const wrap = document.getElementById("dailysAnalystWrap")
+      if(!wrap || currentRole !== "analista") return
+      const usersMap = (await db.ref("users_by_email").once("value")).val() || {}
+      let tickets = cachedTickets || []
+      if(!tickets.length){
+        try{ tickets = await fetchTicketsFromDb() }catch(_){ tickets = [] }
+      }
+      const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
+      const notesMap = (await db.ref('daily_referente_notes').child(emailKey(currentUser?.email || '')).once('value')).val() || {}
+      const notesStructMap = (await db.ref('daily_referente_notes_struct').child(emailKey(currentUser?.email || '')).once('value')).val() || {}
+      const me = usersMap[emailKey(currentUser?.email || "")] || { email: currentUser?.email || "" }
+      const meEmail = String(me.email || currentUser?.email || "").toLowerCase()
+      const isReferente = String(me.dailyRole || "").toLowerCase() === "referente"
+      const groupKey = isReferente ? meEmail : String(me.dailyReferente || "").toLowerCase()
+      const analysts = Object.values(usersMap).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const scopedAnalysts = analysts.filter(u => {
+        const userGroup = getDailyGroupKey(u)
+        return groupKey && userGroup === groupKey
+      })
+      const scopedEmails = new Set(scopedAnalysts.map(u => String(u.email || "").toLowerCase()))
+      const scopedRows = entries.filter(e => scopedEmails.has(String(e.analystEmail || "").toLowerCase()))
+      dailyAnalystRows = scopedRows
+      const selectedDate = String(dailyReferenteSelectedDate || toLocalDateOnly(new Date()))
+      const todayIso = toLocalDateOnly(new Date())
+      const issuesMap = (await db.ref("daily_issue_tracking").child(emailKey(currentUser?.email || "")).once("value")).val() || {}
+      const selectedAnalystEmail = String(dailyReferenteSelectedAnalyst || "").toLowerCase()
+
+      const memberCards = scopedAnalysts.map(u => {
+        const email = String(u.email || "").toLowerCase()
+        return `<button class="dailyMemberCard ${selectedAnalystEmail===email?'active':''}" onclick="setDailyReferenteAnalyst('${email}')"><img class="dailyMemberAvatar" src="${htmlEscape(userAvatarByEmail(email))}" data-fallback="${htmlEscape(buildInitialAvatar(email || 'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div style="font-weight:700">${htmlEscape(userDisplayNameByEmail(email) || email)}</div></button>`
+      }).join('') || `<div class="small">Sin miembros asignados.</div>`
+
+      const selectedAnalyst = scopedAnalysts.find(u => String(u.email || "").toLowerCase() === selectedAnalystEmail)
+      let selectedAnalystSection = ""
+      if(selectedAnalyst){
+        const email = String(selectedAnalyst.email || '').toLowerCase()
+        const dayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === selectedDate)
+        const yDate = new Date(`${selectedDate}T00:00:00`); yDate.setDate(yDate.getDate() - 1)
+        const yesterdayIso = toLocalDateOnly(yDate)
+        const yesterdayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === yesterdayIso)
+        const noteRows = Object.values(notesMap[emailKey(email)] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+        const noteRowsStruct = Object.values(notesStructMap[emailKey(email)]?.[selectedDate] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+        const dayIssues = issuesMap[emailKey(email)]?.[selectedDate] || {}
+        const yIssues = issuesMap[emailKey(email)]?.[yesterdayIso] || {}
+        const renderDailyTaskRow = (t, issue, dateIso, label) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','hadProblem', this.value==='si')"><option value="no" ${issue.hadProblem ? '' : 'selected'}>No</option><option value="si" ${issue.hadProblem ? 'selected' : ''}>Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(issue.problemDescription || '')}" placeholder="Descripción" onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','problemDescription', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','escalateTo', this.value)"><option value="">-</option><option value="Alan" ${issue.escalateTo==='Alan'?'selected':''}>Alan</option><option value="Lau" ${issue.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${issue.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Consultor" ${issue.escalateTo==='Consultor'?'selected':''}>Consultor</option><option value="Cliente" ${issue.escalateTo==='Cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.escalated ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','escalated', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.solved ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','solved', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTaskForReferente('${t.id}','${email}','${dateIso}')">Elevar TL</button></td></tr>`
+        selectedAnalystSection = `<div class="agendaSection"><h4 style="margin-bottom:8px">${htmlEscape(userDisplayNameByEmail(email) || email)} · ${htmlEscape(formatDateDMY(selectedDate))}</h4>
+          <div class="small" style="margin:6px 0"><strong>AYER (${htmlEscape(formatDateDMY(yesterdayIso))})</strong></div>
+          <div style="overflow:auto;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.55);border-radius:10px;padding:6px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${yesterdayTasks.length ? yesterdayTasks.map(t => renderDailyTaskRow(t, yIssues[emailKey(t.id || '')] || {}, yesterdayIso, 'AYER')).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas de AYER.</td></tr>`}</tbody></table></div>
+          <div class="small" style="margin:10px 0 6px"><strong>HOY (${htmlEscape(formatDateDMY(selectedDate))})</strong></div>
+          <div style="overflow:auto;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.55);border-radius:10px;padding:6px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${dayTasks.length ? dayTasks.map(t => renderDailyTaskRow(t, dayIssues[emailKey(t.id || '')] || {}, selectedDate, 'HOY')).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas de HOY.</td></tr>`}</tbody></table></div>
+          <div style="margin-top:8px"><div class="small" style="margin-bottom:6px"><strong>Anotaciones del referente</strong></div>
+            <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody><tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteTicketId" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteClient" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteTitle" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteAdminComment" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteAnalystComment" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="noteHadProblem"><option value="no">No</option><option value="si">Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteProblemDesc" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="noteEscalateTo"><option value="">-</option><option value="Alan">Alan</option><option value="Lau">Lau</option><option value="Trini">Trini</option><option value="Consultor">Consultor</option><option value="Cliente">Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input id="noteEscalated" type="checkbox"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input id="noteSolved" type="checkbox"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="addReferenteStructuredNote('${email}','${selectedDate}')">Guardar</button></td></tr>${noteRowsStruct.map(n => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.hadProblem ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.problemDescription || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.escalateTo || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.escalated ? '✅' : '—'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.solved ? '✅' : '—'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateStructuredReferenteNote('${email}','${selectedDate}','${n.id}')">Elevar TL</button></td></tr>`).join('') || `<tr><td colspan="11" class="small" style="padding:8px">Sin anotaciones estructuradas.</td></tr>`}</tbody></table></div>
+            ${noteRows.length ? `<div class="small" style="margin-top:6px">Anotaciones texto previas: ${noteRows.length}</div>` : ""}
+          </div>
+        </div>`
+      }
+
+      const pendingIssues = []
+      Object.values(issuesMap || {}).forEach(byDate => {
+        Object.values(byDate || {}).forEach(ticketMap => {
+          Object.values(ticketMap || {}).forEach(issue => {
+            const unresolved = issue && !issue.solved && (issue.hadProblem || String(issue.problemDescription || "").trim() || issue.escalated)
+            if(unresolved) pendingIssues.push(issue)
+          })
+        })
+      })
+
+      wrap.innerHTML = `
+        ${renderDailyWeekStrip('analyst', selectedDate, 'setDailyReferenteDate', false)}
+        <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar información al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
+        <div class="agendaSection"><h4 style="margin-bottom:8px">Miembros asignados</h4><div class="dailyMemberGrid">${memberCards}</div></div>
+        ${isReferente ? (selectedAnalystSection || `<div class="agendaSection"><div class="small">Seleccioná un analista para ver su información.</div></div>`) : `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td></tr>`).join("") || `<tr><td colspan="7" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>`}
+        ${isReferente ? `<div class="agendaSection"><h4 style="margin-bottom:8px">Pendientes por elevar / no solucionados</h4>${pendingIssues.length ? pendingIssues.map(issue => { const solveInputId = `pendingSolve_${emailKey(issue.analystEmail || '')}_${String(issue.date || '').replaceAll('-','')}_${emailKey(issue.ticketId || '')}`; return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(issue.ticketId || '-') } · ${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')}</div><div class="feedMeta">${htmlEscape(formatDateDMY(issue.date || todayIso))} · Escalar a: ${htmlEscape(issue.escalateTo || '-')}</div></div><span class="badge ${issue.solved ? 'ok' : 'off'}">${issue.solved ? 'Solucionado' : 'Pendiente'}</span></div><div>${htmlEscape(issue.problemDescription || 'Sin descripción')}</div><div class="inline" style="margin-top:6px"><input id="${solveInputId}" value="${htmlEscape(issue.solutionDetail || '')}" placeholder="Detalle de solución"><button class="ghost" onclick="solveDailyIssueFromPending('${String(issue.analystEmail || '').toLowerCase()}','${issue.date || ''}','${issue.ticketId || ''}')">Marcar solucionado</button></div></div>` }).join('') : `<div class="small">No hay pendientes abiertos.</div>`}</div>` : ""}
+      `
     }
 
     function setAnalystActivityTab(tab){
@@ -9835,7 +10597,9 @@ Cliente B`)
         const aa = String(a.assignedTo || "zzzz").toLowerCase()
         const bb = String(b.assignedTo || "zzzz").toLowerCase()
         if(aa !== bb) return aa.localeCompare(bb)
-        return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0)
+        const createdDiff = new Date(a.createdAt||0).getTime() - new Date(b.createdAt||0).getTime()
+        if(createdDiff !== 0) return createdDiff
+        return String(a.id || "").localeCompare(String(b.id || ""))
       })
       adminAgendaCurrentRows = [...scoped]
 
@@ -9862,10 +10626,11 @@ Cliente B`)
       if(s1) s1.classList.toggle("ghost", adminAgendaTeam !== "equipo_1")
       if(s2) s2.classList.toggle("ghost", adminAgendaTeam !== "equipo_2")
 
-      if(!scoped.length){
-        wrap.innerHTML = `<p class="small">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</p>`
-        return
-      }
+      const analystsWithoutTasks = teamAnalysts.filter(email => !scoped.some(t => {
+        const owner = String(t.assignedTo || "").toLowerCase()
+        const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h || "").toLowerCase()) : []
+        return owner === email || helpers.includes(email)
+      }))
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
       const savedHistory = await getAdminAgendaHistory(adminAgendaTeam)
       const historyHtml = await renderAgendaCommentHistoryTable()
@@ -9888,11 +10653,11 @@ Cliente B`)
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. atención</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del admin</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del analista</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. modificación agenda</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
               </tr>
@@ -9920,15 +10685,17 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysSince === null ? "-" : `${daysSince} día(s)`}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.adminComment||"")}" title="${htmlEscape(t.adminComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'adminComment', this.value)" oninput="this.title=this.value" placeholder="Comentario interno"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrow ? "✅" : "—"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
                 </tr>`
               }).join("")}
+              ${analystsWithoutTasks.map(email => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">—</td><td colspan="17" style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(userDisplayNameByEmail(email) || email)}</strong>: No tiene tareas asignadas.</td></tr>`).join("")}
+              ${(!scoped.length && !analystsWithoutTasks.length) ? `<tr><td colspan="18" class="small" style="padding:8px">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</td></tr>` : ""}
             </tbody>
           </table>
           </div>
@@ -10689,24 +11456,18 @@ Cliente B`)
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
           if(orb && orbValue){
-            if(surveys.length){
-              const qualityDeg = Math.max(0, Math.min(360, (avgRaw / 10) * 360))
-              orb.classList.remove("hidden")
-              orb.style.setProperty("--quality-deg", `${qualityDeg}deg`)
-              orbValue.textContent = `${avgRaw.toFixed(1)}`
-            }else{
-              orb.classList.add("hidden")
-            }
+            const qualityDeg = Math.max(0, Math.min(360, (avgRaw / 10) * 360))
+            orb.classList.remove("hidden")
+            orb.style.setProperty("--quality-deg", `${qualityDeg}deg`)
+            orbValue.textContent = `${avgRaw.toFixed(1)}`
           }
         }catch(_){
           const orb = document.getElementById("qualityOrb")
           const orbValue = document.getElementById("qualityOrbValue")
-          if(orb && orbValue && (currentRole === "analista" || currentRole === "consultor")){
+          if(orb && orbValue){
             orb.classList.remove("hidden")
             orb.style.setProperty("--quality-deg", "0deg")
             orbValue.textContent = "0.0"
-          }else if(orb){
-            orb.classList.add("hidden")
           }
         }
 
@@ -10783,47 +11544,86 @@ Cliente B`)
             const trend = prevCount ? (((monthTickets.length - prevCount) / prevCount) * 100) : (monthTickets.length ? 100 : 0)
 
             const byAnalyst = {}
-            const byConsultor = {}
-            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0, "Sáb":0, "Dom":0 }
+            const byWeekday = { "Lun":0, "Mar":0, "Mié":0, "Jue":0, "Vie":0 }
             monthTickets.forEach(t => {
               const analyst = String(t.assignedTo||"sin_asignar").toLowerCase()
-              const consultor = resolveInformerEmail(t) || "sin_consultor"
               byAnalyst[analyst] = (byAnalyst[analyst] || 0) + 1
-              byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
               const d = new Date(t.createdAt || Date.now())
               const wk = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][d.getDay()]
-              byWeekday[wk] = (byWeekday[wk] || 0) + 1
+              if(Object.prototype.hasOwnProperty.call(byWeekday, wk)){
+                byWeekday[wk] = (byWeekday[wk] || 0) + 1
+              }
             })
 
-            const renderBar = (title, mapObj, formatter) => {
-              const entries = Object.entries(mapObj).sort((a,b)=>b[1]-a[1]).slice(0,8)
-              const max = Math.max(1, ...entries.map(([,v])=>v))
-              return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4>${entries.length ? entries.map(([k,v]) => `<div class="small" style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;gap:8px"><span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div><div style="height:8px;border-radius:8px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${Math.round((v/max)*100)}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></div></div></div>`).join("") : `<p class="small">Sin datos.</p>`}</div>`
+            const renderAnalystTicketStatus = () => {
+              const analysts = users
+                .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+                .map(u => String(u?.email || "").toLowerCase())
+                .filter(Boolean)
+              const allEmails = Array.from(new Set(analysts))
+              const rows = allEmails
+                .map(email => ({
+                  email,
+                  name: analystDisplayNameWithTeam(email) || userDisplayNameByEmail(email) || email,
+                  total: Number(byAnalyst[email] || 0)
+                }))
+                .sort((a,b) => b.total - a.total || a.name.localeCompare(b.name, "es"))
+              const max = Math.max(1, ...rows.map(r => r.total))
+              if(!rows.length){
+                return `<p class="small">No hay analistas activos.</p>`
+              }
+              return `<div class="analystTicketsList">${rows.map((row, index) => `
+                <div class="analystTicketsItem">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div class="small" style="color:var(--text-2)">${htmlEscape(row.name)} ${index === 0 && row.total > 0 ? `<span class="badge" style="margin-left:6px">Top</span>` : ""}</div>
+                    <strong>${row.total}</strong>
+                  </div>
+                  <div class="analystTicketsBar"><div class="analystTicketsBarFill" style="width:${Math.round((row.total / max) * 100)}%"></div></div>
+                </div>
+              `).join("")}</div>`
             }
-            const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
-            const renderPie = (title, mapObj, formatter) => {
-              const entries = Object.entries(mapObj).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
-              const total = entries.reduce((a,[,v])=>a+v,0)
-              if(!total) return `<div class="card" style="padding:10px;margin:0"><h4 style="margin:0 0 8px">${title}</h4><p class="small">Sin datos.</p></div>`
-              let acc = 0
-              const stops = entries.map(([_,v],i) => {
-                const start = acc
-                acc += (v/total)*360
-                return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
-              }).join(", ")
-              const hoverDetail = entries.map(([k,v]) => `${formatter(k)}: ${v}`).join(" | ")
-              return `<div class="card" style="padding:10px;margin:0" title="${htmlEscape(hoverDetail)}"><h4 style="margin:0 0 8px">${title}</h4><div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(formatter(k))}</span><strong>${v}</strong></div>`).join("")}</div></div></div>`
+            const renderWeekdayTicketStatus = () => {
+              const weekdayOrder = ["Lun", "Mar", "Mié", "Jue", "Vie"]
+              const rows = weekdayOrder.map(day => ({ day, total: Number(byWeekday[day] || 0) }))
+              const max = Math.max(1, ...rows.map(r => r.total))
+              return `<div class="analystTicketsList">${rows.map((row, index) => `
+                <div class="analystTicketsItem">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div class="small" style="color:var(--text-2)">${htmlEscape(row.day)}</div>
+                    <strong>${row.total}</strong>
+                  </div>
+                  <div class="analystTicketsBar"><div class="analystTicketsBarFill" style="width:${Math.round((row.total / max) * 100)}%"></div></div>
+                </div>
+              `).join("")}</div>`
+            }
+            const surveyMap = (await db.ref("quality_surveys").once("value")).val() || {}
+            const surveysByMonth = Object.values(surveyMap).filter(s => String(s?.createdAt || "").slice(0,7) === selectedMonth)
+            const analystScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "analista").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const consultorScores = surveysByMonth.filter(s => String(s?.ratedRole || "") === "consultor").map(s => Number(s?.overall || 0)).filter(v => Number.isFinite(v) && v > 0)
+            const renderSatisfactionMiniChart = (title, scores, color) => {
+              const avg = scores.length ? (scores.reduce((acc, val) => acc + val, 0) / scores.length) : 0
+              const deg = Math.max(0, Math.min(360, (avg / 10) * 360))
+              return `<div style="display:flex;align-items:center;gap:8px;min-width:170px"><div style="width:48px;height:48px;border-radius:50%;background:conic-gradient(${color} ${deg}deg, rgba(99,132,199,.18) ${deg}deg 360deg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${scores.length ? avg.toFixed(1) : "-"}</div><div><div class="small" style="color:var(--text-2)">${htmlEscape(title)}</div><div class="small">Encuestas: ${scores.length}</div></div></div>`
             }
 
             chartsArea.innerHTML = `
-              <div class="row" style="margin-bottom:8px">
-                <div class="card" style="padding:10px;margin:0" title="Total de tickets creados en el mes seleccionado"><h4 style="margin:0 0 4px">Tickets del mes</h4><div style="font-size:24px;font-weight:700">${monthTickets.length}</div><div class="small">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
-                <div class="card" style="padding:10px;margin:0" title="Variación porcentual respecto al mes anterior"><h4 style="margin:0 0 4px">Tendencia</h4><div style="font-size:24px;font-weight:700">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="small">Comparado con ${htmlEscape(prevKey)}</div></div>
+              <div class="kpiGrid adminOverviewRow">
+                <div class="kpi" title="Total de tickets creados en el mes seleccionado"><div class="label">Tickets del mes</div><div class="value">${monthTickets.length}</div><div class="meta">${htmlEscape(selectedMonth)} · mes anterior: ${prevCount}</div></div>
+                <div class="kpi" title="Variación porcentual respecto al mes anterior"><div class="label">Tendencia mensual</div><div class="value">${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%</div><div class="meta">Comparado con ${htmlEscape(prevKey)}</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del analista"><div class="label">Satisfacción analista</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Analista", analystScores, "#3d6ef5")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
+                <div class="kpi" title="Resultados de encuesta de satisfacción del consultor"><div class="label">Satisfacción consultor</div><div class="inline" style="gap:12px;flex-wrap:wrap;margin-top:4px">${renderSatisfactionMiniChart("Consultor", consultorScores, "#22d4bf")}</div><div class="meta">Promedio sobre 10 · ${htmlEscape(selectedMonth)}</div></div>
               </div>
-              <div class="row" style="flex-wrap:nowrap;overflow-x:auto">
-                <div>${renderPie("Tickets por analista", byAnalyst, (k)=> analystDisplayNameWithTeam(k==="sin_asignar"?"":k) || "Sin asignar")}</div>
-                <div>${renderPie("Tickets por consultor", byConsultor, (k)=> userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</div>
-                <div>${renderPie("Tickets por día de semana", byWeekday, (k)=>k)}</div>
+              <div class="adminOverviewLayout">
+                <div class="adminOverviewMain">
+                  <h4 style="margin:0">Cantidad de tickets por analista</h4>
+                  <div class="small">Todos los analistas activos del sistema (${htmlEscape(selectedMonth)}).</div>
+                  ${renderAnalystTicketStatus()}
+                </div>
+                <div class="adminOverviewSide">
+                  <h4 style="margin:0 0 8px">Tickets por día de semana</h4>
+                  <div class="small">Mes seleccionado (${htmlEscape(selectedMonth)}).</div>
+                  ${renderWeekdayTicketStatus()}
+                </div>
               </div>
             `
             const reassignmentData = buildAdminReassignmentData(normalizedTickets, users, selectedMonth)
@@ -10991,7 +11791,7 @@ Cliente B`)
         if(savedEmail){
           const user = await getUserFromDb(savedEmail)
           if(user && user.active !== false){
-            currentUser = { email: user.email }
+            currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
             currentRole = user.role || savedRole || "consultor"
             persistSession()
             renderApp()
