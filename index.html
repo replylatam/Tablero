@@ -517,8 +517,10 @@
     .dailyWeekStrip{display:flex;gap:8px;overflow-x:auto;scroll-behavior:smooth;padding:2px 2px 6px;flex:1}
     .dailyWeekChip{min-width:108px;border:1px solid var(--stroke);border-radius:10px;padding:8px;background:var(--surface-2);text-align:center}
     .dailyWeekChipToday{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset;background:rgba(61,110,245,.16)}
+    .dailyWeekChipActive{background:rgba(34,212,191,.15);border-color:var(--accent-2)}
     .dailyMemberGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
-    .dailyMemberCard{border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2)}
+    .dailyMemberCard{border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2);cursor:pointer}
+    .dailyMemberCard.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset}
     .agendaSection h4 { margin: 0 0 8px; }
     body.light #adminAgendaTableWrap thead th,
     body.light #analystAgendaTableWrap thead th {
@@ -1645,6 +1647,9 @@
     var dailyAdminRows = []
     var dailyAnalystRows = []
     var dailyWeekStripScroll = {}
+    var dailyAdminSelectedDate = ""
+    var dailyReferenteSelectedDate = toLocalDateOnly(new Date())
+    var dailyReferenteSelectedAnalyst = ""
     var analystPendingRequestsExpanded = false
     var cachedTicketCustomFieldsDefs = []
     var analystGuidelinesClient = ""
@@ -6016,21 +6021,21 @@ Cliente B`)
         ].filter(Boolean)}
       ] : [
         { title: "General", items: [
-          { icon: "◻", label: "Tickets", action: "setMainViewTab('tickets')" },
-          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "⊙", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
-          { icon: "◩", label: "Guardados", action: "setMainViewTab('saved')" }
+          { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
+          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
-          ...(currentRole === "consultor" ? [{ icon: "◎", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "□", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(isAnalyst ? [{ icon: "◫", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-          ...(isAnalyst ? [{ icon: "◍", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "≣", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
-          ...(isAnalyst ? [{ icon: "◷", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "◫", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
-          ...(isAnalyst ? [{ icon: "◎", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "◌", label: "Soporte", action: "setMainViewTab('support')" }] : [])
+          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
+          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : [])
         ].filter(Boolean)}
       ]
 
@@ -9830,10 +9835,10 @@ Cliente B`)
       })
     }
 
-    function renderDailyWeekStrip(scope){
+    function renderDailyWeekStrip(scope, selectedDate, onClickFnName, toggleable){
       const todayIso = toLocalDateOnly(new Date())
       const days = getDailyWeekDays()
-      return `<div class="dailyWeekStripWrap"><button class="ghost" onclick="scrollDailyWeekStrip('${scope}',-1)">◀</button><div id="dailyWeekStrip_${scope}" class="dailyWeekStrip">${days.map(d => { const iso = toLocalDateOnly(d); return `<div class="dailyWeekChip ${iso===todayIso?'dailyWeekChipToday':''}"><div style="font-weight:700">${htmlEscape(d.toLocaleDateString('es-AR',{ weekday:'short'}))}</div><div class="small">${htmlEscape(formatDateDMY(iso))}</div></div>` }).join('')}</div><button class="ghost" onclick="scrollDailyWeekStrip('${scope}',1)">▶</button></div>`
+      return `<div class="dailyWeekStripWrap"><button class="ghost" onclick="scrollDailyWeekStrip('${scope}',-1)">◀</button><div id="dailyWeekStrip_${scope}" class="dailyWeekStrip">${days.map(d => { const iso = toLocalDateOnly(d); return `<button class="dailyWeekChip ${iso===todayIso?'dailyWeekChipToday':''} ${iso===selectedDate?'dailyWeekChipActive':''}" onclick="${onClickFnName}('${iso}', ${toggleable ? 'true' : 'false'})"><div style="font-weight:700">${htmlEscape(d.toLocaleDateString('es-AR',{ weekday:'short'}))}</div><div class="small">${htmlEscape(formatDateDMY(iso))}</div></button>` }).join('')}</div><button class="ghost" onclick="scrollDailyWeekStrip('${scope}',1)">▶</button></div>`
     }
 
     function scrollDailyWeekStrip(scope, direction){
@@ -9841,6 +9846,25 @@ Cliente B`)
       if(!el) return
       const step = 240
       el.scrollBy({ left: Number(direction || 0) * step, behavior: 'smooth' })
+    }
+
+    function setDailyAdminDateFilter(iso, toggleable){
+      if(toggleable && String(dailyAdminSelectedDate || "") === String(iso || "")){
+        dailyAdminSelectedDate = ""
+      }else{
+        dailyAdminSelectedDate = String(iso || "")
+      }
+      loadDailysAdmin()
+    }
+
+    function setDailyReferenteDate(iso){
+      dailyReferenteSelectedDate = String(iso || "")
+      loadDailysAnalyst()
+    }
+
+    function setDailyReferenteAnalyst(email){
+      dailyReferenteSelectedAnalyst = String(email || "").toLowerCase()
+      loadDailysAnalyst()
     }
 
     async function saveAllDailyUserMeta(){
@@ -9941,6 +9965,39 @@ Cliente B`)
       await loadDailysAnalyst()
     }
 
+    async function saveDailyIssueField(analystEmail, dateIso, ticketId, field, rawValue){
+      if(currentRole !== 'analista') return
+      const allowed = new Set(["hadProblem","problemDescription","escalateTo","escalated","solved"])
+      if(!allowed.has(String(field || ""))) return
+      const referenteKey = emailKey(currentUser?.email || "")
+      const analystKey = emailKey(analystEmail || "")
+      const dateKey = String(dateIso || "")
+      const ticketKey = emailKey(ticketId || "")
+      const ref = db.ref("daily_issue_tracking").child(referenteKey).child(analystKey).child(dateKey).child(ticketKey)
+      const current = (await ref.once("value")).val() || {}
+      const value = (field === "hadProblem" || field === "escalated" || field === "solved") ? !!rawValue : String(rawValue || "")
+      await ref.set({ ...current, analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(ticketId || ""), date: dateKey, [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+    }
+
+    async function escalateDailyTaskForReferente(ticketId, analystEmail, dateIso){
+      if(currentRole !== 'analista') return
+      const referenteKey = emailKey(currentUser?.email || "")
+      const row = (await db.ref("daily_issue_tracking").child(referenteKey).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(emailKey(ticketId || "")).once("value")).val() || {}
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "escalated", true)
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      await escalateGenericDailyItem({
+        sourceType: "referente_ticket_issue",
+        analystEmail: String(analystEmail || "").toLowerCase(),
+        ticketId: String(ticketId || ""),
+        title: String(ticket?.title || ""),
+        client: String(ticket?.client || ""),
+        referenteObservation: String(row.problemDescription || ""),
+        escalateTo: String(row.escalateTo || ""),
+        hadProblem: !!row.hadProblem
+      })
+      await loadDailysAnalyst()
+    }
+
     async function loadDailysAdmin(){
       const wrap = document.getElementById("dailysAdminWrap")
       if(!wrap || currentRole !== "admin") return
@@ -9952,7 +10009,11 @@ Cliente B`)
       const watchlist = Object.values((await db.ref('daily_watchlist').once('value')).val() || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
       dailyAdminRows = entries
       const referentOptions = `<option value="">Sin referente</option>${referents.map(r => `<option value="${htmlEscape(String(r.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(r.email||"") || r.email || "-")}</option>`).join("")}`
-      const pendingEscalations = escalations.filter(e => String(e?.status || 'pending') === 'pending')
+      const selectedDate = String(dailyAdminSelectedDate || "")
+      const filteredEntries = selectedDate
+        ? entries.filter(e => String(e.updatedAt || e.createdAt || "").slice(0,10) === selectedDate)
+        : entries
+      const pendingEscalations = escalations.filter(e => String(e?.status || 'pending') === 'pending' && (!selectedDate || String(e.createdAt || "").slice(0,10) === selectedDate))
       const groupedEscalations = pendingEscalations.reduce((acc, item) => {
         const email = String(item.analystEmail || '').toLowerCase()
         const user = usersMap[emailKey(email)] || {}
@@ -9963,7 +10024,8 @@ Cliente B`)
       }, {})
 
       wrap.innerHTML = `
-        ${renderDailyWeekStrip('admin')}
+        ${renderDailyWeekStrip('admin', selectedDate, 'setDailyAdminDateFilter', true)}
+        <div class="small" style="margin-bottom:8px">${selectedDate ? `Filtro activo: ${htmlEscape(formatDateDMY(selectedDate))} (tocá de nuevo para quitarlo).` : "Sin filtro de fecha: mostrando todo."}</div>
         <div class="feedItem">
           <h4 style="margin:0 0 8px">Asignación de analistas / referentes</h4>
           <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Nivel Daily</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Referente asignado</th></tr></thead><tbody>${users.map(u => { const key = emailKey(u.email||""); const dailyRole = String(u.dailyRole||"analista").toLowerCase(); const ref = String(u.dailyReferente||"").toLowerCase(); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRole_${key}" style="margin:0"><option value="analista" ${dailyRole!=="referente"?"selected":""}>Analista</option><option value="referente" ${dailyRole==="referente"?"selected":""}>Referente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="dailyRef_${key}" style="margin:0">${referentOptions.replace(`value="${htmlEscape(ref)}"`, `value="${htmlEscape(ref)}" selected`)}</select></td></tr>` }).join("")}</tbody></table></div>
@@ -9973,6 +10035,7 @@ Cliente B`)
           <h4 style="margin:0 0 8px">Nueva fila Daily</h4>
           <div class="row"><div><label>Analista</label><select id="dailyAdminAnalyst">${users.map(u => `<option value="${htmlEscape(String(u.email||"").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||"") || u.email || "-")}</option>`).join("")}</select></div><div><label>Número de ticket</label><input id="dailyAdminTicket"></div><div><label>Cliente</label><input id="dailyAdminClient"></div><div><label>Título de tarea</label><input id="dailyAdminTitle"></div><div><label>Comentario agenda</label><input id="dailyAdminComment"></div><div style="display:flex;align-items:flex-end"><button onclick="addDailyEntryFromAdmin()">Agregar fila</button></div></div>
         </div>
+        <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Registros Daily</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th></tr></thead><tbody>${filteredEntries.length ? filteredEntries.slice(0,150).map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(r.updatedAt || r.createdAt || ""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td></tr>`).join("") : `<tr><td colspan="6" class="small" style="padding:8px">Sin registros para el criterio actual.</td></tr>`}</tbody></table></div></div>
         <div class="feedItem" style="margin-top:10px"><h4 style="margin:0 0 8px">Elevaciones por grupo</h4>${Object.keys(groupedEscalations).length ? Object.entries(groupedEscalations).map(([team, rows]) => `<div class="agendaSection"><h4 style="margin-bottom:8px">${htmlEscape(team === 'equipo_1' ? 'Equipo 1' : team === 'equipo_2' ? 'Equipo 2' : 'Sin equipo')}</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Origen</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Detalle</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${rows.map(e => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(e.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e.analystEmail||"") || e.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(String(e.sourceType || 'daily'))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(e.title || '-')} · ${htmlEscape(e.referenteObservation || e.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><div class="inline"><button class="ghost" onclick="reviewDailyEscalation('${e.id}', true)">Aprobar</button><button class="danger" onclick="reviewDailyEscalation('${e.id}', false)">Rechazar</button></div></td></tr>`).join('')}</tbody></table></div></div>`).join('') : `<div class="small">Sin elevaciones pendientes.</div>`}</div>
         <div class="feedItem" style="margin-top:10px">
           <h4 style="margin:0 0 8px">Cosas a tener en cuenta</h4>
@@ -10056,28 +10119,45 @@ Cliente B`)
       const scopedEmails = new Set(scopedAnalysts.map(u => String(u.email || "").toLowerCase()))
       const scopedRows = entries.filter(e => scopedEmails.has(String(e.analystEmail || "").toLowerCase()))
       dailyAnalystRows = scopedRows
+      const selectedDate = String(dailyReferenteSelectedDate || toLocalDateOnly(new Date()))
       const todayIso = toLocalDateOnly(new Date())
-      const y = new Date(); y.setDate(y.getDate() - 1)
-      const yesterdayIso = toLocalDateOnly(y)
+      const issuesMap = (await db.ref("daily_issue_tracking").child(emailKey(currentUser?.email || "")).once("value")).val() || {}
+      const selectedAnalystEmail = String(dailyReferenteSelectedAnalyst || "").toLowerCase()
 
-      const memberCards = scopedAnalysts.map(u => `<div class="dailyMemberCard"><div style="font-weight:700">${htmlEscape(userDisplayNameByEmail(u.email||'') || u.email || '-')}</div><div class="small">${htmlEscape(String(u.analystTeam || '').replace('_',' ').toUpperCase() || 'Sin equipo')}</div></div>`).join('') || `<div class="small">Sin miembros asignados.</div>`
-      const analystSections = scopedAnalysts.map(u => {
-        const email = String(u.email || '').toLowerCase()
-        const yesterdayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === yesterdayIso)
-        const todayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === todayIso)
+      const memberCards = scopedAnalysts.map(u => {
+        const email = String(u.email || "").toLowerCase()
+        return `<button class="dailyMemberCard ${selectedAnalystEmail===email?'active':''}" onclick="setDailyReferenteAnalyst('${email}')"><div style="font-weight:700">${htmlEscape(userDisplayNameByEmail(email) || email)}</div><div class="small">${htmlEscape(String(u.analystTeam || '').replace('_',' ').toUpperCase() || 'Sin equipo')}</div></button>`
+      }).join('') || `<div class="small">Sin miembros asignados.</div>`
+
+      const selectedAnalyst = scopedAnalysts.find(u => String(u.email || "").toLowerCase() === selectedAnalystEmail)
+      let selectedAnalystSection = ""
+      if(selectedAnalyst){
+        const email = String(selectedAnalyst.email || '').toLowerCase()
+        const dayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === selectedDate)
         const noteRows = Object.values(notesMap[emailKey(email)] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
-        return `<div class="agendaSection"><h4 style="margin-bottom:8px">${htmlEscape(userDisplayNameByEmail(email) || email)}</h4>
-          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ayer (${htmlEscape(formatDateDMY(yesterdayIso))})</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${yesterdayTasks.length ? yesterdayTasks.map(t => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')} · ${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTask('${t.id}','${email}','yesterday_task')">Elevar</button></td></tr>`).join('') : `<tr><td colspan="4" class="small" style="padding:8px">Sin tareas de ayer.</td></tr>`}</tbody></table></div>
-          <div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Hoy (${htmlEscape(formatDateDMY(todayIso))})</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${todayTasks.length ? todayTasks.map(t => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')} · ${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTask('${t.id}','${email}','today_task')">Elevar</button></td></tr>`).join('') : `<tr><td colspan="3" class="small" style="padding:8px">Sin tareas de hoy.</td></tr>`}</tbody></table></div>
+        const dayIssues = issuesMap[emailKey(email)]?.[selectedDate] || {}
+        selectedAnalystSection = `<div class="agendaSection"><h4 style="margin-bottom:8px">${htmlEscape(userDisplayNameByEmail(email) || email)} · ${htmlEscape(formatDateDMY(selectedDate))}</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${dayTasks.length ? dayTasks.map(t => { const issue = dayIssues[emailKey(t.id || '')] || {}; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','hadProblem', this.value==='si')"><option value="no" ${issue.hadProblem ? '' : 'selected'}>No</option><option value="si" ${issue.hadProblem ? 'selected' : ''}>Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(issue.problemDescription || '')}" placeholder="Descripción" onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','problemDescription', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','escalateTo', this.value)"><option value="">-</option><option value="Alan" ${issue.escalateTo==='Alan'?'selected':''}>Alan</option><option value="Lau" ${issue.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${issue.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Consultor" ${issue.escalateTo==='Consultor'?'selected':''}>Consultor</option><option value="Cliente" ${issue.escalateTo==='Cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.escalated ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','escalated', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.solved ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','solved', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTaskForReferente('${t.id}','${email}','${selectedDate}')">Elevar TL</button></td></tr>` }).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas para la fecha seleccionada.</td></tr>`}</tbody></table></div>
           <div style="margin-top:8px"><div class="small" style="margin-bottom:6px"><strong>Anotaciones del referente</strong></div>${isReferente ? `<div class="inline" style="margin-bottom:6px"><input id="dailyNoteInput_${emailKey(email)}" placeholder="Escribí una anotación para ${htmlEscape(userDisplayNameByEmail(email) || email)}"><button class="ghost" onclick="addReferenteNote('${email}')">Guardar</button></div>` : ''}${noteRows.length ? noteRows.map(n => `<div class="feedItem" style="margin-top:4px"><div class="feedTop"><div class="feedMeta">${htmlEscape(formatDateTime24(n.createdAt || ''))}</div><button class="ghost" onclick="escalateReferenteNote('${email}','${n.id}')">Elevar</button></div><div>${htmlEscape(n.note || '-')}</div></div>`).join('') : `<div class="small">Sin anotaciones.</div>`}</div>
         </div>`
-      }).join('')
+      }
+
+      const pendingIssues = []
+      Object.values(issuesMap || {}).forEach(byDate => {
+        Object.values(byDate || {}).forEach(ticketMap => {
+          Object.values(ticketMap || {}).forEach(issue => {
+            const unresolved = issue && !issue.solved && (issue.hadProblem || String(issue.problemDescription || "").trim() || issue.escalated)
+            if(unresolved) pendingIssues.push(issue)
+          })
+        })
+      })
 
       wrap.innerHTML = `
-        ${renderDailyWeekStrip('analyst')}
+        ${renderDailyWeekStrip('analyst', selectedDate, 'setDailyReferenteDate', false)}
         <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar información al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
         <div class="agendaSection"><h4 style="margin-bottom:8px">Miembros asignados</h4><div class="dailyMemberGrid">${memberCards}</div></div>
-        ${isReferente ? analystSections : `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td></tr>`).join("") || `<tr><td colspan="7" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>`}
+        ${isReferente ? (selectedAnalystSection || `<div class="agendaSection"><div class="small">Seleccioná un analista para ver su información.</div></div>`) : `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td></tr>`).join("") || `<tr><td colspan="7" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>`}
+        ${isReferente ? `<div class="agendaSection"><h4 style="margin-bottom:8px">Pendientes por elevar / no solucionados</h4>${pendingIssues.length ? pendingIssues.map(issue => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(issue.ticketId || '-') } · ${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')}</div><div class="feedMeta">${htmlEscape(formatDateDMY(issue.date || todayIso))} · Escalar a: ${htmlEscape(issue.escalateTo || '-')}</div></div><span class="badge ${issue.solved ? 'ok' : 'off'}">${issue.solved ? 'Solucionado' : 'Pendiente'}</span></div><div>${htmlEscape(issue.problemDescription || 'Sin descripción')}</div></div>`).join('') : `<div class="small">No hay pendientes abiertos.</div>`}</div>` : ""}
       `
     }
 
