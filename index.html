@@ -1624,6 +1624,8 @@
     var adminDirectoryRows = []
     var adminDirectorySearchTerm = ""
     var adminDirectoryAreaFilter = ""
+    var adminDirectoryVisibleRows = []
+    var adminDirectoryTotpTimer = null
     var manualEditId = ""
     var memoEditId = ""
     var analystCvFilter = ""
@@ -6180,15 +6182,69 @@ Cliente B`)
       await loadAdminDirectoryTab()
     }
 
+    function stopAdminDirectoryTotpTicker(){
+      if(adminDirectoryTotpTimer){
+        clearInterval(adminDirectoryTotpTimer)
+        adminDirectoryTotpTimer = null
+      }
+    }
+
+    function startAdminDirectoryTotpTicker(){
+      stopAdminDirectoryTotpTicker()
+      adminDirectoryTotpTimer = setInterval(() => {
+        if(!(currentRole === "admin" && adminPanelTab === "directory")) return stopAdminDirectoryTotpTicker()
+        renderAdminDirectoryTotpCodes()
+      }, 1000)
+    }
+
+    async function renderAdminDirectoryTotpCodes(){
+      const rows = Array.isArray(adminDirectoryVisibleRows) ? adminDirectoryVisibleRows : []
+      const secondsLeft = 30 - (Math.floor(Date.now() / 1000) % 30)
+      for(const row of rows){
+        const key = String(row?.key || emailKey(row?.email || ""))
+        const codeEl = document.getElementById(`dirTotp_${key}`)
+        const timerEl = document.getElementById(`dirTotpCountdown_${key}`)
+        if(!codeEl || !timerEl) continue
+        const secret = parseDirectorySecret(row?.secret || "")
+        if(!secret){
+          codeEl.textContent = "-"
+          timerEl.textContent = ""
+          continue
+        }
+        const code = await generateTotpCode(secret)
+        codeEl.textContent = code || "------"
+        timerEl.textContent = `vence en ${String(secondsLeft).padStart(2, "0")}s`
+      }
+    }
+
     async function loadAdminDirectoryTab(){
       if(currentRole !== "admin" || adminPanelTab !== "directory") return
       const wrap = document.getElementById("adminDirectoryList")
       if(!wrap) return
       const areaFilterEl = document.getElementById("adminDirectoryAreaFilter")
       if(areaFilterEl && areaFilterEl.value !== adminDirectoryAreaFilter) areaFilterEl.value = adminDirectoryAreaFilter
-      const snap = await db.ref("directory_users").once("value")
-      const raw = snap.val() || {}
+      let raw = {}
+      try{
+        const snap = await db.ref("directory_users").once("value")
+        raw = snap.val() || {}
+      }catch(_){ raw = {} }
       adminDirectoryRows = Object.values(raw).filter(Boolean)
+      if(!adminDirectoryRows.length){
+        try{
+          const usersRaw = (await db.ref("users_by_email").once("value")).val() || {}
+          adminDirectoryRows = Object.values(usersRaw).filter(u => String(u?.role || "").toLowerCase() === "consultor").map(u => ({
+            key: String(u?.key || emailKey(u?.email || "")),
+            clientName: String(u?.name || u?.profileName || u?.nickname || u?.email || ""),
+            email: String(u?.email || ""),
+            country: String(u?.country || ""),
+            area: String(u?.area || ""),
+            notes: String(u?.notes || ""),
+            secret: String(u?.twoFactorSecret || ""),
+            noQr: !(String(u?.twoFactorEnabled || "").toLowerCase() === "true" || u?.twoFactorEnabled === true),
+            updatedAt: String(u?.passwordUpdatedAt || "")
+          }))
+        }catch(_){ }
+      }
       const areas = Array.from(new Set(adminDirectoryRows.map(r => String(r?.area || "").trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b, "es", { sensitivity: "base" }))
       const areaOptions = ['<option value="">Todas las áreas</option>', ...areas.map(a => `<option value="${htmlEscape(a)}" ${a===adminDirectoryAreaFilter?"selected":""}>${htmlEscape(a)}</option>`)].join("")
       const term = String(adminDirectorySearchTerm || "").trim().toLowerCase()
@@ -6208,7 +6264,7 @@ Cliente B`)
         <div class="small" style="margin-bottom:8px">Registros: <strong>${filtered.length}</strong></div>
         <div style="overflow:auto">
           <table>
-            <thead><tr><th>Cliente</th><th>Email</th><th>País</th><th>Área</th><th>2FA</th><th>Notas</th><th>Actualizado</th><th>Acción</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Email</th><th>País</th><th>Área</th><th>2FA</th><th>Código 2FA (30s)</th><th>Notas</th><th>Actualizado</th><th>Acción</th></tr></thead>
             <tbody>
               ${filtered.length ? filtered.map(row => {
                 const k = String(row?.key || emailKey(row?.email || ""))
@@ -6219,14 +6275,22 @@ Cliente B`)
                   <td>${htmlEscape(row?.country || "-")}</td>
                   <td><select id="directoryArea_${k}" style="margin:0;min-width:160px">${buildDirectoryAreaOptions(row?.area || "")}</select></td>
                   <td>${has2fa ? "Activo" : "Sin QR"}</td>
+                  <td><div style="font-family:var(--font-mono);font-weight:600" id="dirTotp_${k}">------</div><div class="small" id="dirTotpCountdown_${k}"></div></td>
                   <td>${htmlEscape(row?.notes || "-")}</td>
                   <td>${row?.updatedAt ? formatDateTime(row.updatedAt) : "-"}</td>
                   <td><button class="ghost" onclick="updateDirectoryArea('${jsStringEscape(k)}')">Guardar área</button></td>
                 </tr>`
-              }).join("") : `<tr><td colspan="8" class="small">No hay registros para los filtros seleccionados.</td></tr>`}
+              }).join("") : `<tr><td colspan="9" class="small">No hay registros para los filtros seleccionados.</td></tr>`}
             </tbody>
           </table>
         </div>`
+      adminDirectoryVisibleRows = filtered
+      if(filtered.length){
+        renderAdminDirectoryTotpCodes()
+        startAdminDirectoryTotpTicker()
+      }else{
+        stopAdminDirectoryTotpTicker()
+      }
     }
 
     function renderHelpGuideHtml(viewerRole = "admin"){
@@ -6293,6 +6357,7 @@ Cliente B`)
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView
+      if(!(isAdmin && adminPanelTab === "directory")) stopAdminDirectoryTotpTicker()
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
