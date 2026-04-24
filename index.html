@@ -1590,7 +1590,7 @@
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
     const ADMIN_LEVEL1_EMAILS = ["admin@tablero.local"]
-    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support"])
+    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support","directory"])
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -1618,6 +1618,9 @@
     var adminManualFolderFilter = ""
     var adminManualCreateFolderVisible = false
     var adminManualFolderSearchTerm = ""
+    var adminDirectoryRows = []
+    var adminDirectorySearchTerm = ""
+    var adminDirectoryAreaFilter = ""
     var manualEditId = ""
     var memoEditId = ""
     var analystCvFilter = ""
@@ -1888,8 +1891,10 @@
 
     function canAccessAdminTab(tab){
       if(String(currentRole || "").toLowerCase() !== "admin") return false
+      const normalizedTab = String(tab || "")
+      if(normalizedTab === "directory") return isAdminLevel1()
       if(isAdminLevel1()) return true
-      return !ADMIN_LEVEL2_BLOCKED_TABS.has(String(tab || ""))
+      return !ADMIN_LEVEL2_BLOCKED_TABS.has(normalizedTab)
     }
 
     function setAdminTab(tab){
@@ -5948,6 +5953,174 @@ Cliente B`)
       await loadMyProfileForm()
     }
 
+
+    function parseDirectorySecret(value){
+      const raw = String(value || "").trim()
+      if(!raw) return ""
+      const directMatch = raw.match(/(?:^|[?&])secret=([A-Z2-7]{16,})/i)
+      if(directMatch && directMatch[1]) return directMatch[1].toUpperCase()
+      try{
+        if(raw.startsWith("otpauth://")){
+          const query = raw.includes("?") ? raw.split("?")[1] : ""
+          const params = new URLSearchParams(query)
+          const secret = String(params.get("secret") || "").trim()
+          if(secret) return secret.toUpperCase()
+        }
+      }catch(_){ }
+      return raw.replace(/\s+/g, "").toUpperCase()
+    }
+
+    function setAdminDirectorySearch(value){
+      adminDirectorySearchTerm = String(value || "")
+      loadAdminDirectoryTab()
+    }
+
+    function setAdminDirectoryAreaFilter(value){
+      adminDirectoryAreaFilter = String(value || "")
+      loadAdminDirectoryTab()
+    }
+
+    async function extractDirectorySecretFromInput(){
+      const source = document.getElementById("directoryQrSource")
+      const target = document.getElementById("directorySecret")
+      if(!source || !target) return
+      const secret = parseDirectorySecret(source.value)
+      if(!secret) return alert("No se pudo extraer un SECRET válido.")
+      target.value = secret
+      showToast("SECRET extraído correctamente.", "ok")
+    }
+
+    async function saveDirectoryEntry(){
+      if(currentRole !== "admin" || !isAdminLevel1()) return alert("Disponible solo para Admin nivel 1.")
+      const clientName = (document.getElementById("directoryClient")?.value || "").trim()
+      const email = (document.getElementById("directoryEmail")?.value || "").trim().toLowerCase()
+      const password = (document.getElementById("directoryPassword")?.value || "").trim()
+      const country = (document.getElementById("directoryCountry")?.value || "").trim()
+      const area = (document.getElementById("directoryArea")?.value || "").trim()
+      const notes = (document.getElementById("directoryNotes")?.value || "").trim()
+      const noQr = !!document.getElementById("directoryNoQr")?.checked
+      const secret = parseDirectorySecret(document.getElementById("directorySecret")?.value || "")
+      if(!clientName) return alert("Ingresá el nombre de cliente.")
+      if(!email || !email.includes("@")) return alert("Ingresá un email válido.")
+      if(!password) return alert("Ingresá una contraseña.")
+      if(!area) return alert("Ingresá un área.")
+      if(!noQr && !secret) return alert("Cargá el SECRET o activá 'Cargar sin QR'.")
+      const pwdError = passwordPolicyError(password)
+      if(pwdError) return alert(pwdError)
+
+      const secureFields = await buildPasswordFields(password)
+      const key = emailKey(email)
+      const nowIso = new Date().toISOString()
+      const directoryPayload = {
+        key,
+        clientName,
+        email,
+        country,
+        area,
+        notes,
+        noQr,
+        secret: noQr ? "" : secret,
+        updatedAt: nowIso,
+        createdAt: nowIso
+      }
+      const userPayload = {
+        key,
+        email,
+        role: "consultor",
+        team: "",
+        name: clientName,
+        nickname: "",
+        useNickname: false,
+        sex: "",
+        photo: "",
+        adminLevel: null,
+        twoFactorEnabled: !noQr && !!secret,
+        twoFactorSecret: noQr ? "" : secret,
+        twoFactorOtpAuthUrl: "",
+        area,
+        country,
+        notes,
+        password: "",
+        ...secureFields
+      }
+      const existing = (await db.ref(`directory_users/${key}`).once("value")).val()
+      if(existing && existing.createdAt) directoryPayload.createdAt = existing.createdAt
+      await db.ref(`directory_users/${key}`).set(directoryPayload)
+      await db.ref("users_by_email").child(key).update(userPayload)
+      await adminWrite("upsertUser", userPayload).catch(()=>{})
+      showToast("Cliente agregado al directorio.", "ok")
+      ;["directoryClient","directoryEmail","directoryPassword","directoryCountry","directoryArea","directoryNotes","directoryQrSource","directorySecret"].forEach(id => {
+        const el = document.getElementById(id)
+        if(el) el.value = ""
+      })
+      const noQrInput = document.getElementById("directoryNoQr")
+      if(noQrInput) noQrInput.checked = false
+      await loadAdminDirectoryTab()
+    }
+
+    async function updateDirectoryArea(key){
+      if(currentRole !== "admin" || !isAdminLevel1()) return
+      const normalizedKey = String(key || "")
+      if(!normalizedKey) return
+      const areaInput = document.getElementById(`directoryArea_${normalizedKey}`)
+      if(!areaInput) return
+      const nextArea = String(areaInput.value || "").trim()
+      if(!nextArea) return alert("Ingresá un área.")
+      await db.ref(`directory_users/${normalizedKey}/area`).set(nextArea)
+      await db.ref(`users_by_email/${normalizedKey}/area`).set(nextArea)
+      showToast("Área actualizada.", "ok", 1200)
+      await loadAdminDirectoryTab()
+    }
+
+    async function loadAdminDirectoryTab(){
+      if(currentRole !== "admin" || adminPanelTab !== "directory") return
+      const wrap = document.getElementById("adminDirectoryList")
+      if(!wrap) return
+      const areaFilterEl = document.getElementById("adminDirectoryAreaFilter")
+      if(areaFilterEl && areaFilterEl.value !== adminDirectoryAreaFilter) areaFilterEl.value = adminDirectoryAreaFilter
+      const snap = await db.ref("directory_users").once("value")
+      const raw = snap.val() || {}
+      adminDirectoryRows = Object.values(raw).filter(Boolean)
+      const areas = Array.from(new Set(adminDirectoryRows.map(r => String(r?.area || "").trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b, "es", { sensitivity: "base" }))
+      const areaOptions = ['<option value="">Todas las áreas</option>', ...areas.map(a => `<option value="${htmlEscape(a)}" ${a===adminDirectoryAreaFilter?"selected":""}>${htmlEscape(a)}</option>`)].join("")
+      const term = String(adminDirectorySearchTerm || "").trim().toLowerCase()
+      const filtered = adminDirectoryRows.filter(row => {
+        const inArea = !adminDirectoryAreaFilter || String(row?.area || "") === adminDirectoryAreaFilter
+        if(!inArea) return false
+        if(!term) return true
+        const haystack = [row?.clientName, row?.email, row?.country, row?.notes, row?.area].map(v => String(v || "").toLowerCase()).join(" ")
+        return haystack.includes(term)
+      }).sort((a,b)=>String(a?.clientName||"").localeCompare(String(b?.clientName||""), "es", { sensitivity: "base" }))
+
+      wrap.innerHTML = `
+        <div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input type="text" placeholder="Buscar por cliente, email, país o nota" value="${htmlEscape(adminDirectorySearchTerm)}" oninput="setAdminDirectorySearch(this.value)" style="min-width:280px">
+          <select id="adminDirectoryAreaFilter" onchange="setAdminDirectoryAreaFilter(this.value)" style="min-width:220px">${areaOptions}</select>
+        </div>
+        <div class="small" style="margin-bottom:8px">Registros: <strong>${filtered.length}</strong></div>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>Cliente</th><th>Email</th><th>País</th><th>Área</th><th>2FA</th><th>Notas</th><th>Actualizado</th><th>Acción</th></tr></thead>
+            <tbody>
+              ${filtered.length ? filtered.map(row => {
+                const k = String(row?.key || emailKey(row?.email || ""))
+                const has2fa = !row?.noQr && !!String(row?.secret || "")
+                return `<tr>
+                  <td>${htmlEscape(row?.clientName || "-")}</td>
+                  <td>${htmlEscape(row?.email || "-")}</td>
+                  <td>${htmlEscape(row?.country || "-")}</td>
+                  <td><input id="directoryArea_${k}" value="${htmlEscape(row?.area || "")}" style="margin:0;min-width:140px"></td>
+                  <td>${has2fa ? "Activo" : "Sin QR"}</td>
+                  <td>${htmlEscape(row?.notes || "-")}</td>
+                  <td>${row?.updatedAt ? formatDateTime(row.updatedAt) : "-"}</td>
+                  <td><button class="ghost" onclick="updateDirectoryArea('${jsStringEscape(k)}')">Guardar área</button></td>
+                </tr>`
+              }).join("") : `<tr><td colspan="8" class="small">No hay registros para los filtros seleccionados.</td></tr>`}
+            </tbody>
+          </table>
+        </div>`
+    }
+
     function renderHelpGuideHtml(viewerRole = "admin"){
       const roleLabelViewer = viewerRole === "analista" ? "Analista" : "Admin"
       return `<div class="small">
@@ -6025,6 +6198,7 @@ Cliente B`)
           { icon: "🧮", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
           { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" },
           { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" },
+          ...(isAdminLevel1() ? [{ icon: "📇", label: "Directorio", action: "setAdminTab('directory')" }] : []),
           { icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }
         ]},
         { title: "Mejora continua", items: [
@@ -6161,7 +6335,7 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='directory' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">Directorio</h3><span class="small">Solo admin nivel 1</span></div><p class="small" style="margin:8px 0 10px">Alta y gestión de clientes con área, notas y configuración de autenticación por SECRET.</p><div class="settingsGrid" style="grid-template-columns:repeat(3,minmax(220px,1fr));margin-bottom:10px"><div><label>Cliente</label><input id="directoryClient" placeholder="Nombre del cliente"></div><div><label>Email</label><input id="directoryEmail" type="email" placeholder="cliente@dominio.com"></div><div><label>Contraseña</label><input id="directoryPassword" type="password" placeholder="Contraseña inicial"></div><div><label>País</label><input id="directoryCountry" placeholder="Ej: Argentina"></div><div><label>Área</label><input id="directoryArea" placeholder="Ej: Comercial"></div><div><label>Notas</label><input id="directoryNotes" placeholder="Observaciones internas"></div><div style="grid-column:1/-1"><label>QR / OTPAUTH (opcional)</label><div class="inline" style="gap:8px;flex-wrap:wrap"><input id="directoryQrSource" placeholder="Pegá URL otpauth:// o string con secret=..." style="min-width:280px;flex:1"><button class="ghost" onclick="extractDirectorySecretFromInput()">Extraer SECRET</button><input id="directorySecret" placeholder="SECRET" style="max-width:220px"><label class="small" style="display:flex;align-items:center;gap:6px"><input id="directoryNoQr" type="checkbox" style="width:auto;margin:0">Cargar sin QR</label></div></div></div><div class="inline" style="justify-content:flex-end;margin-bottom:8px"><button onclick="saveDirectoryEntry()">Guardar cliente</button></div><div id="adminDirectoryList" class="small"></div></div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -6309,6 +6483,7 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'announcements'){ loadAnnouncementsAdmin() }
       if(isAdmin && adminPanelTab === 'agenda'){ loadAdminAgenda() }
       if(isAdmin && adminPanelTab === 'comments'){ loadAdminComments() }
+      if(isAdmin && adminPanelTab === 'directory'){ loadAdminDirectoryTab() }
       if(isAdmin && adminPanelTab === 'dailys'){ loadDailysAdmin() }
       if(isAnalyst && analystPanelTab === 'agenda'){ loadAnalystAgenda() }
       if(isAnalyst && analystPanelTab === 'guidelines'){ loadAnalystGuidelines() }
