@@ -1977,7 +1977,7 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys","top_performer"].includes(tab) ? tab : "tickets"
       if(mainViewTab === nextTab){
         if(nextTab === "tickets"){
           if(currentRole === "analista" && analystPanelTab !== "panel") analystPanelTab = "panel"
@@ -6162,7 +6162,6 @@ Cliente B`)
       const pwdError = passwordPolicyError(password)
       if(pwdError) return alert(pwdError)
 
-      const secureFields = await buildPasswordFields(password)
       const key = emailKey(email)
       const nowIso = new Date().toISOString()
       const directoryPayload = {
@@ -6181,58 +6180,25 @@ Cliente B`)
         otpPeriod: otpPeriod > 0 ? otpPeriod : 30,
         otpAlgorithm: ["SHA1","SHA256","SHA512"].includes(otpAlgorithm) ? otpAlgorithm : "SHA1"
       }
-      const userPayload = {
-        key,
-        email,
-        role: "consultor",
-        team: "",
-        name: clientName,
-        nickname: "",
-        useNickname: false,
-        sex: "",
-        photo: "",
-        adminLevel: null,
-        twoFactorEnabled: !noQr && !!secret,
-        twoFactorSecret: noQr ? "" : secret,
-        twoFactorOtpAuthUrl: qrSourceValue,
-        otpDigits: [6,7,8].includes(otpDigits) ? otpDigits : 6,
-        otpPeriod: otpPeriod > 0 ? otpPeriod : 30,
-        otpAlgorithm: ["SHA1","SHA256","SHA512"].includes(otpAlgorithm) ? otpAlgorithm : "SHA1",
-        area,
-        country,
-        notes,
-        password: "",
-        ...secureFields
-      }
       const previousKey = String(adminDirectoryEditingKey || "")
       const isEditing = !!previousKey
       let wroteDirectory = false
-      let wroteUser = false
       let directoryErr = null
-      let usersErr = null
       try{
         const existing = (await db.ref(`directory_users/${key}`).once("value")).val()
         if(existing && existing.createdAt) directoryPayload.createdAt = existing.createdAt
+        if(isEditing && previousKey && previousKey !== key){
+          try{ await db.ref(`directory_users/${previousKey}`).remove() }catch(_){ }
+        }
         await db.ref(`directory_users/${key}`).set(directoryPayload)
         wroteDirectory = true
       }catch(err){ directoryErr = err; wroteDirectory = false }
 
-      try{
-        await db.ref("users_by_email").child(key).update(userPayload)
-        await adminWrite("upsertUser", userPayload).catch(()=>{})
-        wroteUser = true
-      }catch(err){ usersErr = err; wroteUser = false }
-
-      if((wroteDirectory || wroteUser) && isEditing && previousKey && previousKey !== key){
-        try{ await db.ref(`directory_users/${previousKey}`).remove() }catch(_){ }
-        try{ await db.ref(`users_by_email/${previousKey}`).remove() }catch(_){ }
-      }
-      if(wroteDirectory || wroteUser){
+      if(wroteDirectory){
         showToast(isEditing ? "Cliente actualizado en directorio." : "Cliente agregado al directorio.", "ok")
       }else{
         const parts = []
         if(directoryErr) parts.push(`/directory_users (${String(directoryErr.code || directoryErr.message || 'error')})`)
-        if(usersErr) parts.push(`/users_by_email (${String(usersErr.code || usersErr.message || 'error')})`)
         const detail = parts.length ? `Sin permisos en ${parts.join(' y ')}` : "Error de escritura"
         showToast(`${detail}. Revisá reglas de Firebase.`, "error", 3200)
       }
@@ -6261,7 +6227,6 @@ Cliente B`)
       if(!nextArea) return alert("Seleccioná un área.")
       if(!DIRECTORY_AREAS.includes(nextArea)) return alert("Área inválida. Usá ACCO o CONSULTORIA.")
       try{ await db.ref(`directory_users/${normalizedKey}/area`).set(nextArea) }catch(_){ }
-      try{ await db.ref(`users_by_email/${normalizedKey}/area`).set(nextArea) }catch(_){ }
       showToast("Área actualizada.", "ok", 1200)
       await loadAdminDirectoryTab()
     }
@@ -6339,10 +6304,20 @@ Cliente B`)
         const period = Math.max(5, Number(row?.otpPeriod) || 30)
         const digits = [6,7,8].includes(Number(row?.otpDigits)) ? Number(row?.otpDigits) : 6
         const algorithm = String(row?.otpAlgorithm || "SHA1")
-        const code = await generateTotpCode(secret, Date.now(), { period, digits, algorithm })
-        const secondsLeft = period - (Math.floor(Date.now() / 1000) % period)
-        codeEl.textContent = code || "------"
-        timerEl.textContent = `vence en ${String(secondsLeft).padStart(2, "0")}s · ${algorithm}/${digits}`
+        try{
+          const code = await generateTotpCode(secret, Date.now(), { period, digits, algorithm })
+          if(!code){
+            codeEl.textContent = "ERROR"
+            timerEl.textContent = "No se pudo generar código"
+            continue
+          }
+          const secondsLeft = period - (Math.floor(Date.now() / 1000) % period)
+          codeEl.textContent = code
+          timerEl.textContent = `vence en ${String(secondsLeft).padStart(2, "0")}s · ${algorithm}/${digits}`
+        }catch(_){
+          codeEl.textContent = "ERROR"
+          timerEl.textContent = "No se pudo generar código"
+        }
       }
     }
 
@@ -6358,29 +6333,8 @@ Cliente B`)
         raw = snap.val() || {}
       }catch(_){ raw = {} }
       const cloudRows = Object.values(raw).filter(Boolean)
-      let consultorRows = []
-      try{
-        const usersRaw = (await db.ref("users_by_email").once("value")).val() || {}
-        consultorRows = Object.values(usersRaw).filter(u => String(u?.role || "").toLowerCase() === "consultor").map(u => ({
-          key: String(u?.key || emailKey(u?.email || "")),
-          clientName: String(u?.name || u?.profileName || u?.nickname || u?.email || ""),
-          email: String(u?.email || ""),
-          country: String(u?.country || ""),
-          area: String(u?.area || ""),
-          notes: String(u?.notes || ""),
-          secret: String(u?.twoFactorSecret || ""),
-          noQr: !(String(u?.twoFactorEnabled || "").toLowerCase() === "true" || u?.twoFactorEnabled === true),
-          updatedAt: String(u?.passwordUpdatedAt || ""),
-          accessPassword: "",
-          otpDigits: Number(u?.otpDigits) || 6,
-          otpPeriod: Number(u?.otpPeriod) || 30,
-          otpAlgorithm: String(u?.otpAlgorithm || "SHA1"),
-          twoFactorOtpAuthUrl: String(u?.twoFactorOtpAuthUrl || "")
-        }))
-      }catch(_){ consultorRows = [] }
-
       const mergedByKey = {}
-      for(const row of [...consultorRows, ...cloudRows]){
+      for(const row of cloudRows){
         const key = String(row?.key || emailKey(row?.email || ""))
         if(!key) continue
         mergedByKey[key] = { ...mergedByKey[key], ...row, key }
@@ -6625,7 +6579,7 @@ Cliente B`)
         ` : showDailysView ? `
           <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAnalystWrap" class="small"></div></div>
         ` : showTopPerformerView ? `
-          <div class="card" style="min-height:320px;display:flex;align-items:center;justify-content:center;text-align:center">
+          <div style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center">
             <div>
               <div style="font-size:54px;line-height:1;margin-bottom:10px">🛠️</div>
               <h2 style="margin:0">Próximamente</h2>
@@ -6647,6 +6601,96 @@ Cliente B`)
           </div>
         ` : showPortfolioOverview ? `
           <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='agenda') ? `
+          <div class="card"><h3 style="margin-top:0">Organizar agendas</h3><div id="adminAgendaTableWrap" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='comments') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Comentarios</h3>
+            <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(260px,1fr))">
+              <div><h4 style="margin:0 0 8px">Últimos comentarios</h4><div id="adminCommentsAll" class="small"></div></div>
+              <div><h4 style="margin:0 0 8px">Menciones al admin</h4><div id="adminCommentsMentions" class="small"></div></div>
+            </div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='dailys') ? `
+          <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='support') ? `
+          <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='announcements') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Comunicados</h3>
+            <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(240px,1fr))">
+              <div><label>Título</label><input id="announcementTitle" placeholder="Título del comunicado"></div>
+              <div><label>Programar</label><input id="announcementScheduleAt" type="datetime-local"></div>
+              <div style="grid-column:1/-1"><label>Mensaje</label><textarea id="announcementBody" placeholder="Mensaje para el equipo"></textarea></div>
+              <div class="inline" style="align-items:center;gap:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span class="small">Activo</span></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div>
+            </div>
+            <div id="announcementsList" class="small" style="margin-top:10px"></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='capacity') ? `
+          <div class="card"><h3 style="margin-top:0">Capacidad instalada</h3><div id="adminHoursTable" class="small"></div><div id="adminCapacityClientTable" class="small" style="margin-top:12px"></div></div>
+        ` : (isAdmin && adminPanelTab==='settings') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Configuración de tickets</h3>
+            <div class="feedItem">
+              <h4 style="margin:0 0 8px">Permisos de edición por rol</h4>
+              <div class="inline" style="gap:12px;align-items:center">
+                <label class="switchWrap"><label class="switch"><input id="cfgEditAnalyst" type="checkbox"><span class="slider"></span></label><span>Analista</span></label>
+                <label class="switchWrap"><label class="switch"><input id="cfgEditConsultor" type="checkbox"><span class="slider"></span></label><span>Consultor</span></label>
+                <button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar</button>
+              </div>
+            </div>
+            <div class="feedItem">
+              <h4 style="margin:0 0 8px">Agregar campo personalizado</h4>
+              <div class="settingsGrid" style="grid-template-columns:repeat(4,minmax(180px,1fr))">
+                <div><label>Nombre</label><input id="cfgFieldLabel"></div>
+                <div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div>
+                <div><label>Opciones</label><input id="cfgFieldOptions" placeholder="Alta, Media, Baja"></div>
+                <div><label>Requerido</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div>
+                <div><label>Campo padre</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div>
+                <div><label>Valor padre</label><input id="cfgFieldParentValue"></div>
+                <div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar</button></div>
+              </div>
+            </div>
+            <div class="feedItem"><h4 style="margin:0 0 8px">Campos base</h4><div id="coreTicketFieldsConfig" class="small"></div></div>
+            <div class="feedItem"><h4 style="margin:0 0 8px">Campos personalizados</h4><div id="ticketFieldsConfigList" class="small"></div></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='guidelines') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Lineamientos</h3>
+            <input id="guidelineEditId" type="hidden">
+            <div class="settingsGrid">
+              <div><label>Cliente</label><select id="guidelineClient"></select></div>
+              <div><label>Título</label><input id="guidelineTitle"></div>
+              <div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary"></textarea></div>
+              <div class="inline" style="align-items:center;gap:8px"><label class="switch"><input id="guidelineImportant" type="checkbox"><span class="slider"></span></label><span class="small">Importante</span></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div>
+            </div>
+            <div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div>
+            <div id="guidelinesAdminList" class="small" style="margin-top:10px"></div>
+            <div class="hidden"><input id="guidelineEditTitle"><textarea id="guidelineEditSummary"></textarea><input id="guidelineEditImportant" type="checkbox"></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='manuals') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Manuales</h3>
+            <input id="manualEditId" type="hidden">
+            <div class="settingsGrid">
+              <div><label>Título</label><input id="manualTitle"></div>
+              <div><label>Link</label><input id="manualLink"></div>
+              <div><label>Tipo de actividad</label><input id="manualActivityType"></div>
+              <div><label>Microservicio</label><input id="manualMicroserviceType"></div>
+              <div style="grid-column:1/-1"><label>Detalle</label><textarea id="manualDetail"></textarea></div>
+              <div><label>Carpeta</label><select id="manualFolderId"><option value="">Sin carpeta</option></select></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="saveManual()">Guardar manual</button></div>
+            </div>
+            <div id="adminManualsList" class="small" style="margin-top:10px"></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='internal_quality') ? `
+          <div class="card"><h3 style="margin-top:0">Calidad interna</h3><div id="adminInternalQualityList" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='quality') ? `
+          <div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><div id="adminQualityList" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='connections') ? `
+          <div class="card"><h3 style="margin-top:0">Conexiones</h3><div id="adminConnectionsPanel" class="small"></div></div>
         ` : showAdminPanel ? (adminPanelTab==='config_home' && showAdminConfigButton ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
             <div class="row">
