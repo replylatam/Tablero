@@ -9963,7 +9963,16 @@ Cliente B`)
 
     async function removeDailyWatchItem(id){
       if(currentRole !== 'admin') return
-      await db.ref('daily_pending').child(String(id || '')).remove()
+      const ref = db.ref('daily_pending').child(String(id || ''))
+      const row = (await ref.once('value')).val() || {}
+      await ref.update({
+        problemStatus: 'ya_resuelto',
+        solutionDetail: String(row.solutionDetail || '').trim() || 'Quitado por admin',
+        removedFromPendingAt: new Date().toISOString(),
+        removedFromPendingBy: String(currentUser?.email || '').toLowerCase(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(currentUser?.email || '').toLowerCase()
+      })
       await loadDailysAdmin()
     }
 
