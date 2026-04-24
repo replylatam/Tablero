@@ -519,8 +519,9 @@
     .dailyWeekChipToday{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset;background:rgba(61,110,245,.16)}
     .dailyWeekChipActive{background:rgba(34,212,191,.15);border-color:var(--accent-2)}
     .dailyMemberGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
-    .dailyMemberCard{border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2);cursor:pointer}
+    .dailyMemberCard{border:1px solid var(--stroke);border-radius:12px;padding:10px;background:var(--surface-2);cursor:pointer;display:flex;align-items:center;gap:10px}
     .dailyMemberCard.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow) inset}
+    .dailyMemberAvatar{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--stroke)}
     .agendaSection h4 { margin: 0 0 8px; }
     body.light #adminAgendaTableWrap thead th,
     body.light #analystAgendaTableWrap thead th {
@@ -1647,6 +1648,7 @@
     var dailyAdminRows = []
     var dailyAnalystRows = []
     var dailyWeekStripScroll = {}
+    var dailyWeekOffsetByScope = { admin: 0, analyst: 0 }
     var dailyAdminSelectedDate = ""
     var dailyReferenteSelectedDate = toLocalDateOnly(new Date())
     var dailyReferenteSelectedAnalyst = ""
@@ -2632,7 +2634,8 @@
       if(direct) return direct
       const inline = String(user?.photoDataUrl || "").trim()
       if(inline) return inline
-      return buildInitialAvatar(email)
+      const sex = String(user?.sex || "").toLowerCase()
+      return sex === "mujer" ? "mujer.png" : "hombre.png"
     }
 
     function userAvatarByEmail(email){
@@ -9822,12 +9825,13 @@ Cliente B`)
       return String(user?.dailyReferente || "").toLowerCase()
     }
 
-    function getDailyWeekDays(){
+    function getDailyWeekDays(scope){
       const today = new Date()
       const day = today.getDay()
       const mondayOffset = day === 0 ? -6 : (1 - day)
       const monday = new Date(today)
-      monday.setDate(today.getDate() + mondayOffset)
+      const extraOffset = Number(dailyWeekOffsetByScope?.[scope] || 0)
+      monday.setDate(today.getDate() + mondayOffset + extraOffset)
       return Array.from({ length: 7 }, (_,ix) => {
         const d = new Date(monday)
         d.setDate(monday.getDate() + ix)
@@ -9837,15 +9841,15 @@ Cliente B`)
 
     function renderDailyWeekStrip(scope, selectedDate, onClickFnName, toggleable){
       const todayIso = toLocalDateOnly(new Date())
-      const days = getDailyWeekDays()
-      return `<div class="dailyWeekStripWrap"><button class="ghost" onclick="scrollDailyWeekStrip('${scope}',-1)">◀</button><div id="dailyWeekStrip_${scope}" class="dailyWeekStrip">${days.map(d => { const iso = toLocalDateOnly(d); return `<button class="dailyWeekChip ${iso===todayIso?'dailyWeekChipToday':''} ${iso===selectedDate?'dailyWeekChipActive':''}" onclick="${onClickFnName}('${iso}', ${toggleable ? 'true' : 'false'})"><div style="font-weight:700">${htmlEscape(d.toLocaleDateString('es-AR',{ weekday:'short'}))}</div><div class="small">${htmlEscape(formatDateDMY(iso))}</div></button>` }).join('')}</div><button class="ghost" onclick="scrollDailyWeekStrip('${scope}',1)">▶</button></div>`
+      const days = getDailyWeekDays(scope)
+      return `<div class="dailyWeekStripWrap"><button class="ghost" onclick="shiftDailyWeek('${scope}',-1)">◀</button><div id="dailyWeekStrip_${scope}" class="dailyWeekStrip">${days.map(d => { const iso = toLocalDateOnly(d); return `<button class="dailyWeekChip ${iso===todayIso?'dailyWeekChipToday':''} ${iso===selectedDate?'dailyWeekChipActive':''}" onclick="${onClickFnName}('${iso}', ${toggleable ? 'true' : 'false'})"><div style="font-weight:700">${htmlEscape(d.toLocaleDateString('es-AR',{ weekday:'short'}))}</div><div class="small">${htmlEscape(formatDateDMY(iso))}</div></button>` }).join('')}</div><button class="ghost" onclick="shiftDailyWeek('${scope}',1)">▶</button></div>`
     }
 
-    function scrollDailyWeekStrip(scope, direction){
-      const el = document.getElementById(`dailyWeekStrip_${scope}`)
-      if(!el) return
-      const step = 240
-      el.scrollBy({ left: Number(direction || 0) * step, behavior: 'smooth' })
+    function shiftDailyWeek(scope, direction){
+      const current = Number(dailyWeekOffsetByScope?.[scope] || 0)
+      dailyWeekOffsetByScope[scope] = current + (Number(direction || 0) * 7)
+      if(scope === "admin") loadDailysAdmin()
+      if(scope === "analyst") loadDailysAnalyst()
     }
 
     function setDailyAdminDateFilter(iso, toggleable){
@@ -9967,7 +9971,7 @@ Cliente B`)
 
     async function saveDailyIssueField(analystEmail, dateIso, ticketId, field, rawValue){
       if(currentRole !== 'analista') return
-      const allowed = new Set(["hadProblem","problemDescription","escalateTo","escalated","solved"])
+      const allowed = new Set(["hadProblem","problemDescription","escalateTo","escalated","solved","solutionDetail"])
       if(!allowed.has(String(field || ""))) return
       const referenteKey = emailKey(currentUser?.email || "")
       const analystKey = emailKey(analystEmail || "")
@@ -9977,6 +9981,44 @@ Cliente B`)
       const current = (await ref.once("value")).val() || {}
       const value = (field === "hadProblem" || field === "escalated" || field === "solved") ? !!rawValue : String(rawValue || "")
       await ref.set({ ...current, analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(ticketId || ""), date: dateKey, [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+    }
+
+    async function solveDailyIssueFromPending(analystEmail, dateIso, ticketId){
+      if(currentRole !== "analista") return
+      const inputId = `pendingSolve_${emailKey(analystEmail || "")}_${String(dateIso || "").replaceAll("-","")}_${emailKey(ticketId || "")}`
+      const detail = String(document.getElementById(inputId)?.value || "").trim()
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "solutionDetail", detail)
+      await saveDailyIssueField(analystEmail, dateIso, ticketId, "solved", true)
+      await loadDailysAnalyst()
+    }
+
+    async function addReferenteStructuredNote(analystEmail, dateIso){
+      if(currentRole !== "analista") return
+      const note = {
+        ticketId: String(document.getElementById("noteTicketId")?.value || "").trim(),
+        client: String(document.getElementById("noteClient")?.value || "").trim(),
+        title: String(document.getElementById("noteTitle")?.value || "").trim(),
+        adminComment: String(document.getElementById("noteAdminComment")?.value || "").trim(),
+        analystComment: String(document.getElementById("noteAnalystComment")?.value || "").trim(),
+        hadProblem: String(document.getElementById("noteHadProblem")?.value || "no") === "si",
+        problemDescription: String(document.getElementById("noteProblemDesc")?.value || "").trim(),
+        escalateTo: String(document.getElementById("noteEscalateTo")?.value || "").trim(),
+        escalated: !!document.getElementById("noteEscalated")?.checked,
+        solved: !!document.getElementById("noteSolved")?.checked,
+        solutionDetail: String(document.getElementById("noteSolutionDetail")?.value || "").trim()
+      }
+      const id = generateId()
+      const ref = db.ref("daily_referente_notes_struct").child(emailKey(currentUser?.email || "")).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(id)
+      await ref.set({ ...note, id, analystEmail: String(analystEmail || "").toLowerCase(), date: String(dateIso || ""), createdAt: new Date().toISOString(), createdBy: String(currentUser?.email || "").toLowerCase() })
+      await loadDailysAnalyst()
+    }
+
+    async function escalateStructuredReferenteNote(analystEmail, dateIso, noteId){
+      if(currentRole !== "analista") return
+      const note = (await db.ref("daily_referente_notes_struct").child(emailKey(currentUser?.email || "")).child(emailKey(analystEmail || "")).child(String(dateIso || "")).child(String(noteId || "")).once("value")).val()
+      if(!note) return
+      await escalateGenericDailyItem({ sourceType: "referente_structured_note", analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(note.ticketId || ""), title: String(note.title || "Anotación referente"), client: String(note.client || ""), referenteObservation: String(note.problemDescription || note.solutionDetail || ""), escalateTo: String(note.escalateTo || ""), hadProblem: !!note.hadProblem })
+      await loadDailysAnalyst()
     }
 
     async function escalateDailyTaskForReferente(ticketId, analystEmail, dateIso){
@@ -10107,6 +10149,7 @@ Cliente B`)
       }
       const entries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).sort((a,b)=>String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))
       const notesMap = (await db.ref('daily_referente_notes').child(emailKey(currentUser?.email || '')).once('value')).val() || {}
+      const notesStructMap = (await db.ref('daily_referente_notes_struct').child(emailKey(currentUser?.email || '')).once('value')).val() || {}
       const me = usersMap[emailKey(currentUser?.email || "")] || { email: currentUser?.email || "" }
       const meEmail = String(me.email || currentUser?.email || "").toLowerCase()
       const isReferente = String(me.dailyRole || "").toLowerCase() === "referente"
@@ -10126,7 +10169,7 @@ Cliente B`)
 
       const memberCards = scopedAnalysts.map(u => {
         const email = String(u.email || "").toLowerCase()
-        return `<button class="dailyMemberCard ${selectedAnalystEmail===email?'active':''}" onclick="setDailyReferenteAnalyst('${email}')"><div style="font-weight:700">${htmlEscape(userDisplayNameByEmail(email) || email)}</div><div class="small">${htmlEscape(String(u.analystTeam || '').replace('_',' ').toUpperCase() || 'Sin equipo')}</div></button>`
+        return `<button class="dailyMemberCard ${selectedAnalystEmail===email?'active':''}" onclick="setDailyReferenteAnalyst('${email}')"><img class="dailyMemberAvatar" src="${htmlEscape(userAvatarByEmail(email))}" data-fallback="${htmlEscape(buildInitialAvatar(email || 'U'))}" onerror="handleAvatarError(this)" alt="avatar"><div style="font-weight:700">${htmlEscape(userDisplayNameByEmail(email) || email)}</div></button>`
       }).join('') || `<div class="small">Sin miembros asignados.</div>`
 
       const selectedAnalyst = scopedAnalysts.find(u => String(u.email || "").toLowerCase() === selectedAnalystEmail)
@@ -10134,11 +10177,23 @@ Cliente B`)
       if(selectedAnalyst){
         const email = String(selectedAnalyst.email || '').toLowerCase()
         const dayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === selectedDate)
+        const yDate = new Date(`${selectedDate}T00:00:00`); yDate.setDate(yDate.getDate() - 1)
+        const yesterdayIso = toLocalDateOnly(yDate)
+        const yesterdayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === yesterdayIso)
         const noteRows = Object.values(notesMap[emailKey(email)] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+        const noteRowsStruct = Object.values(notesStructMap[emailKey(email)]?.[selectedDate] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
         const dayIssues = issuesMap[emailKey(email)]?.[selectedDate] || {}
+        const yIssues = issuesMap[emailKey(email)]?.[yesterdayIso] || {}
+        const renderDailyTaskRow = (t, issue, dateIso, label) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','hadProblem', this.value==='si')"><option value="no" ${issue.hadProblem ? '' : 'selected'}>No</option><option value="si" ${issue.hadProblem ? 'selected' : ''}>Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(issue.problemDescription || '')}" placeholder="Descripción" onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','problemDescription', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','escalateTo', this.value)"><option value="">-</option><option value="Alan" ${issue.escalateTo==='Alan'?'selected':''}>Alan</option><option value="Lau" ${issue.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${issue.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Consultor" ${issue.escalateTo==='Consultor'?'selected':''}>Consultor</option><option value="Cliente" ${issue.escalateTo==='Cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.escalated ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','escalated', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.solved ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${dateIso}','${t.id}','solved', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTaskForReferente('${t.id}','${email}','${dateIso}')">Elevar TL</button></td></tr>`
         selectedAnalystSection = `<div class="agendaSection"><h4 style="margin-bottom:8px">${htmlEscape(userDisplayNameByEmail(email) || email)} · ${htmlEscape(formatDateDMY(selectedDate))}</h4>
-          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${dayTasks.length ? dayTasks.map(t => { const issue = dayIssues[emailKey(t.id || '')] || {}; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','hadProblem', this.value==='si')"><option value="no" ${issue.hadProblem ? '' : 'selected'}>No</option><option value="si" ${issue.hadProblem ? 'selected' : ''}>Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(issue.problemDescription || '')}" placeholder="Descripción" onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','problemDescription', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','escalateTo', this.value)"><option value="">-</option><option value="Alan" ${issue.escalateTo==='Alan'?'selected':''}>Alan</option><option value="Lau" ${issue.escalateTo==='Lau'?'selected':''}>Lau</option><option value="Trini" ${issue.escalateTo==='Trini'?'selected':''}>Trini</option><option value="Consultor" ${issue.escalateTo==='Consultor'?'selected':''}>Consultor</option><option value="Cliente" ${issue.escalateTo==='Cliente'?'selected':''}>Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.escalated ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','escalated', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${issue.solved ? 'checked' : ''} onchange="saveDailyIssueField('${email}','${selectedDate}','${t.id}','solved', this.checked)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateDailyTaskForReferente('${t.id}','${email}','${selectedDate}')">Elevar TL</button></td></tr>` }).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas para la fecha seleccionada.</td></tr>`}</tbody></table></div>
-          <div style="margin-top:8px"><div class="small" style="margin-bottom:6px"><strong>Anotaciones del referente</strong></div>${isReferente ? `<div class="inline" style="margin-bottom:6px"><input id="dailyNoteInput_${emailKey(email)}" placeholder="Escribí una anotación para ${htmlEscape(userDisplayNameByEmail(email) || email)}"><button class="ghost" onclick="addReferenteNote('${email}')">Guardar</button></div>` : ''}${noteRows.length ? noteRows.map(n => `<div class="feedItem" style="margin-top:4px"><div class="feedTop"><div class="feedMeta">${htmlEscape(formatDateTime24(n.createdAt || ''))}</div><button class="ghost" onclick="escalateReferenteNote('${email}','${n.id}')">Elevar</button></div><div>${htmlEscape(n.note || '-')}</div></div>`).join('') : `<div class="small">Sin anotaciones.</div>`}</div>
+          <div class="small" style="margin:6px 0"><strong>AYER (${htmlEscape(formatDateDMY(yesterdayIso))})</strong></div>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${yesterdayTasks.length ? yesterdayTasks.map(t => renderDailyTaskRow(t, yIssues[emailKey(t.id || '')] || {}, yesterdayIso, 'AYER')).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas de AYER.</td></tr>`}</tbody></table></div>
+          <div class="small" style="margin:10px 0 6px"><strong>HOY (${htmlEscape(formatDateDMY(selectedDate))})</strong></div>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody>${dayTasks.length ? dayTasks.map(t => renderDailyTaskRow(t, dayIssues[emailKey(t.id || '')] || {}, selectedDate, 'HOY')).join('') : `<tr><td colspan="11" class="small" style="padding:8px">Sin tareas de HOY.</td></tr>`}</tbody></table></div>
+          <div style="margin-top:8px"><div class="small" style="margin-bottom:6px"><strong>Anotaciones del referente (mismo formato, campos opcionales)</strong></div>
+            <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario admin</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Hubo problema?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Elevar a</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se elevó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Se solucionó?</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acción</th></tr></thead><tbody><tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteTicketId" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteClient" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteTitle" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteAdminComment" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteAnalystComment" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="noteHadProblem"><option value="no">No</option><option value="si">Sí</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input id="noteProblemDesc" placeholder="Opcional"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select id="noteEscalateTo"><option value="">-</option><option value="Alan">Alan</option><option value="Lau">Lau</option><option value="Trini">Trini</option><option value="Consultor">Consultor</option><option value="Cliente">Cliente</option></select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input id="noteEscalated" type="checkbox"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input id="noteSolved" type="checkbox"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="addReferenteStructuredNote('${email}','${selectedDate}')">Guardar</button></td></tr>${noteRowsStruct.map(n => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.ticketId || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.client || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.title || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.adminComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.analystComment || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.hadProblem ? 'Sí' : 'No'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.problemDescription || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(n.escalateTo || '-')}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.escalated ? '✅' : '—'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${n.solved ? '✅' : '—'}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" onclick="escalateStructuredReferenteNote('${email}','${selectedDate}','${n.id}')">Elevar TL</button></td></tr>`).join('') || `<tr><td colspan="11" class="small" style="padding:8px">Sin anotaciones estructuradas.</td></tr>`}</tbody></table></div>
+            ${noteRows.length ? `<div class="small" style="margin-top:6px">Anotaciones texto previas: ${noteRows.length}</div>` : ""}
+          </div>
         </div>`
       }
 
@@ -10157,7 +10212,7 @@ Cliente B`)
         <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar información al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
         <div class="agendaSection"><h4 style="margin-bottom:8px">Miembros asignados</h4><div class="dailyMemberGrid">${memberCards}</div></div>
         ${isReferente ? (selectedAnalystSection || `<div class="agendaSection"><div class="small">Seleccioná un analista para ver su información.</div></div>`) : `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td></tr>`).join("") || `<tr><td colspan="7" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>`}
-        ${isReferente ? `<div class="agendaSection"><h4 style="margin-bottom:8px">Pendientes por elevar / no solucionados</h4>${pendingIssues.length ? pendingIssues.map(issue => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(issue.ticketId || '-') } · ${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')}</div><div class="feedMeta">${htmlEscape(formatDateDMY(issue.date || todayIso))} · Escalar a: ${htmlEscape(issue.escalateTo || '-')}</div></div><span class="badge ${issue.solved ? 'ok' : 'off'}">${issue.solved ? 'Solucionado' : 'Pendiente'}</span></div><div>${htmlEscape(issue.problemDescription || 'Sin descripción')}</div></div>`).join('') : `<div class="small">No hay pendientes abiertos.</div>`}</div>` : ""}
+        ${isReferente ? `<div class="agendaSection"><h4 style="margin-bottom:8px">Pendientes por elevar / no solucionados</h4>${pendingIssues.length ? pendingIssues.map(issue => { const solveInputId = `pendingSolve_${emailKey(issue.analystEmail || '')}_${String(issue.date || '').replaceAll('-','')}_${emailKey(issue.ticketId || '')}`; return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(issue.ticketId || '-') } · ${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')}</div><div class="feedMeta">${htmlEscape(formatDateDMY(issue.date || todayIso))} · Escalar a: ${htmlEscape(issue.escalateTo || '-')}</div></div><span class="badge ${issue.solved ? 'ok' : 'off'}">${issue.solved ? 'Solucionado' : 'Pendiente'}</span></div><div>${htmlEscape(issue.problemDescription || 'Sin descripción')}</div><div class="inline" style="margin-top:6px"><input id="${solveInputId}" value="${htmlEscape(issue.solutionDetail || '')}" placeholder="Detalle de solución"><button class="ghost" onclick="solveDailyIssueFromPending('${String(issue.analystEmail || '').toLowerCase()}','${issue.date || ''}','${issue.ticketId || ''}')">Marcar solucionado</button></div></div>` }).join('') : `<div class="small">No hay pendientes abiertos.</div>`}</div>` : ""}
       `
     }
 
