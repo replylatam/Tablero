@@ -6038,7 +6038,8 @@ Cliente B`)
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : [])
+          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
         ].filter(Boolean)}
       ]
 
