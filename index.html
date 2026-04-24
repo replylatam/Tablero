@@ -9,6 +9,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1590,7 +1591,9 @@
       "123456","password","123456789","12345678","12345","qwerty","abc123","111111","123123","admin","letmein","welcome","000000","iloveyou","1234"
     ])
     const ADMIN_LEVEL1_EMAILS = ["admin@tablero.local"]
-    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support"])
+    const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support","directory"])
+    const DIRECTORY_AREAS = ["ACCO", "CONSULTORIA"]
+    const AMERICA_COUNTRIES = ["Antigua y Barbuda","Argentina","Bahamas","Barbados","Belice","Bolivia","Brasil","Canadá","Chile","Colombia","Costa Rica","Cuba","Dominica","Ecuador","El Salvador","Estados Unidos","Granada","Guatemala","Guyana","Haití","Honduras","Jamaica","México","Nicaragua","Panamá","Paraguay","Perú","República Dominicana","San Cristóbal y Nieves","San Vicente y las Granadinas","Santa Lucía","Surinam","Trinidad y Tobago","Uruguay","Venezuela"]
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -1618,6 +1621,12 @@
     var adminManualFolderFilter = ""
     var adminManualCreateFolderVisible = false
     var adminManualFolderSearchTerm = ""
+    var adminDirectoryRows = []
+    var adminDirectorySearchTerm = ""
+    var adminDirectoryAreaFilter = ""
+    var adminDirectoryVisibleRows = []
+    var adminDirectoryTotpTimer = null
+    var adminDirectoryEditingKey = ""
     var manualEditId = ""
     var memoEditId = ""
     var analystCvFilter = ""
@@ -1644,7 +1653,7 @@
     var pendingTimerStopContext = null
     var userEditContext = null
     var adminAgendaTeam = "equipo_1"
-    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: [], client: "", consultor: "" }
+    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
     var adminAgendaCurrentRows = []
     var adminAgendaFiltersModalVisible = false
     var adminAgendaFilterSwitchesVisible = false
@@ -1888,8 +1897,10 @@
 
     function canAccessAdminTab(tab){
       if(String(currentRole || "").toLowerCase() !== "admin") return false
+      const normalizedTab = String(tab || "")
+      if(normalizedTab === "directory") return isAdminLevel1()
       if(isAdminLevel1()) return true
-      return !ADMIN_LEVEL2_BLOCKED_TABS.has(String(tab || ""))
+      return !ADMIN_LEVEL2_BLOCKED_TABS.has(normalizedTab)
     }
 
     function setAdminTab(tab){
@@ -1966,7 +1977,7 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys","top_performer"].includes(tab) ? tab : "tickets"
       if(mainViewTab === nextTab){
         if(nextTab === "tickets"){
           if(currentRole === "analista" && analystPanelTab !== "panel") analystPanelTab = "panel"
@@ -5802,19 +5813,24 @@ Cliente B`)
       return new Uint8Array(bytes)
     }
 
-    async function generateTotpCode(secret, timestampMs = Date.now()){
+    async function generateTotpCode(secret, timestampMs = Date.now(), options = {}){
       const keyBytes = base32ToBytes(secret)
       if(!keyBytes.length) return ""
-      const counter = Math.floor(timestampMs / 30000)
+      const period = Math.max(5, Number(options?.period) || 30)
+      const digits = Math.min(8, Math.max(6, Number(options?.digits) || 6))
+      const algorithmRaw = String(options?.algorithm || "SHA1").toUpperCase().replace(/[^A-Z0-9]/g, "")
+      const algorithmMap = { SHA1: "SHA-1", SHA256: "SHA-256", SHA512: "SHA-512" }
+      const hashName = algorithmMap[algorithmRaw] || "SHA-1"
+      const counter = Math.floor(timestampMs / (period * 1000))
       const msg = new ArrayBuffer(8)
       const view = new DataView(msg)
       view.setUint32(0, Math.floor(counter / 0x100000000), false)
       view.setUint32(4, counter % 0x100000000, false)
-      const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
+      const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: hashName }, false, ["sign"])
       const sig = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msg))
       const offset = sig[sig.length - 1] & 0x0f
       const bin = ((sig[offset] & 0x7f) * 16777216) + (sig[offset+1] * 65536) + (sig[offset+2] * 256) + sig[offset+3]
-      return String(bin % 1000000).padStart(6, "0")
+      return String(bin % (10 ** digits)).padStart(digits, "0")
     }
 
     async function verifyTotpCode(secret, code){
@@ -5948,6 +5964,435 @@ Cliente B`)
       await loadMyProfileForm()
     }
 
+
+    function buildDirectorySelectOptions(list, selected, placeholder){
+      const normalizedSelected = String(selected || "")
+      const base = Array.isArray(list) ? list.map(v => String(v || "").trim()).filter(Boolean) : []
+      const all = normalizedSelected && !base.includes(normalizedSelected) ? [...base, normalizedSelected] : base
+      const first = placeholder ? `<option value="">${htmlEscape(placeholder)}</option>` : ""
+      return `${first}${all.map(opt => `<option value="${htmlEscape(opt)}" ${opt===normalizedSelected?"selected":""}>${htmlEscape(opt)}</option>`).join("")}`
+    }
+
+    function buildDirectoryAreaOptions(selected = ""){
+      return buildDirectorySelectOptions(DIRECTORY_AREAS, selected, "Seleccionar área")
+    }
+
+    function buildDirectoryCountryOptions(selected = ""){
+      return buildDirectorySelectOptions(AMERICA_COUNTRIES, selected, "Seleccionar país")
+    }
+
+    function normalizeBase32Secret(value){
+      return String(value || "").trim().replace(/\s+/g, "").toUpperCase().replace(/=+$/g, "")
+    }
+
+    function isValidBase32Secret(value){
+      return /^[A-Z2-7]+$/.test(String(value || ""))
+    }
+
+    function parseDirectorySecret(value){
+      const raw = String(value || "").trim()
+      if(!raw) return ""
+      let candidate = ""
+
+      try{
+        if(raw.startsWith("otpauth://")){
+          const parsed = new URL(raw)
+          candidate = parsed.searchParams.get("secret") || ""
+        }
+      }catch(_){ }
+
+      if(!candidate){
+        const match = raw.match(/(?:^|[?&])secret=([^&\s]+)/i)
+        if(match && match[1]) candidate = match[1]
+      }
+
+      if(!candidate) candidate = raw
+
+      try{ candidate = decodeURIComponent(candidate) }catch(_){ }
+      candidate = normalizeBase32Secret(candidate)
+      return isValidBase32Secret(candidate) ? candidate : ""
+    }
+
+    function parseDirectoryOtpConfig(value){
+      const raw = String(value || "").trim()
+      const out = { secret: parseDirectorySecret(raw), digits: 6, period: 30, algorithm: "SHA1" }
+      if(!raw.startsWith("otpauth://")) return out
+      try{
+        const parsed = new URL(raw)
+        const secret = parseDirectorySecret(parsed.searchParams.get("secret") || "")
+        const digits = Number(parsed.searchParams.get("digits") || "6")
+        const period = Number(parsed.searchParams.get("period") || "30")
+        const algorithm = String(parsed.searchParams.get("algorithm") || "SHA1").toUpperCase().replace(/[^A-Z0-9]/g, "")
+        return {
+          secret: secret || out.secret,
+          digits: [6,7,8].includes(digits) ? digits : 6,
+          period: period > 0 ? period : 30,
+          algorithm: ["SHA1","SHA256","SHA512"].includes(algorithm) ? algorithm : "SHA1"
+        }
+      }catch(_){
+        return out
+      }
+    }
+
+    function setDirectoryOtpMetaFields(config){
+      const digitsEl = document.getElementById("directoryOtpDigits")
+      const periodEl = document.getElementById("directoryOtpPeriod")
+      const algorithmEl = document.getElementById("directoryOtpAlgorithm")
+      if(digitsEl) digitsEl.value = String(config?.digits || 6)
+      if(periodEl) periodEl.value = String(config?.period || 30)
+      if(algorithmEl) algorithmEl.value = String(config?.algorithm || "SHA1")
+    }
+
+    function setAdminDirectorySearch(value){
+      adminDirectorySearchTerm = String(value || "")
+      loadAdminDirectoryTab()
+    }
+
+    function setAdminDirectoryAreaFilter(value){
+      adminDirectoryAreaFilter = String(value || "")
+      loadAdminDirectoryTab()
+    }
+
+    async function extractDirectorySecretFromInput(){
+      const source = document.getElementById("directoryQrSource")
+      const target = document.getElementById("directorySecret")
+      if(!source || !target) return
+      const config = parseDirectoryOtpConfig(source.value)
+      const secret = config.secret
+      if(!secret) return alert("No se pudo extraer un SECRET Base32 válido.")
+      setDirectoryOtpMetaFields(config)
+      target.value = secret
+      showToast("SECRET extraído correctamente.", "ok")
+    }
+
+    async function extractDirectorySecretFromImage(){
+      const imageInput = document.getElementById("directoryQrImage")
+      const target = document.getElementById("directorySecret")
+      if(!imageInput || !target) return
+      const file = imageInput.files && imageInput.files[0]
+      if(!file) return alert("Adjuntá una imagen con el QR.")
+
+      const readFileAsDataUrl = () => new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ""))
+        reader.onerror = () => reject(new Error("read_error"))
+        reader.readAsDataURL(file)
+      })
+
+      const decodeWithJsQr = async () => {
+        const dataUrl = await readFileAsDataUrl()
+        return await new Promise((resolve, reject) => {
+          const img = new Image()
+          img.onload = () => {
+            try{
+              const canvas = document.createElement("canvas")
+              canvas.width = img.naturalWidth || img.width
+              canvas.height = img.naturalHeight || img.height
+              const ctx = canvas.getContext("2d", { willReadFrequently: true })
+              if(!ctx) return reject(new Error("canvas_context_error"))
+              ctx.drawImage(img, 0, 0)
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+              const qrLib = globalThis.jsQR
+              if(typeof qrLib !== "function") return reject(new Error("jsqr_unavailable"))
+              const result = qrLib(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" })
+              return resolve(String(result?.data || "").trim())
+            }catch(err){
+              reject(err)
+            }
+          }
+          img.onerror = () => reject(new Error("image_load_error"))
+          img.src = dataUrl
+        })
+      }
+
+      let rawValue = ""
+      if("BarcodeDetector" in window){
+        try{
+          const detector = new BarcodeDetector({ formats: ["qr_code"] })
+          const bitmap = await createImageBitmap(file)
+          const codes = await detector.detect(bitmap)
+          if(bitmap && typeof bitmap.close === "function") bitmap.close()
+          rawValue = String(codes?.[0]?.rawValue || "").trim()
+        }catch(_){
+          rawValue = ""
+        }
+      }
+
+      if(!rawValue){
+        try{
+          rawValue = await decodeWithJsQr()
+        }catch(_){
+          rawValue = ""
+        }
+      }
+
+      if(!rawValue) return alert("No se detectó un QR válido en la imagen. Probá con otra captura más nítida.")
+      const config = parseDirectoryOtpConfig(rawValue)
+      const secret = config.secret
+      if(!secret) return alert("Se leyó el QR pero no se encontró un SECRET Base32 válido.")
+      setDirectoryOtpMetaFields(config)
+      target.value = secret
+      const source = document.getElementById("directoryQrSource")
+      if(source && !source.value) source.value = rawValue
+      showToast("SECRET extraído desde imagen.", "ok")
+    }
+
+    async function saveDirectoryEntry(){
+      if(currentRole !== "admin" || !isAdminLevel1()) return alert("Disponible solo para Admin nivel 1.")
+      const clientName = (document.getElementById("directoryClient")?.value || "").trim()
+      const email = (document.getElementById("directoryEmail")?.value || "").trim().toLowerCase()
+      const password = (document.getElementById("directoryPassword")?.value || "").trim()
+      const country = (document.getElementById("directoryCountry")?.value || "").trim()
+      const area = (document.getElementById("directoryArea")?.value || "").trim()
+      const notes = (document.getElementById("directoryNotes")?.value || "").trim()
+      const noQr = !!document.getElementById("directoryNoQr")?.checked
+      const qrSourceValue = String(document.getElementById("directoryQrSource")?.value || "")
+      const parsedConfig = parseDirectoryOtpConfig(qrSourceValue)
+      const secret = parseDirectorySecret(document.getElementById("directorySecret")?.value || "") || parsedConfig.secret
+      const otpDigits = Number(document.getElementById("directoryOtpDigits")?.value || parsedConfig.digits || 6)
+      const otpPeriod = Number(document.getElementById("directoryOtpPeriod")?.value || parsedConfig.period || 30)
+      const otpAlgorithm = String(document.getElementById("directoryOtpAlgorithm")?.value || parsedConfig.algorithm || "SHA1").toUpperCase()
+      if(!clientName) return alert("Ingresá el nombre de cliente.")
+      if(!email || !email.includes("@")) return alert("Ingresá un email válido.")
+      if(!password) return alert("Ingresá una contraseña.")
+      if(!area) return alert("Seleccioná un área.")
+      if(!DIRECTORY_AREAS.includes(area)) return alert("Área inválida. Usá ACCO o CONSULTORIA.")
+      if(!country) return alert("Seleccioná un país.")
+      if(!noQr && !secret) return alert("Cargá el SECRET o activá 'Cargar sin QR'.")
+      const pwdError = passwordPolicyError(password)
+      if(pwdError) return alert(pwdError)
+
+      const key = emailKey(email)
+      const nowIso = new Date().toISOString()
+      const directoryPayload = {
+        key,
+        clientName,
+        email,
+        country,
+        area,
+        notes,
+        noQr,
+        secret: noQr ? "" : secret,
+        updatedAt: nowIso,
+        createdAt: nowIso,
+        accessPassword: password,
+        otpDigits: [6,7,8].includes(otpDigits) ? otpDigits : 6,
+        otpPeriod: otpPeriod > 0 ? otpPeriod : 30,
+        otpAlgorithm: ["SHA1","SHA256","SHA512"].includes(otpAlgorithm) ? otpAlgorithm : "SHA1"
+      }
+      const previousKey = String(adminDirectoryEditingKey || "")
+      const isEditing = !!previousKey
+      let wroteDirectory = false
+      let directoryErr = null
+      try{
+        const existing = (await db.ref(`directory_users/${key}`).once("value")).val()
+        if(existing && existing.createdAt) directoryPayload.createdAt = existing.createdAt
+        if(isEditing && previousKey && previousKey !== key){
+          try{ await db.ref(`directory_users/${previousKey}`).remove() }catch(_){ }
+        }
+        await db.ref(`directory_users/${key}`).set(directoryPayload)
+        wroteDirectory = true
+      }catch(err){ directoryErr = err; wroteDirectory = false }
+
+      if(wroteDirectory){
+        showToast(isEditing ? "Cliente actualizado en directorio." : "Cliente agregado al directorio.", "ok")
+      }else{
+        const parts = []
+        if(directoryErr) parts.push(`/directory_users (${String(directoryErr.code || directoryErr.message || 'error')})`)
+        const detail = parts.length ? `Sin permisos en ${parts.join(' y ')}` : "Error de escritura"
+        showToast(`${detail}. Revisá reglas de Firebase.`, "error", 3200)
+      }
+      ;["directoryClient","directoryEmail","directoryPassword","directoryCountry","directoryArea","directoryNotes","directoryQrSource","directorySecret"].forEach(id => {
+        const el = document.getElementById(id)
+        if(el) el.value = ""
+      })
+      const noQrInput = document.getElementById("directoryNoQr")
+      if(noQrInput) noQrInput.checked = false
+      setDirectoryOtpMetaFields({ digits: 6, period: 30, algorithm: "SHA1" })
+      adminDirectoryEditingKey = ""
+      const saveBtn = document.getElementById("directorySaveBtn")
+      const cancelBtn = document.getElementById("directoryCancelEditBtn")
+      if(saveBtn) saveBtn.textContent = "Guardar cliente"
+      if(cancelBtn) cancelBtn.classList.add("hidden")
+      await loadAdminDirectoryTab()
+    }
+
+    async function updateDirectoryArea(key){
+      if(currentRole !== "admin" || !isAdminLevel1()) return
+      const normalizedKey = String(key || "")
+      if(!normalizedKey) return
+      const areaInput = document.getElementById(`directoryArea_${normalizedKey}`)
+      if(!areaInput) return
+      const nextArea = String(areaInput.value || "").trim()
+      if(!nextArea) return alert("Seleccioná un área.")
+      if(!DIRECTORY_AREAS.includes(nextArea)) return alert("Área inválida. Usá ACCO o CONSULTORIA.")
+      try{ await db.ref(`directory_users/${normalizedKey}/area`).set(nextArea) }catch(_){ }
+      showToast("Área actualizada.", "ok", 1200)
+      await loadAdminDirectoryTab()
+    }
+
+    function cancelDirectoryEdit(){
+      adminDirectoryEditingKey = ""
+      ;["directoryClient","directoryEmail","directoryPassword","directoryCountry","directoryArea","directoryNotes","directoryQrSource","directorySecret"].forEach(id => {
+        const el = document.getElementById(id)
+        if(el) el.value = ""
+      })
+      const noQrInput = document.getElementById("directoryNoQr")
+      if(noQrInput) noQrInput.checked = false
+      setDirectoryOtpMetaFields({ digits: 6, period: 30, algorithm: "SHA1" })
+      const saveBtn = document.getElementById("directorySaveBtn")
+      const cancelBtn = document.getElementById("directoryCancelEditBtn")
+      if(saveBtn) saveBtn.textContent = "Guardar cliente"
+      if(cancelBtn) cancelBtn.classList.add("hidden")
+    }
+
+    function beginEditDirectoryEntry(key){
+      const normalizedKey = String(key || "")
+      const row = (adminDirectoryRows || []).find(item => String(item?.key || emailKey(item?.email || "")) === normalizedKey)
+      if(!row) return
+      adminDirectoryEditingKey = normalizedKey
+      const setVal = (id, value) => {
+        const el = document.getElementById(id)
+        if(el) el.value = String(value || "")
+      }
+      setVal("directoryClient", row.clientName || "")
+      setVal("directoryEmail", row.email || "")
+      setVal("directoryPassword", row.accessPassword || "")
+      setVal("directoryCountry", row.country || "")
+      setVal("directoryArea", row.area || "")
+      setVal("directoryNotes", row.notes || "")
+      setVal("directoryQrSource", row.twoFactorOtpAuthUrl || "")
+      setVal("directorySecret", row.secret || "")
+      const noQrInput = document.getElementById("directoryNoQr")
+      if(noQrInput) noQrInput.checked = !row.secret
+      setDirectoryOtpMetaFields({ digits: row.otpDigits || 6, period: row.otpPeriod || 30, algorithm: row.otpAlgorithm || "SHA1" })
+      const saveBtn = document.getElementById("directorySaveBtn")
+      const cancelBtn = document.getElementById("directoryCancelEditBtn")
+      if(saveBtn) saveBtn.textContent = "Actualizar cliente"
+      if(cancelBtn) cancelBtn.classList.remove("hidden")
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
+
+    function stopAdminDirectoryTotpTicker(){
+      if(adminDirectoryTotpTimer){
+        clearInterval(adminDirectoryTotpTimer)
+        adminDirectoryTotpTimer = null
+      }
+    }
+
+    function startAdminDirectoryTotpTicker(){
+      stopAdminDirectoryTotpTicker()
+      adminDirectoryTotpTimer = setInterval(() => {
+        if(!(currentRole === "admin" && adminPanelTab === "directory")) return stopAdminDirectoryTotpTicker()
+        renderAdminDirectoryTotpCodes()
+      }, 1000)
+    }
+
+    async function renderAdminDirectoryTotpCodes(){
+      const rows = Array.isArray(adminDirectoryVisibleRows) ? adminDirectoryVisibleRows : []
+      for(const row of rows){
+        const key = String(row?.key || emailKey(row?.email || ""))
+        const codeEl = document.getElementById(`dirTotp_${key}`)
+        const timerEl = document.getElementById(`dirTotpCountdown_${key}`)
+        if(!codeEl || !timerEl) continue
+        const secret = parseDirectorySecret(row?.secret || "")
+        if(!secret){
+          codeEl.textContent = "-"
+          timerEl.textContent = ""
+          continue
+        }
+        const period = Math.max(5, Number(row?.otpPeriod) || 30)
+        const digits = [6,7,8].includes(Number(row?.otpDigits)) ? Number(row?.otpDigits) : 6
+        const algorithm = String(row?.otpAlgorithm || "SHA1")
+        try{
+          const code = await generateTotpCode(secret, Date.now(), { period, digits, algorithm })
+          if(!code){
+            codeEl.textContent = "ERROR"
+            timerEl.textContent = "No se pudo generar código"
+            continue
+          }
+          const secondsLeft = period - (Math.floor(Date.now() / 1000) % period)
+          codeEl.textContent = code
+          timerEl.textContent = `vence en ${String(secondsLeft).padStart(2, "0")}s · ${algorithm}/${digits}`
+        }catch(_){
+          codeEl.textContent = "ERROR"
+          timerEl.textContent = "No se pudo generar código"
+        }
+      }
+    }
+
+    async function loadAdminDirectoryTab(){
+      if(currentRole !== "admin" || adminPanelTab !== "directory") return
+      const wrap = document.getElementById("adminDirectoryList")
+      if(!wrap) return
+      const areaFilterEl = document.getElementById("adminDirectoryAreaFilter")
+      if(areaFilterEl && areaFilterEl.value !== adminDirectoryAreaFilter) areaFilterEl.value = adminDirectoryAreaFilter
+      let raw = {}
+      try{
+        const snap = await db.ref("directory_users").once("value")
+        raw = snap.val() || {}
+      }catch(_){ raw = {} }
+      const cloudRows = Object.values(raw).filter(Boolean)
+      const mergedByKey = {}
+      for(const row of cloudRows){
+        const key = String(row?.key || emailKey(row?.email || ""))
+        if(!key) continue
+        mergedByKey[key] = { ...mergedByKey[key], ...row, key }
+      }
+      adminDirectoryRows = Object.values(mergedByKey)
+      const areas = Array.from(new Set(adminDirectoryRows.map(r => String(r?.area || "").trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b, "es", { sensitivity: "base" }))
+      const areaOptions = ['<option value="">Todas las áreas</option>', ...areas.map(a => `<option value="${htmlEscape(a)}" ${a===adminDirectoryAreaFilter?"selected":""}>${htmlEscape(a)}</option>`)].join("")
+      const term = String(adminDirectorySearchTerm || "").trim().toLowerCase()
+      const filtered = adminDirectoryRows.filter(row => {
+        const inArea = !adminDirectoryAreaFilter || String(row?.area || "") === adminDirectoryAreaFilter
+        if(!inArea) return false
+        if(!term) return true
+        const haystack = [row?.clientName, row?.email, row?.country, row?.notes, row?.area].map(v => String(v || "").toLowerCase()).join(" ")
+        return haystack.includes(term)
+      }).sort((a,b)=>String(a?.clientName||"").localeCompare(String(b?.clientName||""), "es", { sensitivity: "base" }))
+
+      wrap.innerHTML = `
+        <div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input type="text" placeholder="Buscar por cliente, email, país o nota" value="${htmlEscape(adminDirectorySearchTerm)}" oninput="setAdminDirectorySearch(this.value)" style="min-width:280px">
+          <select id="adminDirectoryAreaFilter" onchange="setAdminDirectoryAreaFilter(this.value)" style="min-width:220px">${areaOptions}</select>
+        </div>
+        <div class="small" style="margin-bottom:8px">Registros: <strong>${filtered.length}</strong></div>
+        <div style="overflow:auto;width:100%">
+          <table style="width:100%;min-width:1380px;border-collapse:collapse">
+            <thead><tr><th>Cliente</th><th>Email acceso</th><th>Password acceso</th><th>País</th><th>Área</th><th>2FA</th><th>Código 2FA (30s)</th><th>Notas</th><th>Actualizado</th><th>Acción</th></tr></thead>
+            <tbody>
+              ${filtered.length ? filtered.map(row => {
+                const k = String(row?.key || emailKey(row?.email || ""))
+                const has2fa = !row?.noQr && !!String(row?.secret || "")
+                return `<tr>
+                  <td>${htmlEscape(row?.clientName || "-")}</td>
+                  <td>${htmlEscape(row?.email || "-")}</td>
+                  <td style="font-family:var(--font-mono)">${htmlEscape(row?.accessPassword || "-")}</td>
+                  <td>${htmlEscape(row?.country || "-")}</td>
+                  <td>${htmlEscape(row?.area || "-")}</td>
+                  <td>${has2fa ? "Activo" : "Sin QR"}</td>
+                  <td><div style="font-family:var(--font-mono);font-weight:600" id="dirTotp_${k}">------</div><div class="small" id="dirTotpCountdown_${k}"></div></td>
+                  <td>${htmlEscape(row?.notes || "-")}</td>
+                  <td>${row?.updatedAt ? formatDateTime24(row.updatedAt) : "-"}</td>
+                  <td><button class="ghost" onclick="beginEditDirectoryEntry('${jsStringEscape(k)}')">Editar</button></td>
+                </tr>`
+              }).join("") : `<tr><td colspan="10" class="small">No hay registros para los filtros seleccionados.</td></tr>`}
+            </tbody>
+          </table>
+        </div>`
+      adminDirectoryVisibleRows = filtered
+      if(filtered.length){
+        renderAdminDirectoryTotpCodes()
+        startAdminDirectoryTotpTicker()
+      }else{
+        stopAdminDirectoryTotpTicker()
+      }
+    }
+
+    function renderAdminDirectoryPanelHtml(){
+      return `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">Directorio</h3><span class="small">Solo admin nivel 1</span></div><p class="small" style="margin:8px 0 10px">Alta y gestión de accesos de clientes con QR de Google Authenticator.</p><div class="settingsGrid" style="grid-template-columns:repeat(3,minmax(220px,1fr));margin-bottom:10px"><div><label>Cliente</label><input id="directoryClient" placeholder="Nombre del cliente"></div><div><label>Email</label><input id="directoryEmail" type="email" placeholder="cliente@dominio.com"></div><div><label>Contraseña</label><input id="directoryPassword" type="text" placeholder="Contraseña de acceso"></div><div><label>País</label><select id="directoryCountry">${buildDirectoryCountryOptions()}</select></div><div><label>Área</label><select id="directoryArea">${buildDirectoryAreaOptions()}</select></div><div><label>Notas</label><input id="directoryNotes" placeholder="Observaciones internas"></div><div style="grid-column:1/-1"><label>QR / OTPAUTH (opcional)</label><div class="inline" style="gap:8px;flex-wrap:wrap"><input id="directoryQrSource" placeholder="Pegá URL otpauth:// o texto con secret=..." style="min-width:280px;flex:1"><input id="directoryQrImage" type="file" accept="image/*" onchange="extractDirectorySecretFromImage()" style="max-width:220px"><button class="ghost" onclick="extractDirectorySecretFromInput()">Extraer SECRET</button><input id="directorySecret" placeholder="SECRET" style="max-width:220px"><label class="small" style="display:flex;align-items:center;gap:6px"><input id="directoryNoQr" type="checkbox" style="width:auto;margin:0">Cargar sin QR</label></div></div></div><input id="directoryOtpDigits" type="hidden" value="6"><input id="directoryOtpPeriod" type="hidden" value="30"><input id="directoryOtpAlgorithm" type="hidden" value="SHA1"><div class="inline" style="justify-content:flex-end;margin-bottom:8px;gap:8px"><button id="directorySaveBtn" onclick="saveDirectoryEntry()">Guardar cliente</button><button id="directoryCancelEditBtn" class="ghost hidden" onclick="cancelDirectoryEdit()">Cancelar edición</button></div><div id="adminDirectoryList" class="small"></div></div>`
+    }
+
     function renderHelpGuideHtml(viewerRole = "admin"){
       const roleLabelViewer = viewerRole === "analista" ? "Analista" : "Admin"
       return `<div class="small">
@@ -6009,9 +6454,11 @@ Cliente B`)
       const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
+      const showTopPerformerView = (isAdmin || isAnalyst) && mainViewTab === "top_performer"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView || showTopPerformerView
+      if(!(isAdmin && adminPanelTab === "directory")) stopAdminDirectoryTotpTicker()
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
@@ -6019,12 +6466,14 @@ Cliente B`)
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
           { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" },
-          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" }
+          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" },
+          { icon: "🛠️", label: "Top Performer", action: "setMainViewTab('top_performer')" }
         ]},
         { title: "Área", items: [
           { icon: "🧮", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
           { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" },
           { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" },
+          ...(isAdminLevel1() ? [{ icon: "📇", label: "Directorio", action: "setAdminTab('directory')" }] : []),
           { icon: "📣", label: "Comunicados", action: "setAdminTab('announcements')" }
         ]},
         { title: "Mejora continua", items: [
@@ -6054,6 +6503,7 @@ Cliente B`)
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "🛠️", label: "Top Performer", action: "setMainViewTab('top_performer')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
           ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
@@ -6128,6 +6578,13 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
         ` : showDailysView ? `
           <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAnalystWrap" class="small"></div></div>
+        ` : showTopPerformerView ? `
+          <div style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center">
+            <div>
+              <div style="font-size:54px;line-height:1;margin-bottom:10px">🛠️</div>
+              <h2 style="margin:0">Próximamente</h2>
+            </div>
+          </div>
         ` : showConsultorGuidelines ? `
           <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div id="consultorGuidelinesList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
@@ -6144,6 +6601,96 @@ Cliente B`)
           </div>
         ` : showPortfolioOverview ? `
           <div class="card"><h3 style="margin-top:0">Cartera de consultores</h3><div id="portfolioOverviewContainer" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='agenda') ? `
+          <div class="card"><h3 style="margin-top:0">Organizar agendas</h3><div id="adminAgendaTableWrap" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='comments') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Comentarios</h3>
+            <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(260px,1fr))">
+              <div><h4 style="margin:0 0 8px">Últimos comentarios</h4><div id="adminCommentsAll" class="small"></div></div>
+              <div><h4 style="margin:0 0 8px">Menciones al admin</h4><div id="adminCommentsMentions" class="small"></div></div>
+            </div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='dailys') ? `
+          <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='support') ? `
+          <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='announcements') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Comunicados</h3>
+            <div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(240px,1fr))">
+              <div><label>Título</label><input id="announcementTitle" placeholder="Título del comunicado"></div>
+              <div><label>Programar</label><input id="announcementScheduleAt" type="datetime-local"></div>
+              <div style="grid-column:1/-1"><label>Mensaje</label><textarea id="announcementBody" placeholder="Mensaje para el equipo"></textarea></div>
+              <div class="inline" style="align-items:center;gap:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span class="small">Activo</span></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div>
+            </div>
+            <div id="announcementsList" class="small" style="margin-top:10px"></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='capacity') ? `
+          <div class="card"><h3 style="margin-top:0">Capacidad instalada</h3><div id="adminHoursTable" class="small"></div><div id="adminCapacityClientTable" class="small" style="margin-top:12px"></div></div>
+        ` : (isAdmin && adminPanelTab==='settings') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Configuración de tickets</h3>
+            <div class="feedItem">
+              <h4 style="margin:0 0 8px">Permisos de edición por rol</h4>
+              <div class="inline" style="gap:12px;align-items:center">
+                <label class="switchWrap"><label class="switch"><input id="cfgEditAnalyst" type="checkbox"><span class="slider"></span></label><span>Analista</span></label>
+                <label class="switchWrap"><label class="switch"><input id="cfgEditConsultor" type="checkbox"><span class="slider"></span></label><span>Consultor</span></label>
+                <button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar</button>
+              </div>
+            </div>
+            <div class="feedItem">
+              <h4 style="margin:0 0 8px">Agregar campo personalizado</h4>
+              <div class="settingsGrid" style="grid-template-columns:repeat(4,minmax(180px,1fr))">
+                <div><label>Nombre</label><input id="cfgFieldLabel"></div>
+                <div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div>
+                <div><label>Opciones</label><input id="cfgFieldOptions" placeholder="Alta, Media, Baja"></div>
+                <div><label>Requerido</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div>
+                <div><label>Campo padre</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div>
+                <div><label>Valor padre</label><input id="cfgFieldParentValue"></div>
+                <div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar</button></div>
+              </div>
+            </div>
+            <div class="feedItem"><h4 style="margin:0 0 8px">Campos base</h4><div id="coreTicketFieldsConfig" class="small"></div></div>
+            <div class="feedItem"><h4 style="margin:0 0 8px">Campos personalizados</h4><div id="ticketFieldsConfigList" class="small"></div></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='guidelines') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Lineamientos</h3>
+            <input id="guidelineEditId" type="hidden">
+            <div class="settingsGrid">
+              <div><label>Cliente</label><select id="guidelineClient"></select></div>
+              <div><label>Título</label><input id="guidelineTitle"></div>
+              <div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary"></textarea></div>
+              <div class="inline" style="align-items:center;gap:8px"><label class="switch"><input id="guidelineImportant" type="checkbox"><span class="slider"></span></label><span class="small">Importante</span></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="saveGuideline()">Guardar lineamiento</button></div>
+            </div>
+            <div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div>
+            <div id="guidelinesAdminList" class="small" style="margin-top:10px"></div>
+            <div class="hidden"><input id="guidelineEditTitle"><textarea id="guidelineEditSummary"></textarea><input id="guidelineEditImportant" type="checkbox"></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='manuals') ? `
+          <div class="card">
+            <h3 style="margin-top:0">Manuales</h3>
+            <input id="manualEditId" type="hidden">
+            <div class="settingsGrid">
+              <div><label>Título</label><input id="manualTitle"></div>
+              <div><label>Link</label><input id="manualLink"></div>
+              <div><label>Tipo de actividad</label><input id="manualActivityType"></div>
+              <div><label>Microservicio</label><input id="manualMicroserviceType"></div>
+              <div style="grid-column:1/-1"><label>Detalle</label><textarea id="manualDetail"></textarea></div>
+              <div><label>Carpeta</label><select id="manualFolderId"><option value="">Sin carpeta</option></select></div>
+              <div style="display:flex;align-items:flex-end"><button onclick="saveManual()">Guardar manual</button></div>
+            </div>
+            <div id="adminManualsList" class="small" style="margin-top:10px"></div>
+          </div>
+        ` : (isAdmin && adminPanelTab==='internal_quality') ? `
+          <div class="card"><h3 style="margin-top:0">Calidad interna</h3><div id="adminInternalQualityList" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='quality') ? `
+          <div class="card"><h3 style="margin-top:0">Encuesta de calidad</h3><div id="adminQualityList" class="small"></div></div>
+        ` : (isAdmin && adminPanelTab==='connections') ? `
+          <div class="card"><h3 style="margin-top:0">Conexiones</h3><div id="adminConnectionsPanel" class="small"></div></div>
         ` : showAdminPanel ? (adminPanelTab==='config_home' && showAdminConfigButton ? `
           <div class="card"><h3 style="margin-top:0">Configuraciones</h3>
             <div class="row">
@@ -6161,7 +6708,6 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -6171,7 +6717,7 @@ Cliente B`)
             <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
             <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
           </div>
-          ` : adminPanelTab==='user_management' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de clientes</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><h4 style="margin:0 0 8px">Clientes</h4><div class="row" style="align-items:flex-end"><div><label>Nuevo cliente</label><input id="cName" style="margin:0"></div><div style="display:flex;align-items:flex-end"><button style="margin:0" onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
+          ` : adminPanelTab==='directory' ? `${renderAdminDirectoryPanelHtml()}` : adminPanelTab==='user_management' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Gestión de clientes</h3><button class="ghost" onclick="setAdminTab('config_home')">← Atrás</button></div><h4 style="margin:0 0 8px">Clientes</h4><div class="row" style="align-items:flex-end"><div><label>Nuevo cliente</label><input id="cName" style="margin:0"></div><div style="display:flex;align-items:flex-end"><button style="margin:0" onclick="saveClient(this)">Agregar cliente</button></div></div><div class="row"><div><label>Importar clientes (Excel/CSV)</label><input id="cImportFile" type="file" accept=".xlsx,.xls,.csv"></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="importClientsFromFile()">Importar clientes</button></div><div style="display:flex;align-items:flex-end"><button class="ghost helpIcon" onclick="showImportFormatHelp('clients')">?</button></div></div><div id="clientsList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Tickets</h4><div class="row"><div><label>ID ticket</label><input id="deleteTicketId" placeholder="TAO-01"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="deleteTicketByIdAdmin()">Eliminar ticket</button></div></div></div>` : `<div class="card"><h3 style="margin-top:0">Panel de administrador</h3><p class="small">Seleccioná una opción del menú para continuar.</p></div>` ) : showAnalystProfile ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Analista)</h3>
             <div class="row">
@@ -6309,6 +6855,7 @@ Cliente B`)
       if(isAdmin && adminPanelTab === 'announcements'){ loadAnnouncementsAdmin() }
       if(isAdmin && adminPanelTab === 'agenda'){ loadAdminAgenda() }
       if(isAdmin && adminPanelTab === 'comments'){ loadAdminComments() }
+      if(isAdmin && adminPanelTab === 'directory'){ loadAdminDirectoryTab() }
       if(isAdmin && adminPanelTab === 'dailys'){ loadDailysAdmin() }
       if(isAnalyst && analystPanelTab === 'agenda'){ loadAnalystAgenda() }
       if(isAnalyst && analystPanelTab === 'guidelines'){ loadAnalystGuidelines() }
