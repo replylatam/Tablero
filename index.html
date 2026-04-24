@@ -1653,7 +1653,7 @@
     var pendingTimerStopContext = null
     var userEditContext = null
     var adminAgendaTeam = "equipo_1"
-    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: [], client: "", consultor: "" }
+    var adminAgendaFilters = { ticketId: "", title: "", analyst: [], status: ["done"], client: "", consultor: "" }
     var adminAgendaCurrentRows = []
     var adminAgendaFiltersModalVisible = false
     var adminAgendaFilterSwitchesVisible = false
@@ -6436,7 +6436,7 @@ Cliente B`)
     }
 
     function renderAdminDirectoryPanelHtml(){
-      return `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">Directorio</h3><span class="small">Solo admin nivel 1</span></div><p class="small" style="margin:8px 0 10px">Alta y gestión de accesos de clientes con QR de Google Authenticator.</p><div class="settingsGrid" style="grid-template-columns:repeat(3,minmax(220px,1fr));margin-bottom:10px"><div><label>Cliente</label><input id="directoryClient" placeholder="Nombre del cliente"></div><div><label>Email</label><input id="directoryEmail" type="email" placeholder="cliente@dominio.com"></div><div><label>Contraseña</label><input id="directoryPassword" type="text" placeholder="Contraseña de acceso"></div><div><label>País</label><select id="directoryCountry">${buildDirectoryCountryOptions()}</select></div><div><label>Área</label><select id="directoryArea">${buildDirectoryAreaOptions()}</select></div><div><label>Notas</label><input id="directoryNotes" placeholder="Observaciones internas"></div><div style="grid-column:1/-1"><label>QR / OTPAUTH (opcional)</label><div class="inline" style="gap:8px;flex-wrap:wrap"><input id="directoryQrSource" placeholder="Pegá URL otpauth:// o texto con secret=..." style="min-width:280px;flex:1"><button class="ghost" onclick="extractDirectorySecretFromInput()">Extraer SECRET</button><input id="directoryQrImage" type="file" accept="image/*" onchange="extractDirectorySecretFromImage()" style="max-width:220px"><button class="ghost" onclick="extractDirectorySecretFromImage()">Leer imagen QR</button><input id="directorySecret" placeholder="SECRET" style="max-width:220px"><label class="small" style="display:flex;align-items:center;gap:6px"><input id="directoryNoQr" type="checkbox" style="width:auto;margin:0">Cargar sin QR</label></div></div></div><input id="directoryOtpDigits" type="hidden" value="6"><input id="directoryOtpPeriod" type="hidden" value="30"><input id="directoryOtpAlgorithm" type="hidden" value="SHA1"><div class="inline" style="justify-content:flex-end;margin-bottom:8px;gap:8px"><button id="directorySaveBtn" onclick="saveDirectoryEntry()">Guardar cliente</button><button id="directoryCancelEditBtn" class="ghost hidden" onclick="cancelDirectoryEdit()">Cancelar edición</button></div><div id="adminDirectoryList" class="small"></div></div>`
+      return `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">Directorio</h3><span class="small">Solo admin nivel 1</span></div><p class="small" style="margin:8px 0 10px">Alta y gestión de accesos de clientes con QR de Google Authenticator.</p><div class="settingsGrid" style="grid-template-columns:repeat(3,minmax(220px,1fr));margin-bottom:10px"><div><label>Cliente</label><input id="directoryClient" placeholder="Nombre del cliente"></div><div><label>Email</label><input id="directoryEmail" type="email" placeholder="cliente@dominio.com"></div><div><label>Contraseña</label><input id="directoryPassword" type="text" placeholder="Contraseña de acceso"></div><div><label>País</label><select id="directoryCountry">${buildDirectoryCountryOptions()}</select></div><div><label>Área</label><select id="directoryArea">${buildDirectoryAreaOptions()}</select></div><div><label>Notas</label><input id="directoryNotes" placeholder="Observaciones internas"></div><div style="grid-column:1/-1"><label>QR / OTPAUTH (opcional)</label><div class="inline" style="gap:8px;flex-wrap:wrap"><input id="directoryQrSource" placeholder="Pegá URL otpauth:// o texto con secret=..." style="min-width:280px;flex:1"><input id="directoryQrImage" type="file" accept="image/*" onchange="extractDirectorySecretFromImage()" style="max-width:220px"><button class="ghost" onclick="extractDirectorySecretFromInput()">Extraer SECRET</button><input id="directorySecret" placeholder="SECRET" style="max-width:220px"><label class="small" style="display:flex;align-items:center;gap:6px"><input id="directoryNoQr" type="checkbox" style="width:auto;margin:0">Cargar sin QR</label></div></div></div><input id="directoryOtpDigits" type="hidden" value="6"><input id="directoryOtpPeriod" type="hidden" value="30"><input id="directoryOtpAlgorithm" type="hidden" value="SHA1"><div class="inline" style="justify-content:flex-end;margin-bottom:8px;gap:8px"><button id="directorySaveBtn" onclick="saveDirectoryEntry()">Guardar cliente</button><button id="directoryCancelEditBtn" class="ghost hidden" onclick="cancelDirectoryEdit()">Cancelar edición</button></div><div id="adminDirectoryList" class="small"></div></div>`
     }
 
     function renderHelpGuideHtml(viewerRole = "admin"){
@@ -6500,9 +6500,10 @@ Cliente B`)
       const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
+      const showTopPerformerView = (isAdmin || isAnalyst) && mainViewTab === "top_performer"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView
+      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView || showTopPerformerView
       if(!(isAdmin && adminPanelTab === "directory")) stopAdminDirectoryTotpTicker()
       const sidebarSections = isAdmin ? [
         { title: "Tablero", items: [
@@ -6511,7 +6512,8 @@ Cliente B`)
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
           { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" },
-          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" }
+          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" },
+          { icon: "🛠️", label: "Top Performer", action: "setMainViewTab('top_performer')" }
         ]},
         { title: "Área", items: [
           { icon: "🧮", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
@@ -6547,6 +6549,7 @@ Cliente B`)
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "🛠️", label: "Top Performer", action: "setMainViewTab('top_performer')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
           ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
@@ -6621,6 +6624,13 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
         ` : showDailysView ? `
           <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAnalystWrap" class="small"></div></div>
+        ` : showTopPerformerView ? `
+          <div class="card" style="min-height:320px;display:flex;align-items:center;justify-content:center;text-align:center">
+            <div>
+              <div style="font-size:54px;line-height:1;margin-bottom:10px">🛠️</div>
+              <h2 style="margin:0">Próximamente</h2>
+            </div>
+          </div>
         ` : showConsultorGuidelines ? `
           <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div id="consultorGuidelinesList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
