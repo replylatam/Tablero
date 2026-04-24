@@ -1594,7 +1594,6 @@
     const ADMIN_LEVEL2_BLOCKED_TABS = new Set(["config_home","people","settings","user_management","connections","support","directory"])
     const DIRECTORY_AREAS = ["ACCO", "CONSULTORIA"]
     const AMERICA_COUNTRIES = ["Antigua y Barbuda","Argentina","Bahamas","Barbados","Belice","Bolivia","Brasil","Canadá","Chile","Colombia","Costa Rica","Cuba","Dominica","Ecuador","El Salvador","Estados Unidos","Granada","Guatemala","Guyana","Haití","Honduras","Jamaica","México","Nicaragua","Panamá","Paraguay","Perú","República Dominicana","San Cristóbal y Nieves","San Vicente y las Granadinas","Santa Lucía","Surinam","Trinidad y Tobago","Uruguay","Venezuela"]
-    const DIRECTORY_LOCAL_STORAGE_KEY = "tablero_directory_entries_v1"
 
     var currentUser = globalThis.currentUser || null
     var currentRole = globalThis.currentRole || null
@@ -5960,31 +5959,6 @@ Cliente B`)
     }
 
 
-    function loadLocalDirectoryEntries(){
-      try{
-        const raw = localStorage.getItem(DIRECTORY_LOCAL_STORAGE_KEY) || "[]"
-        const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed : []
-      }catch(_){ return [] }
-    }
-
-    function saveLocalDirectoryEntries(rows){
-      try{
-        const safeRows = Array.isArray(rows) ? rows : []
-        localStorage.setItem(DIRECTORY_LOCAL_STORAGE_KEY, JSON.stringify(safeRows))
-      }catch(_){ }
-    }
-
-    function upsertLocalDirectoryEntry(entry){
-      const list = loadLocalDirectoryEntries()
-      const key = String(entry?.key || "")
-      const next = [
-        { ...entry },
-        ...list.filter(row => String(row?.key || "") !== key)
-      ]
-      saveLocalDirectoryEntries(next.slice(0, 500))
-    }
-
     function buildDirectorySelectOptions(list, selected, placeholder){
       const normalizedSelected = String(selected || "")
       const base = Array.isArray(list) ? list.map(v => String(v || "").trim()).filter(Boolean) : []
@@ -6179,27 +6153,32 @@ Cliente B`)
         password: "",
         ...secureFields
       }
-      const existingLocal = loadLocalDirectoryEntries().find(row => String(row?.key || "") === key)
-      if(existingLocal && existingLocal.createdAt) directoryPayload.createdAt = existingLocal.createdAt
-      upsertLocalDirectoryEntry(directoryPayload)
-
       let wroteDirectory = false
       let wroteUser = false
+      let directoryErr = null
+      let usersErr = null
       try{
         const existing = (await db.ref(`directory_users/${key}`).once("value")).val()
         if(existing && existing.createdAt) directoryPayload.createdAt = existing.createdAt
         await db.ref(`directory_users/${key}`).set(directoryPayload)
         wroteDirectory = true
-      }catch(_){ wroteDirectory = false }
+      }catch(err){ directoryErr = err; wroteDirectory = false }
 
       try{
         await db.ref("users_by_email").child(key).update(userPayload)
         await adminWrite("upsertUser", userPayload).catch(()=>{})
         wroteUser = true
-      }catch(_){ wroteUser = false }
+      }catch(err){ usersErr = err; wroteUser = false }
 
-      if(wroteDirectory || wroteUser) showToast("Cliente agregado al directorio.", "ok")
-      else showToast("Cliente guardado localmente. Verificá permisos de Firebase para persistir en la nube.", "warn", 2600)
+      if(wroteDirectory || wroteUser){
+        showToast("Cliente agregado al directorio.", "ok")
+      }else{
+        const parts = []
+        if(directoryErr) parts.push(`/directory_users (${String(directoryErr.code || directoryErr.message || 'error')})`)
+        if(usersErr) parts.push(`/users_by_email (${String(usersErr.code || usersErr.message || 'error')})`)
+        const detail = parts.length ? `Sin permisos en ${parts.join(' y ')}` : "Error de escritura"
+        showToast(`${detail}. Revisá reglas de Firebase.`, "error", 3200)
+      }
       ;["directoryClient","directoryEmail","directoryPassword","directoryCountry","directoryArea","directoryNotes","directoryQrSource","directorySecret"].forEach(id => {
         const el = document.getElementById(id)
         if(el) el.value = ""
@@ -6218,9 +6197,6 @@ Cliente B`)
       const nextArea = String(areaInput.value || "").trim()
       if(!nextArea) return alert("Seleccioná un área.")
       if(!DIRECTORY_AREAS.includes(nextArea)) return alert("Área inválida. Usá ACCO o CONSULTORIA.")
-      const localRows = loadLocalDirectoryEntries()
-      const updatedLocal = localRows.map(row => String(row?.key || "") === normalizedKey ? { ...row, area: nextArea } : row)
-      saveLocalDirectoryEntries(updatedLocal)
       try{ await db.ref(`directory_users/${normalizedKey}/area`).set(nextArea) }catch(_){ }
       try{ await db.ref(`users_by_email/${normalizedKey}/area`).set(nextArea) }catch(_){ }
       showToast("Área actualizada.", "ok", 1200)
@@ -6274,7 +6250,6 @@ Cliente B`)
         raw = snap.val() || {}
       }catch(_){ raw = {} }
       const cloudRows = Object.values(raw).filter(Boolean)
-      const localRows = loadLocalDirectoryEntries()
       let consultorRows = []
       try{
         const usersRaw = (await db.ref("users_by_email").once("value")).val() || {}
@@ -6293,7 +6268,7 @@ Cliente B`)
       }catch(_){ consultorRows = [] }
 
       const mergedByKey = {}
-      for(const row of [...consultorRows, ...localRows, ...cloudRows]){
+      for(const row of [...consultorRows, ...cloudRows]){
         const key = String(row?.key || emailKey(row?.email || ""))
         if(!key) continue
         mergedByKey[key] = { ...mergedByKey[key], ...row, key }
@@ -6332,7 +6307,7 @@ Cliente B`)
                   <td>${has2fa ? "Activo" : "Sin QR"}</td>
                   <td><div style="font-family:var(--font-mono);font-weight:600" id="dirTotp_${k}">------</div><div class="small" id="dirTotpCountdown_${k}"></div></td>
                   <td>${htmlEscape(row?.notes || "-")}</td>
-                  <td>${row?.updatedAt ? formatDateTime(row.updatedAt) : "-"}</td>
+                  <td>${row?.updatedAt ? formatDateTime24(row.updatedAt) : "-"}</td>
                   <td><button class="ghost" onclick="updateDirectoryArea('${jsStringEscape(k)}')">Guardar área</button></td>
                 </tr>`
               }).join("") : `<tr><td colspan="10" class="small">No hay registros para los filtros seleccionados.</td></tr>`}
