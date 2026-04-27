@@ -2009,7 +2009,7 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys","top_performer"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
       if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
         showToast("No tenés permisos para ver este menú.", "error", 1600)
         return
@@ -3664,6 +3664,47 @@ Cliente B`)
       })
       const countersTable = `<div style="overflow:auto;margin-bottom:10px"><table style="width:100%;border-collapse:collapse"><thead><tr>${consultors.map(c => `<th style="padding:6px;border-bottom:1px solid var(--stroke)">${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</th>`).join("")}</tr></thead><tbody><tr>${consultors.map(c => { const list = clientsByConsultor[String(c.email||"").toLowerCase()] || []; return `<td style="padding:6px;border-bottom:1px solid var(--stroke-2);vertical-align:top">${list.length ? list.map(name => `<div class="small">• ${htmlEscape(name)}</div>`).join("") : `<span class="small">Sin clientes asignados</span>`}</td>` }).join("")}</tr></tbody></table></div>`
       wrap.innerHTML = countersTable + (items.length ? items.map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span><div class="inline" style="gap:8px;flex-wrap:nowrap"><select style="margin:0;min-width:190px" onchange="updateClientAssignmentFromPortfolio('${key}', this.value)"><option value="">Sin asignar</option>${consultors.map(con => `<option value="${htmlEscape(String(con.email||"").toLowerCase())}" ${String(c?.assignedConsultor||"").toLowerCase()===String(con.email||"").toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</option>`).join("")}</select><select style="margin:0;min-width:140px" onchange="updateClientStatusFromPortfolio('${key}', this.value)"><option value="activo" ${String(c?.status||'activo').toLowerCase()==='activo'?'selected':''}>Activo</option><option value="inactivo" ${String(c?.status||'activo').toLowerCase()==='inactivo'?'selected':''}>Inactivo</option></select></div></div>`).join("") : `<div class="small">No hay clientes para la búsqueda indicada.</div>`)
+    }
+
+    async function replyUnifiedConsultorComment(ticketId){
+      if(currentRole !== "consultor") return
+      const input = document.getElementById(`consultorUnifiedReply_${emailKey(ticketId || "")}`)
+      const message = String(input?.value || "").trim()
+      if(!message) return alert("Escribí un comentario para responder.")
+      const id = generateId()
+      const now = new Date().toISOString()
+      const payload = { id, author: String(currentUser?.email || "").toLowerCase(), role: "consultor", message, messageHtml: htmlEscape(message).replace(/\n/g, "<br>"), createdAt: now }
+      await db.ref("tickets").child(String(ticketId || "")).child("comments").child(id).set(payload)
+      await db.ref("activity_logs").push({ eventType: "comment_added", ticketId: String(ticketId || ""), email: String(currentUser?.email || "").toLowerCase(), role: "consultor", timestampIso: now })
+      if(input) input.value = ""
+      showToast("Respuesta enviada.", "ok", 1200)
+      loadConsultorGeneralSummary()
+    }
+
+    async function loadConsultorGeneralSummary(){
+      if(!(currentRole === "consultor" && mainViewTab === "summary_general")) return
+      const wrap = document.getElementById("consultorGeneralSummary")
+      if(!wrap) return
+      const myEmail = String(currentUser?.email || "").toLowerCase()
+      const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
+      const clientsObj = (await db.ref("clients").once("value")).val() || {}
+      const accounts = Object.values(clientsObj).filter(c => String(c?.assignedConsultor || "").toLowerCase() === myEmail).map(c => String(c?.name || "")).filter(Boolean).sort((a,b)=>a.localeCompare(b, "es"))
+      const tickets = (cachedTickets?.length ? cachedTickets : await fetchTicketsFromDb()).filter(t => String(resolveInformerEmail(t) || t.createdBy || "").toLowerCase() === myEmail || String(t.createdBy || "").toLowerCase() === myEmail)
+      const openTickets = tickets.filter(t => String(t.status || "") !== "done")
+      const recurrentCount = tickets.filter(t => recurrenceDaysFromTicket(t).length > 0).length
+      const openWithAnalyst = openTickets.filter(t => !!String(t.assignedTo || "").trim()).length
+      const createdOpenPct = tickets.length ? (openWithAnalyst / tickets.length) * 100 : 0
+      const prioCount = { Alta: 0, Media: 0, Baja: 0 }
+      openTickets.forEach(t => { const p = String(t.priority || "Media"); if(prioCount[p] === undefined) prioCount[p] = 0; prioCount[p] += 1 })
+      const totalOpen = Math.max(1, openTickets.length)
+      const commentsRows = openTickets.map(t => {
+        const comments = Object.values(parseCommentsValue(t.comments || {})).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
+        const last = comments[0]
+        const lastAuthor = String(last?.author || "").toLowerCase()
+        const role = String(usersByEmail[emailKey(lastAuthor)]?.role || "").toLowerCase()
+        return { ticket: t, last, isAnalystComment: role === "analista" }
+      }).filter(r => r.last && r.isAnalystComment).sort((a,b)=>new Date(b.last?.createdAt||0)-new Date(a.last?.createdAt||0))
+      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? accounts.map(a => htmlEscape(a)).join(" · ") : "Sin cuentas asignadas."}</div></div><div class="kpi"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar)</div></div><div class="kpi"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada</div></div><div class="kpi"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
     }
 
     function setConsultorPortfolioSearch(value){
@@ -5935,7 +5976,7 @@ Cliente B`)
     }
 
     async function loadMyProfileForm(){
-      if(!(currentRole === "analista" || currentRole === "admin")) return
+      if(!(currentRole === "analista" || currentRole === "admin" || currentRole === "consultor")) return
       const user = await getUserFromDb(currentUser.email)
       if(!user) return
       const profileName = document.getElementById("profileName")
@@ -5946,6 +5987,7 @@ Cliente B`)
       const secureToggle = document.getElementById("profileSecureLogin")
       const secretInput = document.getElementById("profileTotpSecret")
       const otpapp = document.getElementById("profileOtpAuthUrl")
+      const calendarStatus = document.getElementById("profileGoogleCalendarStatus")
       if(profileName) profileName.value = String(user.profileName || user.name || "")
       if(nickname) nickname.value = String(user.nickname || "")
       if(useNickname) useNickname.checked = String(user.useNicknameInTickets || "").toLowerCase() === "true" || user.useNicknameInTickets === true
@@ -5955,10 +5997,11 @@ Cliente B`)
       if(secretInput) secretInput.value = String(user.twoFactorSecret || "")
       const otpValue = String(user.twoFactorOtpAuthUrl || "")
       if(otpapp) otpapp.value = otpValue
+      if(calendarStatus) calendarStatus.textContent = user.googleCalendarConnected ? "Conectado" : "No conectado"
     }
 
     async function saveMyProfile(){
-      if(!(currentRole === "analista" || currentRole === "admin")) return alert("Disponible para analistas y admin.")
+      if(!(currentRole === "analista" || currentRole === "admin" || currentRole === "consultor")) return alert("Disponible para usuarios logueados.")
       const user = await getUserFromDb(currentUser.email)
       if(!user) return alert("No se encontró tu usuario.")
       const profileName = (document.getElementById("profileName")?.value || "").trim()
@@ -5992,7 +6035,7 @@ Cliente B`)
     }
 
     async function changeMyPasswordFromProfile(){
-      if(!(currentRole === "analista" || currentRole === "admin")) return alert("Disponible para analistas y admin.")
+      if(!(currentRole === "analista" || currentRole === "admin" || currentRole === "consultor")) return alert("Disponible para usuarios logueados.")
       const user = await getUserFromDb(currentUser.email)
       if(!user) return alert("No se encontró tu usuario.")
       const currentPassword = (document.getElementById("profileCurrentPassword")?.value || "").trim()
@@ -6052,6 +6095,37 @@ Cliente B`)
       await adminWrite("upsertUser", payload).catch(()=>{})
       showToast(enabled ? "Inicio seguro activado." : "Inicio seguro desactivado.", "ok")
       await loadMyProfileForm()
+    }
+
+    async function toggleGoogleCalendarConnection(){
+      const email = String(currentUser?.email || "").toLowerCase()
+      if(!email) return
+      const user = await getUserFromDb(email)
+      if(!user) return
+      const next = !(user.googleCalendarConnected === true || String(user.googleCalendarConnected || "").toLowerCase() === "true")
+      const payload = { ...user, key: emailKey(email), googleCalendarConnected: next, googleCalendarConnectedAt: next ? new Date().toISOString() : "" }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      showToast(next ? "Google Calendar conectado." : "Google Calendar desconectado.", "ok", 1500)
+      await loadMyProfileForm()
+    }
+
+    function canCurrentUserScheduleInCalendar(){
+      const email = String(currentUser?.email || "").toLowerCase()
+      const me = cachedUsersByEmail?.[emailKey(email)] || {}
+      return me.googleCalendarConnected === true || String(me.googleCalendarConnected || "").toLowerCase() === "true"
+    }
+
+    async function scheduleTicketInGoogleCalendar(ticketId){
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      if(!ticket) return
+      const start = `${toLocalDateOnly(new Date())}T09:00:00`
+      const end = `${toLocalDateOnly(new Date())}T10:00:00`
+      const toUtcCompact = (isoLocal) => new Date(isoLocal).toISOString().replace(/[-:]/g,"").replace(".000","")
+      const title = `${ticket.id || "Ticket"} · ${ticket.title || "Sin título"}`
+      const details = `Cliente: ${ticket.client || "-"}\\nEstado: ${STATUS[ticket.status] || ticket.status || "-"}\\nAnalista: ${userDisplayNameByEmail(ticket.assignedTo || "-")}`
+      const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${encodeURIComponent(`${toUtcCompact(start)}/${toUtcCompact(end)}`)}&details=${encodeURIComponent(details)}`
+      window.open(url, "_blank", "noopener")
     }
 
     function renderHelpGuideHtml(viewerRole = "admin"){
@@ -6116,9 +6190,11 @@ Cliente B`)
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
+      const showConsultorSummary = currentRole === "consultor" && mainViewTab === "summary_general"
+      const showConsultorProfile = currentRole === "consultor" && mainViewTab === "profile"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
-      const showProfileView = showAnalystProfile || showAdminProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showEncuentro || showDailysView || showTopPerformer
+      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer
       const isSidebarItemVisible = (item) => {
         const action = String(item?.action || "")
         const mainMatch = action.match(/setMainViewTab\\('([^']+)'\\)/)
@@ -6166,9 +6242,11 @@ Cliente B`)
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
+          ...(currentRole === "consultor" ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
           ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
@@ -6179,6 +6257,9 @@ Cliente B`)
           ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
         ].filter(Boolean)}
       ]
+      const visibleSidebarSections = sidebarSections
+        .map(section => ({ ...section, items: (section.items || []).filter(isSidebarItemVisible) }))
+        .filter(section => (section.items || []).length > 0)
 
       document.getElementById("app").innerHTML = `
         <div class="layoutShell">
@@ -6186,7 +6267,7 @@ Cliente B`)
             <div class="sideBrand">NOVA</div>
             <button class="sideToggle" onclick="toggleSidebar(event)"><span class="sideNavIcon">☰</span><span class="sideNavLabel">Menú</span></button>
             <div class="sideNavList">
-              ${sidebarSections.map(section => `<div class="sideSection"><div class="sideSectionTitle">${section.title}</div>${(section.items || []).filter(isSidebarItemVisible).map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}</div>`).join("")}
+              ${visibleSidebarSections.map(section => `<div class="sideSection"><div class="sideSectionTitle">${section.title}</div>${(section.items || []).map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}</div>`).join("")}
             </div>
             <div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>
           </aside>
@@ -6251,6 +6332,10 @@ Cliente B`)
           <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div id="consultorGuidelinesList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
           <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná cuáles clientes pertenecen a tu cartera y agregá nuevos si hace falta.</div><div class="row"><div><label>Nuevo cliente</label><input id="consultorClientName" placeholder="Nombre del cliente"></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Agregar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
+        ` : showConsultorSummary ? `
+          <div class="card"><h3 style="margin-top:0">Resumen general</h3><div id="consultorGeneralSummary" class="small"></div></div>
+        ` : showConsultorProfile ? `
+          <div class="card"><h3 style="margin-top:0">Mi configuración (Consultor)</h3><div class="small" style="margin-bottom:8px">Conectá Google Calendar para poder agendar tickets desde su detalle.</div><div class="inline"><button class="ghost" onclick="toggleGoogleCalendarConnection()">Conectar Google Calendar</button><span class="small">Estado: <strong id="profileGoogleCalendarStatus">-</strong></span></div></div>
         ` : showTopPerformer ? `
           <div class="card" style="min-height:56vh;display:flex;align-items:center;justify-content:center;background:transparent;border:1px dashed var(--stroke)">
             <div style="text-align:center">
@@ -6294,7 +6379,7 @@ Cliente B`)
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
             <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo en tickets</span></div>
-            <div class="row" style="margin-top:8px"><div><label>Foto de perfil</label><input id="profilePhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end"><button onclick="saveMyProfile()">Guardar perfil</button></div></div>
+            <div class="row" style="margin-top:8px"><div><label>Foto de perfil</label><input id="profilePhoto" type="file" accept="image/*"></div><div style="display:flex;align-items:flex-end;gap:8px"><button onclick="saveMyProfile()">Guardar perfil</button><button class="ghost" onclick="toggleGoogleCalendarConnection()">Conectar Google Calendar</button><span class="small">Estado: <strong id="profileGoogleCalendarStatus">-</strong></span></div></div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <div class="row"><div><label>Contraseña actual</label><input id="profileCurrentPassword" type="password"></div><div><label>Nueva contraseña</label><input id="profileNewPassword" type="password"></div><div><label>Confirmar nueva contraseña</label><input id="profileConfirmPassword" type="password"></div></div>
             <button class="ghost" onclick="changeMyPasswordFromProfile()">Actualizar contraseña</button>
@@ -6316,7 +6401,7 @@ Cliente B`)
                 <label>Sexo</label>
                 <select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select>
                 <div class="inline"><input id="profileUseNickname" type="checkbox" style="width:auto;margin:0"><span class="small">Usar apodo como nombre visible en tickets</span></div>
-                <div style="margin-top:10px"><button onclick="saveMyProfile()">Guardar perfil</button></div>
+                <div style="margin-top:10px" class="inline"><button onclick="saveMyProfile()">Guardar perfil</button><button class="ghost" onclick="toggleGoogleCalendarConnection()">Conectar Google Calendar</button><span class="small">Estado: <strong id="profileGoogleCalendarStatus">-</strong></span></div>
               </div>
             </div>
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
@@ -6465,6 +6550,10 @@ Cliente B`)
         renderSavedItems()
       }else if(showConsultorPortfolio){
         loadConsultorPortfolio()
+      }else if(showConsultorSummary){
+        loadConsultorGeneralSummary()
+      }else if(showConsultorProfile){
+        loadMyProfileForm()
       }else if(showPortfolioOverview){
         loadPortfolioOverview()
       }else if(showQualityResults){
@@ -6573,6 +6662,7 @@ Cliente B`)
     function openMyProfileFromEncuentro(){
       if(currentRole === "analista") return setAnalystTab("profile")
       if(currentRole === "admin") return setAdminTab("profile")
+      if(currentRole === "consultor") return setMainViewTab("profile")
     }
 
     function normalizeEncuentroReactions(map){
@@ -8306,7 +8396,7 @@ Cliente B`)
             ${ticketHasRunningTimer(ticketWithRead) ? `<span class="badge">🕒 ${ticketRunningTimerElapsed(ticketWithRead)}</span>` : ""}
             ${ticketWithRead.plannedWorkDate && String(ticketWithRead.plannedWorkDate) >= toLocalDateOnly(new Date()) ? `<span class="badge ok">Planificado para trabajar: ${htmlEscape(plannedWorkLabel(ticketWithRead.plannedWorkDate))}</span>` : ""}
           </div>
-          <div class="inline" style="gap:8px">${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}</div>
+          <div class="inline" style="gap:8px">${canCurrentUserScheduleInCalendar() ? `<button class="ghost" onclick="scheduleTicketInGoogleCalendar('${ticketWithRead.id}')">Agendar</button>` : ""}${(currentRole === "consultor" && ticketWithRead.hasProblem) ? `<button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">Resolver problema</button>` : ""}</div>
         </div>
         <div class="detailLayout withSidebar">
           <div class="detailMainInfo" style="background:var(--surface-2);border:1px solid var(--stroke);border-radius:var(--radius-md);padding:12px">
@@ -10228,7 +10318,7 @@ Cliente B`)
       if(!isAdminLevel1()) return alert("Solo admin nivel 1 puede editar permisos.")
       const roles = ["admin","analista","consultor"]
       const menuKeys = [
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines",
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines","admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center","admin:people","admin:user_management","admin:settings","admin:control_center_accesses","admin:control_center_permissions"
       ]
       const payload = { admin: {}, analista: {}, consultor: {} }
@@ -10250,7 +10340,7 @@ Cliente B`)
       const items = [
         { key:"main:tickets", label:"Tickets" }, { key:"main:saved", label:"Guardados" }, { key:"main:encuentro", label:"Encuentro" }, { key:"main:top_performer", label:"Top performer" },
         { key:"main:portfolio", label:"Cartera" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
-        { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" },
+        { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" }, { key:"main:summary_general", label:"Resumen general (consultor)" }, { key:"main:profile", label:"Perfil/Configuración" },
         { key:"admin:dailys", label:"Admin · Daily's" }, { key:"admin:agenda", label:"Admin · Organizar agendas" }, { key:"admin:comments", label:"Admin · Comentarios" }, { key:"admin:capacity", label:"Admin · Capacidad instalada" },
         { key:"admin:announcements", label:"Admin · Comunicados" }, { key:"admin:guidelines", label:"Admin · Lineamientos" }, { key:"admin:manuals", label:"Admin · Manuales" }, { key:"admin:internal_quality", label:"Admin · Calidad interna" },
         { key:"admin:quality", label:"Admin · Encuesta calidad" }, { key:"admin:support", label:"Admin · Soporte técnico" }, { key:"admin:help", label:"Admin · Ayuda" }, { key:"admin:connections", label:"Admin · Conexiones" },
