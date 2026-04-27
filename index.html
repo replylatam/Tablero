@@ -1025,6 +1025,10 @@
     }
     body.light .toast.ok { border-color: rgba(22,163,74,.45); }
     body.light .toast.error { border-color: rgba(220,38,38,.45); }
+    .announcementFloat{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:140;min-width:min(560px,92vw);max-width:min(760px,92vw);padding:16px 20px;border-radius:14px;border:1px solid rgba(61,110,245,.45);background:rgba(9,15,29,.98);box-shadow:0 16px 40px rgba(0,0,0,.45)}
+    .announcementFloat .title{font-weight:800;margin-bottom:4px;font-size:16px}
+    .announcementFloat .body{font-size:15px;line-height:1.4}
+    body.light .announcementFloat{background:rgba(255,255,255,.98);color:#0f172a;border-color:rgba(37,99,235,.35)}
 
     /* ── Ticket List View ──────────────────────────────────────────── */
     .ticketListWrap {
@@ -1693,6 +1697,8 @@
     var qualityAdminMonthFilter = ""
     var qualityAdminAnalystFilter = ""
     var qualityAdminRoleView = "analista"
+    var qualityAdminSection = "results"
+    var adminAttendanceDirty = false
     var adminCapacityClientFilter = ""
     var adminCapacityExpandedClients = {}
     var adminCapacityViewMode = "cards"
@@ -3108,6 +3114,17 @@ Cliente B`)
       setTimeout(()=>{ if(el.parentNode) el.remove() }, keepMs)
     }
 
+    function showAnnouncementFloating(announcement){
+      const prev = document.getElementById("announcementFloatingCard")
+      if(prev) prev.remove()
+      const card = document.createElement("div")
+      card.id = "announcementFloatingCard"
+      card.className = "announcementFloat"
+      card.innerHTML = `<div class="title">📢 ${htmlEscape(String(announcement?.title || "Comunicado"))}</div><div class="body">${htmlEscape(String(announcement?.body || ""))}</div>`
+      document.body.appendChild(card)
+      setTimeout(()=>{ if(card.parentNode) card.remove() }, 8000)
+    }
+
     function buildTicketCode(list){
       const max = (list||[]).reduce((acc, t) => {
         const m = String(t.id||"").match(/^TAO-(\d+)$/)
@@ -3686,21 +3703,19 @@ Cliente B`)
         const consultor = resolveInformerEmail(t) || "sin_consultor"
         byConsultor[consultor] = (byConsultor[consultor] || 0) + 1
       })
-      const pieColors = ["#3d6ef5","#22d4bf","#f0a030","#e04040","#8b5cf6","#10b981","#f97316","#06b6d4"]
-      const renderConsultorPie = () => {
-        const entries = Object.entries(byConsultor).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8)
-        const total = entries.reduce((a,[,v])=>a+v,0)
-        if(!total) return `<div class="small">Sin datos.</div>`
-        let acc = 0
-        const stops = entries.map(([_,v],i) => {
-          const start = acc
-          acc += (v/total)*360
-          return `${pieColors[i % pieColors.length]} ${start}deg ${acc}deg`
-        }).join(", ")
-        return `<div class="inline" style="align-items:flex-start"><div style="width:130px;height:130px;border-radius:50%;background:conic-gradient(${stops});border:1px solid var(--stroke)"></div><div style="flex:1">${entries.map(([k,v],i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pieColors[i % pieColors.length]};margin-right:6px"></span>${htmlEscape(userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</span><strong>${v}</strong></div>`).join("")}</div></div>`
+      const renderConsultorBars = () => {
+        const entries = Object.entries(byConsultor).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1])
+        const max = Math.max(1, ...entries.map(([,v])=>Number(v||0)))
+        if(!entries.length) return `<div class="small">Sin datos.</div>`
+        return `<div style="display:grid;gap:8px">${entries.map(([k,v]) => { const pct = (Number(v||0)/max)*100; return `<div><div class="small" style="display:flex;justify-content:space-between"><span>${htmlEscape(userDisplayNameByEmail(k==="sin_consultor"?"":k) || "Sin consultor")}</span><strong>${v}</strong></div><div style="margin-top:4px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${pct.toFixed(2)}%;background:linear-gradient(90deg,#3d6ef5,#22d4bf)"></div></div></div>` }).join("")}</div>`
       }
+      const matrixTable = (() => {
+        const clientRows = allClientEntries.map(([key, c]) => ({ key, name: String(c?.name || key), assigned: String(c?.assignedConsultor || "").toLowerCase() }))
+          .sort((a,b)=>a.name.localeCompare(b.name, "es"))
+        return `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="padding:8px;border-bottom:1px solid var(--stroke);text-align:left">Cliente</th>${consultors.map(c => `<th style="padding:8px;border-bottom:1px solid var(--stroke);text-align:left">${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</th>`).join("")}</tr></thead><tbody>${clientRows.map(row => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.name)}</td>${consultors.map(c => `<td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.assigned===String(c.email||"").toLowerCase()?"✓":""}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+      })()
       wrap.innerHTML = `
-        ${currentRole === "admin" ? `<div class="card" style="padding:10px;margin:0 0 10px"><h4 style="margin:0 0 8px">Cantidad de tickets por consultores</h4>${renderConsultorPie()}</div>` : ""}
+        ${currentRole === "admin" ? `<div class="card" style="padding:10px;margin:0 0 10px"><div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(420px,1.5fr);gap:12px;align-items:start"><div><h4 style="margin:0 0 8px">Cantidad de tickets por consultores</h4>${renderConsultorBars()}</div><div><h4 style="margin:0 0 8px">Matriz cliente / consultor</h4>${matrixTable}</div></div></div>` : ""}
         <div class="row">
           <div><label>Consultor</label><select onchange="setPortfolioViewerConsultor(this.value)">${consultors.map(c => `<option value="${htmlEscape(String(c.email||"").toLowerCase())}" ${String(c.email||"").toLowerCase()===portfolioViewerConsultor?"selected":""}>${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</option>`).join("")}</select></div>
         </div>
@@ -4161,7 +4176,17 @@ Cliente B`)
       const analystKey = String(analystEmail || "").toLowerCase()
       adminAttendanceByMonth[monthKey][analystKey] = adminAttendanceByMonth[monthKey][analystKey] || {}
       adminAttendanceByMonth[monthKey][analystKey][date] = !!checked
+      adminAttendanceDirty = true
+      loadAdminHoursTable()
+    }
+
+    async function saveAdminAttendance(){
+      if(currentRole !== "admin") return
+      const monthKey = String(adminHoursMonth || toLocalDateOnly(new Date()).slice(0,7))
       persistAdminAttendanceState()
+      await db.ref("admin_attendance_by_month").child(monthKey).set(adminAttendanceByMonth[monthKey] || {})
+      adminAttendanceDirty = false
+      showToast("Asistencia guardada.", "ok", 1400)
       loadAdminHoursTable()
     }
 
@@ -4456,8 +4481,9 @@ Cliente B`)
       }
       wrap.innerHTML = analysts.length ? `
         <div class="card" style="margin-bottom:12px;border:1px solid var(--stroke)">
-        <h4 style="margin:0 0 8px">Asistencia</h4>
+        <div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Asistencia</h4><button onclick="saveAdminAttendance()">Guardar</button></div>
         <div class="small" style="margin-bottom:8px">Marcá por analista los días trabajados del período para calcular el avance diario. <strong>Abreviaturas:</strong> Lu=Lunes, Ma=Martes, Mi=Miércoles, Ju=Jueves, Vi=Viernes.</div>
+        <div class="small" style="margin-bottom:8px">Estado: <strong>${adminAttendanceDirty ? "Cambios sin guardar" : "Guardado"}</strong></div>
         <div class="inline" style="margin-bottom:8px;align-items:flex-end">
           <div><label style="margin:0">Días hábiles del mes (editable)</label><input type="number" min="0" value="${monthBusinessDaysARG(monthKey)}" onchange="setAdminBusinessDaysOverride('${monthKey}', this.value)" style="max-width:180px;margin:0"></div>
           <div><label style="margin:0">Feriados fijos del mes</label><div class="small">${selectedMonthHolidays.length ? selectedMonthHolidays.map(h => `<label style="display:block;text-transform:none;letter-spacing:0"><input type="checkbox" ${holidayExclusions[h.date] ? "" : "checked"} onchange="toggleMonthHolidayInclusion('${monthKey}','${h.date}', this.checked)" style="width:auto;margin-right:6px">${formatDateDMY(h.date)} (${htmlEscape(h.label)})</label>`).join("") : "Sin feriados fijos."}</div></div>
@@ -4832,7 +4858,7 @@ Cliente B`)
       const data = (await db.ref("support_requests").once("value")).val() || {}
       const list = Object.values(data).sort((a,b)=> new Date(b.createdAt||0)-new Date(a.createdAt||0))
       container.innerHTML = list.length
-        ? list.map(it => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(it.title||"-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(it.createdBy||"-"))} · ${it.createdAt ? new Date(it.createdAt).toLocaleString() : ""} · Estado: ${it.status === "resolved" ? "resuelto" : "abierto"}</div></div>${it.status !== "resolved" ? `<button class="ghost" onclick="resolveSupportRequest('${it.id}')">Marcar resuelto</button>` : ""}</div><div class="feedMeta">${htmlEscape(it.detail||"")}${it.resolvedAt ? `<br>Resuelto: ${htmlEscape(formatDateTime24(it.resolvedAt))}` : ""}</div>${it.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(it.attachment.url)}" target="_blank">📎 ${htmlEscape(it.attachment.name||"Adjunto")}</a></div>` : ""}</div>`).join("")
+        ? list.map(it => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(it.title||"-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(it.createdBy||"-"))} · ${it.createdAt ? new Date(it.createdAt).toLocaleString() : ""} · Estado: ${it.status === "resolved" ? "resuelto" : it.status === "in_progress" ? "en curso" : "abierto"}</div></div>${it.status !== "resolved" ? `<div class="inline" style="gap:6px"><button class="ghost" onclick="markSupportRequestInProgress('${it.id}')">En curso</button><button class="ghost" onclick="resolveSupportRequest('${it.id}')">Marcar resuelto</button></div>` : ""}</div><div class="feedMeta">${htmlEscape(it.detail||"")}${it.resolvedAt ? `<br>Resuelto: ${htmlEscape(formatDateTime24(it.resolvedAt))}` : ""}${it.resolutionComment ? `<br>Comentario resolución: ${htmlEscape(it.resolutionComment)}` : ""}</div>${it.status !== "resolved" ? `<div style="margin-top:8px"><textarea id="supportResolveComment_${it.id}" placeholder="Comentario para el analista (opcional)"></textarea></div>` : ""}${it.attachment?.url ? `<div class="small" style="margin-top:6px"><a href="${htmlEscape(it.attachment.url)}" target="_blank">📎 ${htmlEscape(it.attachment.name||"Adjunto")}</a></div>` : ""}</div>`).join("")
         : `<p class="small">Sin reportes de soporte.</p>`
     }
 
@@ -4842,9 +4868,18 @@ Cliente B`)
       const item = (await ref.once("value")).val()
       if(!item || item.status === "resolved") return
       const resolvedAt = new Date().toISOString()
-      await ref.update({ status: "resolved", resolvedAt, resolvedBy: String(currentUser?.email || "").toLowerCase() })
+      const resolutionComment = String(document.getElementById(`supportResolveComment_${id}`)?.value || "").trim()
+      await ref.update({ status: "resolved", resolvedAt, resolvedBy: String(currentUser?.email || "").toLowerCase(), resolutionComment })
       await db.ref("activity_logs").push({ eventType: "support_request_resolved", ticketId: "", email: String(currentUser?.email || "").toLowerCase(), targetEmail: String(item.createdBy || "").toLowerCase(), timestampIso: resolvedAt, title: item.title || "", supportId: id })
       showToast("Caso de soporte resuelto.", "ok")
+      loadSupportAdmin()
+    }
+
+
+    async function markSupportRequestInProgress(id){
+      if(currentRole !== "admin") return
+      await db.ref("support_requests").child(String(id || "")).update({ status: "in_progress", updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Caso marcado en curso.", "ok", 1400)
       loadSupportAdmin()
     }
 
@@ -4856,7 +4891,7 @@ Cliente B`)
       const all = Object.values((await db.ref("support_requests").once("value")).val() || {})
       const mine = all.filter(it => String(it?.createdBy || "").toLowerCase() === me).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
       wrap.innerHTML = mine.length
-        ? mine.map(it => `<div class="feedItem"><div class="feedType">${htmlEscape(it.title || "-")}</div><div class="feedMeta">${formatDateTime24(it.createdAt || "")} · Estado: ${it.status === "resolved" ? "resuelto" : "abierto"}</div><div style="margin-top:6px">${htmlEscape(it.detail || "-")}</div>${it.resolvedAt ? `<div class="small" style="margin-top:6px">Resuelto: ${htmlEscape(formatDateTime24(it.resolvedAt))}</div>` : ""}</div>`).join("")
+        ? mine.map(it => `<div class="feedItem"><div class="feedType">${htmlEscape(it.title || "-")}</div><div class="feedMeta">${formatDateTime24(it.createdAt || "")} · Estado: ${it.status === "resolved" ? "resuelto" : it.status === "in_progress" ? "en curso" : "abierto"}</div><div style="margin-top:6px">${htmlEscape(it.detail || "-")}</div>${it.resolvedAt ? `<div class="small" style="margin-top:6px">Resuelto: ${htmlEscape(formatDateTime24(it.resolvedAt))}</div>` : ""}${it.resolutionComment ? `<div class="small" style="margin-top:4px"><strong>Comentario soporte:</strong> ${htmlEscape(it.resolutionComment)}</div>` : ""}</div>`).join("")
         : `<p class="small">Todavía no tenés casos de soporte.</p>`
     }
 
@@ -5064,6 +5099,7 @@ Cliente B`)
           message: String(message || "Error desconocido")
         })
         if(appRuntimeErrors.length > 30) appRuntimeErrors = appRuntimeErrors.slice(0, 30)
+        try{ localStorage.setItem("tablero_connection_error_history", JSON.stringify(appRuntimeErrors)) }catch(_){ }
       }
       window.addEventListener("error", (event) => {
         pushError(event?.filename || "window.error", event?.message || event?.error?.message || "Error sin detalle")
@@ -5097,7 +5133,7 @@ Cliente B`)
       return {
         at: new Date().toISOString(),
         checks: results,
-        runtimeErrors: [...appRuntimeErrors]
+        runtimeErrors: [...appRuntimeErrors], persistedErrors: (() => { try{ return JSON.parse(localStorage.getItem("tablero_connection_error_history") || "[]") }catch(_){ return [] } })()
       }
     }
 
@@ -5120,7 +5156,7 @@ Cliente B`)
       const runtimeErrors = (report?.runtimeErrors || []).length
         ? (report.runtimeErrors || []).map(err => `<div class="feedItem"><div class="feedType">${htmlEscape(err.source)}</div><div class="feedMeta">${htmlEscape(formatDateTime24(err.at))}</div><div class="small" style="margin-top:6px">${htmlEscape(err.message)}</div></div>`).join("")
         : `<div class="small">Sin errores capturados en esta sesión.</div>`
-      wrap.innerHTML = `<div class="inline" style="justify-content:space-between;align-items:center"><div class="small">Último diagnóstico: ${htmlEscape(formatDateTime24(report?.at || new Date().toISOString()))}</div><button class="ghost" onclick="loadAdminConnectionsPanel(true)">Diagnosticar ahora</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Conexión</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead><tbody>${rows}</tbody></table></div><h4 style="margin:12px 0 8px">Errores detectados en la sesión (inspector-runtime)</h4>${runtimeErrors}`
+      wrap.innerHTML = `<div class="inline" style="justify-content:space-between;align-items:center"><div class="small">Último diagnóstico: ${htmlEscape(formatDateTime24(report?.at || new Date().toISOString()))}</div><button class="ghost" onclick="loadAdminConnectionsPanel(true)">Diagnosticar ahora</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Conexión</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead><tbody>${rows}</tbody></table></div><h4 style="margin:12px 0 8px">Errores detectados en la sesión (inspector-runtime)</h4>${runtimeErrors}<h4 style="margin:12px 0 8px">Historial guardado</h4>${(report?.persistedErrors||[]).length ? (report.persistedErrors||[]).map(err => `<div class="feedItem"><div class="feedType">${htmlEscape(err.source||"runtime")}</div><div class="feedMeta">${htmlEscape(formatDateTime24(err.at||""))}</div><div class="small" style="margin-top:6px">${htmlEscape(err.message||"-")}</div></div>`).join("") : `<div class="small">Sin historial previo.</div>`}`
     }
 
     async function runInternalQualityFirebaseDiagnostics(){
@@ -5168,6 +5204,7 @@ Cliente B`)
           message: String(message || "Error desconocido")
         })
         if(appRuntimeErrors.length > 30) appRuntimeErrors = appRuntimeErrors.slice(0, 30)
+        try{ localStorage.setItem("tablero_connection_error_history", JSON.stringify(appRuntimeErrors)) }catch(_){ }
       }
       window.addEventListener("error", (event) => {
         pushError(event?.filename || "window.error", event?.message || event?.error?.message || "Error sin detalle")
@@ -5201,7 +5238,7 @@ Cliente B`)
       return {
         at: new Date().toISOString(),
         checks: results,
-        runtimeErrors: [...appRuntimeErrors]
+        runtimeErrors: [...appRuntimeErrors], persistedErrors: (() => { try{ return JSON.parse(localStorage.getItem("tablero_connection_error_history") || "[]") }catch(_){ return [] } })()
       }
     }
 
@@ -5224,7 +5261,7 @@ Cliente B`)
       const runtimeErrors = (report?.runtimeErrors || []).length
         ? (report.runtimeErrors || []).map(err => `<div class="feedItem"><div class="feedType">${htmlEscape(err.source)}</div><div class="feedMeta">${htmlEscape(formatDateTime24(err.at))}</div><div class="small" style="margin-top:6px">${htmlEscape(err.message)}</div></div>`).join("")
         : `<div class="small">Sin errores capturados en esta sesión.</div>`
-      wrap.innerHTML = `<div class="inline" style="justify-content:space-between;align-items:center"><div class="small">Último diagnóstico: ${htmlEscape(formatDateTime24(report?.at || new Date().toISOString()))}</div><button class="ghost" onclick="loadAdminConnectionsPanel(true)">Diagnosticar ahora</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Conexión</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead><tbody>${rows}</tbody></table></div><h4 style="margin:12px 0 8px">Errores detectados en la sesión (inspector-runtime)</h4>${runtimeErrors}`
+      wrap.innerHTML = `<div class="inline" style="justify-content:space-between;align-items:center"><div class="small">Último diagnóstico: ${htmlEscape(formatDateTime24(report?.at || new Date().toISOString()))}</div><button class="ghost" onclick="loadAdminConnectionsPanel(true)">Diagnosticar ahora</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Conexión</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Detalle</th></tr></thead><tbody>${rows}</tbody></table></div><h4 style="margin:12px 0 8px">Errores detectados en la sesión (inspector-runtime)</h4>${runtimeErrors}<h4 style="margin:12px 0 8px">Historial guardado</h4>${(report?.persistedErrors||[]).length ? (report.persistedErrors||[]).map(err => `<div class="feedItem"><div class="feedType">${htmlEscape(err.source||"runtime")}</div><div class="feedMeta">${htmlEscape(formatDateTime24(err.at||""))}</div><div class="small" style="margin-top:6px">${htmlEscape(err.message||"-")}</div></div>`).join("") : `<div class="small">Sin historial previo.</div>`}`
     }
 
     async function loadAdminInternalQualityTab(){
@@ -5252,7 +5289,16 @@ Cliente B`)
       if(qualityAdminAnalystFilter){
         surveys = surveys.filter(s => String(s.analystEmail || "").toLowerCase() === qualityAdminAnalystFilter)
       }
-      if(!surveys.length){ container.innerHTML = `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Podés crear preguntas distintas para analista y consultor.</div></div>${renderQualityBuilderAdminHtml()}<p class="small">Sin encuestas todavía.</p>`; return }
+      const qualityTabs = `<div class="inline" style="margin:8px 0 12px;gap:8px"><button class="${qualityAdminSection==='results'?'':'ghost'}" onclick="setAdminQualitySection('results')">Resultados</button><button class="${qualityAdminSection==='edit_analista'?'':'ghost'}" onclick="setAdminQualitySection('edit_analista')">Modificar encuesta analista</button><button class="${qualityAdminSection==='edit_consultor'?'':'ghost'}" onclick="setAdminQualitySection('edit_consultor')">Modificar encuesta consultores</button></div>`
+      if(qualityAdminSection === "edit_analista"){
+        container.innerHTML = `${qualityTabs}${renderQualityBuilderAdminHtml("analista")}`
+        return
+      }
+      if(qualityAdminSection === "edit_consultor"){
+        container.innerHTML = `${qualityTabs}${renderQualityBuilderAdminHtml("consultor")}`
+        return
+      }
+      if(!surveys.length){ container.innerHTML = `${qualityTabs}<div class="feedItem"><div class="feedType">Resultados</div><div class="feedMeta">Sin encuestas todavía.</div></div>`; return }
       const byAnalyst = {}
       const byConsultor = {}
       surveys.forEach(s => {
@@ -5290,7 +5336,7 @@ Cliente B`)
       }).join("")
       const details = surveys.map(s => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${s.ticketId||"-"}')"><div class="feedType">${htmlEscape(s.ticketId||"-")} · Analista: ${htmlEscape(userDisplayNameByEmail(s.analystEmail||"-"))} · Consultor: ${htmlEscape(userDisplayNameByEmail(s.consultorEmail||"-"))}</div><div class="feedMeta">Evalúa: <strong>${htmlEscape(userDisplayNameByEmail(s.raterEmail || "-"))}</strong> (${htmlEscape(s.raterRole || "-")}) → <strong>${htmlEscape(userDisplayNameByEmail(s.ratedEmail || "-"))}</strong> (${htmlEscape(s.ratedRole || "-")}).<br>Criterios: Recepción (${htmlEscape(s.reception||"-")}), Comunicación (${htmlEscape(s.communication||"-")}), Satisfacción general (${htmlEscape(String(normalizeQualityToTen(s.overall||0)))} / 10).${s.observation ? `<br>Observaciones: ${htmlEscape(s.observation)}` : ""}<br>${s.createdAt ? new Date(s.createdAt).toLocaleString() : ""}</div></div>`).join("")
       container.innerHTML = `
-        ${renderQualityBuilderAdminHtml()}
+        ${qualityTabs}
         <div class="inline" style="margin:10px 0;gap:8px;flex-wrap:wrap"><div><label>Mes</label><input type="month" value="${htmlEscape(qualityAdminMonthFilter)}" onchange="setAdminQualityMonthFilter(this.value)"></div><div><label>Analista</label><select onchange="setAdminQualityAnalystFilter(this.value)"><option value="">Todos</option>${analystOptions.map(email => `<option value=\"${htmlEscape(email)}\" ${email===qualityAdminAnalystFilter?'selected':''}>${htmlEscape(userDisplayNameByEmail(email)||email)}</option>`).join("")}</select></div></div>
         <div class="feedItem">
           <div class="feedType">Cómo funciona la encuesta de calidad</div>
@@ -5593,17 +5639,25 @@ Cliente B`)
       loadQualitySurveyAdmin()
     }
 
+    function setAdminQualitySection(section){
+      qualityAdminSection = ["results","edit_analista","edit_consultor"].includes(String(section||"")) ? String(section) : "results"
+      loadQualitySurveyAdmin()
+    }
+
     function setAdminQualityRoleView(role){
       qualityAdminRoleView = role === "consultor" ? "consultor" : "analista"
       loadQualitySurveyAdmin()
     }
 
-    function renderQualityBuilderAdminHtml(){
+    function renderQualityBuilderAdminHtml(onlyRole = ""){
       const renderRole = (role, title) => {
         const items = qualitySurveyForms?.[role] || []
         return `<div class="card" style="padding:10px;margin:0 0 8px"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0">${title}</h4><button class="ghost" onclick="addQualityQuestion('${role}')">+ Pregunta</button></div><div class="small" style="margin:6px 0 10px">1) Escribí la pregunta.<br>2) En opciones, separá respuestas por coma.<br>3) Guardá formularios.</div>${items.length ? items.map((q, idx) => `<div class="row"><div><label>Pregunta</label><input value="${htmlEscape(q.label || '')}" onchange="updateQualityQuestion('${role}',${idx},'label',this.value)"></div><div><label>Opciones (coma)</label><input value="${htmlEscape((q.options||[]).join(', '))}" onchange="updateQualityQuestion('${role}',${idx},'options',this.value)"></div><div style="display:flex;align-items:flex-end"><button class="danger" onclick="removeQualityQuestion('${role}',${idx})">Quitar</button></div></div>`).join("") : `<p class="small">Sin preguntas.</p>`}</div>`
       }
-      return `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Admin puede modificar, agregar y quitar preguntas; y definir formularios diferentes para analista y consultor.</div><div class="small" style="margin:8px 0">Importante: la encuesta al <strong>cerrar ticket</strong> usa el formulario <strong>analista</strong> (la completa el analista).</div><div style="margin-top:8px">${renderRole("analista","Encuesta de cierre de ticket (analista)")}${renderRole("consultor","Encuesta pendiente del consultor")}<div class="inline" style="justify-content:flex-end"><button onclick="saveQualityForms()">Guardar formularios</button></div></div></div>`
+      const analistaBlock = renderRole("analista","Encuesta de cierre de ticket (analista)")
+      const consultorBlock = renderRole("consultor","Encuesta pendiente del consultor")
+      const bodyHtml = onlyRole === "analista" ? analistaBlock : onlyRole === "consultor" ? consultorBlock : `${analistaBlock}${consultorBlock}`
+      return `<div class="feedItem"><div class="feedType">Editor de encuestas por rol</div><div class="feedMeta">Admin puede modificar, agregar y quitar preguntas; y definir formularios diferentes para analista y consultor.</div><div class="small" style="margin:8px 0">Importante: la encuesta al <strong>cerrar ticket</strong> usa el formulario <strong>analista</strong> (la completa el analista).</div><div style="margin-top:8px">${bodyHtml}<div class="inline" style="justify-content:flex-end"><button onclick="saveQualityForms()">Guardar formularios</button></div></div></div>`
     }
 
     async function openCloseSurveyModal(ticketId, nextTicketData){
@@ -6709,7 +6763,7 @@ Cliente B`)
         ${tickets.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${tickets.map(item => `<tr onclick="openTicketDetailModal('${item.ticket.id}')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(item.savedAt||""))}</td><td>${htmlEscape(item.ticket.id||"-")} · ${htmlEscape(item.ticket.title||"-")}</td><td>${htmlEscape(item.ticket.client||"-")}</td><td>${htmlEscape(STATUS[item.ticket.status] || item.ticket.status || "-")}</td><td><button class="ghost" onclick="toggleSaveTicket('${item.ticket.id}', event)">Quitar</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés tickets guardados.</div>`}</div>
         <div class="savedBlock comments"><h4 style="margin:0 0 8px">Comentarios guardados</h4>
         ${comments.length ? `<div class="savedTableWrap"><table class="savedTable"><colgroup><col><col><col><col><col></colgroup><thead><tr><th>Fecha guardado</th><th>Ticket</th><th>Autor</th><th>Comentario</th><th>Acción</th></tr></thead><tbody>${comments.map(c => `<tr onclick="openTicketDetailModal('${c.ticketId}', 'comments')" style="cursor:pointer"><td>${htmlEscape(formatDateTime24(c.savedAt||""))}</td><td>${htmlEscape(c.ticketId||"-")} · ${htmlEscape(c.ticketTitle||"-")}</td><td>${htmlEscape(c.author||"-")}</td><td>${htmlEscape(c.message||"-")}</td><td><div class="savedActionBtns">${c.guidelineRequestStatus === "pending" ? `<button class="ghost" disabled>Pendiente de aprobación</button>` : `<button class="ghost" onclick="elevateSavedCommentAsGuideline('${c.ticketId}','${c.commentId}', event)">Elevar como lineamiento</button>`}<button class="ghost" onclick="toggleSaveComment('${c.ticketId}','${c.commentId}', event)">Quitar</button></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="small">No tenés comentarios guardados.</div>`}</div>
-        ${currentRole === "analista" ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.updatedAt || m.createdAt || "")}</div></div><div class="inline" style="gap:8px"><button class="ghost" onclick="editMyMemo('${m.id||""}')">Editar</button><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
+        ${(currentRole === "analista" || currentRole === "admin") ? `<div class="savedBlock"><div class="inline" style="justify-content:space-between;align-items:center"><h4 style="margin:0 0 8px">Mis memos</h4><button class="ghost" onclick="openMemoCreateModal()">+ Crear memo</button></div>${memos.length ? memos.map(m => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(m.title||"-")}</div><div class="feedMeta">${formatDateTime24(m.updatedAt || m.createdAt || "")}</div></div><div class="inline" style="gap:8px"><button class="ghost" onclick="editMyMemo('${m.id||""}')">Editar</button><button class="commentDeleteText" onclick="deleteMyMemo('${m.id||""}')">Eliminar</button></div></div><div>${htmlEscape(m.detail||"-")}</div></div>`).join("") : `<div class="small">No tenés memos todavía.</div>`}</div>` : ""}
       `
     }
 
@@ -6961,13 +7015,23 @@ Cliente B`)
         if(!record) return
         title.textContent = `Hoja de vida · ${record.title || "-"}`
         const actions = Array.isArray(record.actions) ? record.actions : []
-        content.innerHTML = `<div class="small" style="margin-bottom:8px"><strong>${htmlEscape(userDisplayNameByEmail(record.analystEmail || "-"))}</strong> · Ingreso: ${htmlEscape(formatDateDMY(record.joinDate || ""))} · Estado: ${htmlEscape(record.status || "-")} · Posición: ${htmlEscape(record.position || "-")}</div><div class="settingsGrid"><div><label>Fecha de acción</label><input id="cvActionDate" type="date"></div><div><label>Tipo</label><select id="cvActionType"><option value="positiva">Positiva</option><option value="a_mejorar">A mejorar</option></select></div><div><label>Impacto</label><input id="cvActionImpact" placeholder="Alto / Medio / Bajo"></div><div style="grid-column:1/-1"><label>Detalle</label><textarea id="cvActionDetail" placeholder="Detalle de la acción"></textarea></div></div><div class="inline" style="justify-content:flex-end;margin:8px 0"><button class="ghost" onclick="addAnalystCvAction('${record.id}')">Agregar acción</button></div><div>${actions.length ? `<ul>${actions.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).map((a,idx) => `<li style=\"margin-bottom:8px\"><strong>${htmlEscape(formatDateDMY(a.date || ""))}</strong> · ${htmlEscape(a.type || "-")} · Impacto: ${htmlEscape(a.impact || "-")}<br>${htmlEscape(a.detail || "-")}</li>`).join("")}</ul>` : `<div class="small">Sin acciones registradas.</div>`}</div>`
+        content.innerHTML = `<div class="small" style="margin-bottom:8px"><strong>${htmlEscape(userDisplayNameByEmail(record.analystEmail || "-"))}</strong> · Ingreso: ${htmlEscape(formatDateDMY(record.joinDate || ""))} · Estado: ${htmlEscape(record.status || "-")} · Posición: ${htmlEscape(record.position || "-")}</div><div class="inline" style="gap:8px;align-items:flex-end;margin-bottom:8px"><div><label>Estado del analista</label><select id="cvStatusEdit"><option value="activo" ${String(record.status||"")==='activo'?'selected':''}>Activo</option><option value="inactivo" ${String(record.status||"")==='inactivo'?'selected':''}>Inactivo</option><option value="licencia" ${String(record.status||"")==='licencia'?'selected':''}>Licencia</option></select></div><button class="ghost" onclick="updateAnalystCvStatus('${record.id}')">Guardar estado</button></div><div class="settingsGrid"><div><label>Fecha de acción</label><input id="cvActionDate" type="date"></div><div><label>Tipo</label><select id="cvActionType"><option value="positiva">Positiva</option><option value="a_mejorar">A mejorar</option></select></div><div><label>Impacto</label><input id="cvActionImpact" placeholder="Alto / Medio / Bajo"></div><div style="grid-column:1/-1"><label>Detalle</label><textarea id="cvActionDetail" placeholder="Detalle de la acción"></textarea></div></div><div class="inline" style="justify-content:flex-end;margin:8px 0"><button class="ghost" onclick="addAnalystCvAction('${record.id}')">Agregar acción</button></div><div>${actions.length ? `<ul>${actions.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).map((a,idx) => `<li style=\"margin-bottom:8px\"><strong>${htmlEscape(formatDateDMY(a.date || ""))}</strong> · ${htmlEscape(a.type || "-")} · Impacto: ${htmlEscape(a.impact || "-")}<br>${htmlEscape(a.detail || "-")}</li>`).join("")}</ul>` : `<div class="small">Sin acciones registradas.</div>`}</div>`
       }
       document.getElementById("analystCvModal")?.classList.remove("hidden")
     }
 
     function closeAnalystCvModal(){
       document.getElementById("analystCvModal")?.classList.add("hidden")
+    }
+
+
+    async function updateAnalystCvStatus(id){
+      if(currentRole !== "admin") return
+      const status = String(document.getElementById("cvStatusEdit")?.value || "activo").toLowerCase()
+      await db.ref("analyst_cv").child(String(id || "")).update({ status, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Estado actualizado en hoja de vida.", "ok", 1400)
+      openAnalystCvModal(String(id || ""))
+      loadAdminAnalystCvGrid()
     }
 
     async function saveAnalystCv(){
@@ -7746,7 +7810,7 @@ Cliente B`)
       const latestStamp = String(latest.scheduledAt || latest.createdAt || "")
       const seenCreatedAt = String(seenDb?.lastSeenAt || seenDb?.lastSeenCreatedAt || "")
       if(latestStamp <= localSeen || latestStamp <= seenCreatedAt) return
-      alert(`📢 ${latest.title}\n\n${latest.body}`)
+      showAnnouncementFloating(latest)
       localStorage.setItem(key, latestStamp)
       await db.ref(`announcements_seen/${emailKey(String(currentUser?.email||"").toLowerCase())}`).set({
         announcementId: String(latest.id || ""),
@@ -10292,7 +10356,12 @@ Cliente B`)
         `Observaciones: ${row.observations || "-"}`,
         `Cómo se solucionó: ${row.solutionDetail || "-"}`
       ].join("\n")
-      alert(detail)
+      showToast("Mostrando detalle completo de historial.", "info", 1600)
+      const body = document.getElementById("dashboardListModalContent")
+      const title = document.getElementById("dashboardListModalTitle")
+      if(title) title.innerText = "Detalle completo · Daily"
+      if(body) body.innerHTML = `<pre style="white-space:pre-wrap;margin:0">${htmlEscape(detail)}</pre>`
+      document.getElementById("dashboardListModal")?.classList.remove("hidden")
     }
 
     async function addDailyEntryForAnalyst(){
@@ -11948,6 +12017,7 @@ Cliente B`)
         setupRuntimeErrorCapture()
         applyTheme()
         loadAdminAttendanceState()
+        try{ const remoteAttendance = (await db.ref("admin_attendance_by_month").once("value")).val() || {}; adminAttendanceByMonth = { ...remoteAttendance, ...adminAttendanceByMonth } }catch(_){}
         const startupWarmup = Promise.allSettled([
           ensureDefaultUsers(),
           ensureDefaultClients(),
