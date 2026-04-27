@@ -1679,6 +1679,7 @@
     var analystGuidelinesClient = ""
     var portfolioViewerConsultor = ""
     var consultorPortfolioSearch = ""
+    var consultorGuidelinesSearch = ""
     var consultorSummaryCache = { accounts: [], tickets: [], openTickets: [], recurrentTickets: [], openWithAnalystTickets: [], priorityBuckets: { Alta: [], Media: [], Baja: [] } }
     var adminHoursMonth = toLocalDateOnly(new Date()).slice(0, 7)
     var adminCalendarMonth = toLocalDateOnly(new Date()).slice(0, 7)
@@ -2011,7 +2012,7 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
+      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
       if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
         showToast("No tenés permisos para ver este menú.", "error", 1600)
         return
@@ -3763,7 +3764,7 @@ Cliente B`)
       }).filter(r => r.last && r.isAnalystComment).sort((a,b)=>new Date(b.last?.createdAt||0)-new Date(a.last?.createdAt||0))
       consultorSummaryCache = { accounts, tickets, openTickets, recurrentTickets, openWithAnalystTickets, priorityBuckets }
       const recurrenceRows = buildConsultorRecurrenceTableRows(openTickets)
-      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('accounts')"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? "Click para ver clientes asignados" : "Sin cuentas asignadas."}</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('open')"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar) · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('recurrent')"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('created_open')"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('priority')"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Recurrencia de tickets</h4><div class="small" style="margin-bottom:8px">Matriz de tareas en curso por día hábil (L-V). Click en un ticket para abrirlo.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lunes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Martes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Miércoles</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jueves</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Viernes</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="7" class="small" style="padding:8px">No hay tickets en curso para mostrar.</td></tr>`}</tbody></table></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
+      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('accounts')"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? htmlEscape(accounts.join(" · ")) : "Sin cuentas asignadas."}</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('open')"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar) · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('recurrent')"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('created_open')"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('priority')"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Recurrencia de tickets</h4><div class="small" style="margin-bottom:8px">Matriz de tareas en curso por día hábil (L-V). Click en un ticket para abrirlo.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lunes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Martes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Miércoles</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jueves</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Viernes</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="7" class="small" style="padding:8px">No hay tickets en curso para mostrar.</td></tr>`}</tbody></table></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
     }
 
     function setConsultorPortfolioSearch(value){
@@ -6319,11 +6320,12 @@ Cliente B`)
       const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
       const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
       const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
+      const showConsultorTodayAgenda = currentRole === "consultor" && mainViewTab === "agenda_today"
       const showConsultorSummary = currentRole === "consultor" && mainViewTab === "summary_general"
       const showConsultorProfile = currentRole === "consultor" && mainViewTab === "profile"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
-      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer
+      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer
       const isSidebarItemVisible = (item) => {
         const action = String(item?.action || "")
         const mainMatch = action.match(/setMainViewTab\\('([^']+)'\\)/)
@@ -6373,6 +6375,7 @@ Cliente B`)
         { title: "Herramientas", items: [
           ...(currentRole === "consultor" ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
@@ -6458,7 +6461,9 @@ Cliente B`)
         ` : showDailysView ? `
           <div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAnalystWrap" class="small"></div></div>
         ` : showConsultorGuidelines ? `
-          <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div id="consultorGuidelinesList" class="small"></div></div>
+          <div class="card"><h3 style="margin-top:0">Lineamientos de acco</h3><div class="row"><div><label>Buscar carpeta o lineamiento</label><input placeholder="Cliente, título o resumen..." value="${htmlEscape(consultorGuidelinesSearch)}" oninput="setConsultorGuidelinesSearch(this.value)"></div></div><div id="consultorGuidelinesList" class="small" style="margin-top:10px"></div></div>
+        ` : showConsultorTodayAgenda ? `
+          <div class="card"><h3 style="margin-top:0">Agenda de hoy</h3><div class="small" style="margin-bottom:8px">Tickets creados por vos y planificados para hoy en la agenda operativa del analista.</div><div id="consultorTodayAgendaList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
           <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná cuáles clientes pertenecen a tu cartera y agregá nuevos si hace falta.</div><div class="row"><div><label>Nuevo cliente</label><input id="consultorClientName" placeholder="Nombre del cliente"></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Agregar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
         ` : showConsultorSummary ? `
@@ -6679,6 +6684,8 @@ Cliente B`)
         renderSavedItems()
       }else if(showConsultorPortfolio){
         loadConsultorPortfolio()
+      }else if(showConsultorTodayAgenda){
+        loadConsultorTodayAgenda()
       }else if(showConsultorSummary){
         loadConsultorGeneralSummary()
       }else if(showConsultorProfile){
@@ -7609,15 +7616,38 @@ Cliente B`)
       document.getElementById("analystGuidelineModal").classList.remove("hidden")
     }
 
+    function setConsultorGuidelinesSearch(value){
+      consultorGuidelinesSearch = String(value || "")
+      loadConsultorGuidelines()
+    }
+
+    async function loadConsultorTodayAgenda(){
+      if(currentRole !== "consultor" || mainViewTab !== "agenda_today") return
+      const wrap = document.getElementById("consultorTodayAgendaList")
+      if(!wrap) return
+      const myEmail = String(currentUser?.email || "").toLowerCase()
+      const today = toLocalDateOnly(new Date())
+      const tickets = (cachedTickets?.length ? cachedTickets : await fetchTicketsFromDb())
+        .filter(t => String(t?.plannedWorkDate || "") === today)
+        .filter(t => String(resolveInformerEmail(t) || t.createdBy || "").toLowerCase() === myEmail || String(t.createdBy || "").toLowerCase() === myEmail)
+      wrap.innerHTML = tickets.length
+        ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${tickets.map(t => `<tr style="cursor:pointer" onclick="openTicketDetailModal('${t.id || ""}')"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(t.assignedTo || "-"))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td></tr>`).join("")}</tbody></table></div>`
+        : `<div class="small">No tenés tickets en agenda para hoy.</div>`
+    }
+
     async function loadConsultorGuidelines(){
       if(currentRole !== "consultor" || mainViewTab !== "consultor_guidelines") return
       const wrap = document.getElementById("consultorGuidelinesList")
       if(!wrap) return
       const guidelines = await getGuidelines()
-      const byClient = guidelines.reduce((acc,g)=>{ const k=String(g.client||"Sin cliente"); if(!acc[k]) acc[k]=[]; acc[k].push(g); return acc }, {})
+      const search = String(consultorGuidelinesSearch || "").trim().toLowerCase()
+      const filtered = search
+        ? guidelines.filter(g => String(g.client || "").toLowerCase().includes(search) || String(g.title || "").toLowerCase().includes(search) || String(g.summary || "").toLowerCase().includes(search))
+        : guidelines
+      const byClient = filtered.reduce((acc,g)=>{ const k=String(g.client||"Sin cliente"); if(!acc[k]) acc[k]=[]; acc[k].push(g); return acc }, {})
       wrap.innerHTML = Object.keys(byClient).length
         ? Object.entries(byClient).sort((a,b)=>a[0].localeCompare(b[0],'es')).map(([client,list]) => `<div class="feedItem"><div class="feedType">📁 ${htmlEscape(client)}</div><div class="small">${list.map(g => `<div style="margin-top:8px"><strong>${htmlEscape(g.title || "-")}</strong><div>${htmlEscape(g.summary || "-")}</div></div>`).join("")}</div></div>`).join("")
-        : `<div class="small">Sin lineamientos disponibles.</div>`
+        : `<div class="small">Sin lineamientos disponibles para la búsqueda.</div>`
     }
 
     function closeAnalystGuidelineModal(){
@@ -9119,7 +9149,7 @@ Cliente B`)
       const userKey = emailKey(me)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
       try{
-        if(prevStatus === "todo" && next === "doing"){
+        if(prevStatus !== "doing" && next === "doing"){
           await startTicketTimerForUser(ticket.id, userKey)
         }else if(prevStatus === "doing" && next !== "doing"){
           const users = ticket?.timeTracking?.users || {}
@@ -10447,7 +10477,7 @@ Cliente B`)
       if(!isAdminLevel1()) return alert("Solo admin nivel 1 puede editar permisos.")
       const roles = ["admin","analista","consultor"]
       const menuKeys = [
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile",
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines","admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center","admin:people","admin:user_management","admin:settings","admin:control_center_accesses","admin:control_center_permissions"
       ]
       const payload = { admin: {}, analista: {}, consultor: {} }
@@ -10468,7 +10498,7 @@ Cliente B`)
       const roles = [{key:"admin",label:"Admin"},{key:"analista",label:"Analista"},{key:"consultor",label:"Consultor"}]
       const items = [
         { key:"main:tickets", label:"Tickets" }, { key:"main:saved", label:"Guardados" }, { key:"main:encuentro", label:"Encuentro" }, { key:"main:top_performer", label:"Top performer" },
-        { key:"main:portfolio", label:"Cartera" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
+        { key:"main:portfolio", label:"Cartera" }, { key:"main:agenda_today", label:"Agenda de hoy (consultor)" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
         { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" }, { key:"main:summary_general", label:"Resumen general (consultor)" }, { key:"main:profile", label:"Perfil/Configuración" },
         { key:"admin:dailys", label:"Admin · Daily's" }, { key:"admin:agenda", label:"Admin · Organizar agendas" }, { key:"admin:comments", label:"Admin · Comentarios" }, { key:"admin:capacity", label:"Admin · Capacidad instalada" },
         { key:"admin:announcements", label:"Admin · Comunicados" }, { key:"admin:guidelines", label:"Admin · Lineamientos" }, { key:"admin:manuals", label:"Admin · Manuales" }, { key:"admin:internal_quality", label:"Admin · Calidad interna" },
