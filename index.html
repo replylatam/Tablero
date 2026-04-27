@@ -1679,6 +1679,7 @@
     var analystGuidelinesClient = ""
     var portfolioViewerConsultor = ""
     var consultorPortfolioSearch = ""
+    var consultorSummaryCache = { accounts: [], tickets: [], openTickets: [], recurrentTickets: [], openWithAnalystTickets: [], priorityBuckets: { Alta: [], Media: [], Baja: [] } }
     var adminHoursMonth = toLocalDateOnly(new Date()).slice(0, 7)
     var adminCalendarMonth = toLocalDateOnly(new Date()).slice(0, 7)
     var adminHoursHolidaysByAnalyst = {}
@@ -1793,6 +1794,7 @@
     // Debe aceptar JSON { action, payload } para createTicket/updateTicket/deleteTicket.
     const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwkznPTqRIC-WNxzRcLRY0J9uuISY1vph-clOl6k26SBu9NOdw4-q1Fn3JJv0sYB1Pjyg/exec"
     const DRIVE_FOLDER_ID = "1IZ0GHXqSQzbHLnBmSAitnah3xDq8vy94"
+    const GOOGLE_CALENDAR_OAUTH_CLIENT_ID = ""
     let cachedTickets = []
 
     function emailKey(email){ return (email||"").toLowerCase().replace(/[.#$/\[\]]/g, "_") }
@@ -3666,6 +3668,54 @@ Cliente B`)
       wrap.innerHTML = countersTable + (items.length ? items.map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span><div class="inline" style="gap:8px;flex-wrap:nowrap"><select style="margin:0;min-width:190px" onchange="updateClientAssignmentFromPortfolio('${key}', this.value)"><option value="">Sin asignar</option>${consultors.map(con => `<option value="${htmlEscape(String(con.email||"").toLowerCase())}" ${String(c?.assignedConsultor||"").toLowerCase()===String(con.email||"").toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</option>`).join("")}</select><select style="margin:0;min-width:140px" onchange="updateClientStatusFromPortfolio('${key}', this.value)"><option value="activo" ${String(c?.status||'activo').toLowerCase()==='activo'?'selected':''}>Activo</option><option value="inactivo" ${String(c?.status||'activo').toLowerCase()==='inactivo'?'selected':''}>Inactivo</option></select></div></div>`).join("") : `<div class="small">No hay clientes para la búsqueda indicada.</div>`)
     }
 
+    function openConsultorSummaryDetail(kind){
+      if(currentRole !== "consultor") return
+      const modal = document.getElementById("dashboardListModal")
+      const title = document.getElementById("dashboardListModalTitle")
+      const content = document.getElementById("dashboardListModalContent")
+      if(!modal || !title || !content) return
+      const cache = consultorSummaryCache || {}
+      const ticketTable = (list = []) => `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Prioridad</th></tr></thead><tbody>${list.length ? list.map(t => `<tr style="cursor:pointer" onclick="openTicketDetailModal('${t.id || ""}')"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.priority || "-")}</td></tr>`).join("") : `<tr><td colspan="5" class="small" style="padding:8px">Sin resultados.</td></tr>`}</tbody></table></div>`
+      if(kind === "accounts"){
+        title.textContent = "Cuentas asignadas"
+        const accounts = Array.isArray(cache.accounts) ? cache.accounts : []
+        content.innerHTML = `<div class="small">Clientes marcados como propios en tu cartera.</div><div style="margin-top:8px">${accounts.length ? accounts.map(a => `<div class="feedItem">${htmlEscape(a)}</div>`).join("") : `<div class="small">Sin cuentas asignadas.</div>`}</div>`
+      }else if(kind === "open"){
+        title.textContent = "Tickets en curso"
+        content.innerHTML = ticketTable(cache.openTickets || [])
+      }else if(kind === "recurrent"){
+        title.textContent = "Tickets recurrentes"
+        content.innerHTML = ticketTable(cache.recurrentTickets || [])
+      }else if(kind === "created_open"){
+        title.textContent = "Creados por mí y abiertos"
+        content.innerHTML = ticketTable(cache.openWithAnalystTickets || [])
+      }else if(kind === "priority"){
+        title.textContent = "Prioridades abiertas"
+        const prio = cache.priorityBuckets || {}
+        content.innerHTML = `
+          <div class="small" style="margin-bottom:8px">Detalle por prioridad.</div>
+          <h4 style="margin:10px 0 6px">Alta (${(prio.Alta || []).length})</h4>${ticketTable(prio.Alta || [])}
+          <h4 style="margin:10px 0 6px">Media (${(prio.Media || []).length})</h4>${ticketTable(prio.Media || [])}
+          <h4 style="margin:10px 0 6px">Baja (${(prio.Baja || []).length})</h4>${ticketTable(prio.Baja || [])}
+        `
+      }else{
+        return
+      }
+      modal.classList.remove("hidden")
+    }
+
+    function buildConsultorRecurrenceTableRows(tickets = []){
+      const weekdays = ["lunes", "martes", "miercoles", "jueves", "viernes"]
+      return tickets.map(t => {
+        const days = recurrenceDaysFromTicket(t)
+        const selected = new Set(days.map(d => String(d || "").toLowerCase()))
+        const rowDays = weekdays.map(day => selected.has(day)
+          ? `<td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><span class="badge ok">Sí</span></td>`
+          : `<td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center" class="small">NO</td>`).join("")
+        return `<tr style="cursor:pointer" onclick="openTicketDetailModal('${t.id || ""}')"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || "-")}</td>${rowDays}</tr>`
+      }).join("")
+    }
+
     async function replyUnifiedConsultorComment(ticketId){
       if(currentRole !== "consultor") return
       const input = document.getElementById(`consultorUnifiedReply_${emailKey(ticketId || "")}`)
@@ -3693,10 +3743,17 @@ Cliente B`)
       const openTickets = tickets.filter(t => String(t.status || "") !== "done")
       const recurrentCount = tickets.filter(t => recurrenceDaysFromTicket(t).length > 0).length
       const openWithAnalyst = openTickets.filter(t => !!String(t.assignedTo || "").trim()).length
+      const openWithAnalystTickets = openTickets.filter(t => !!String(t.assignedTo || "").trim())
       const createdOpenPct = tickets.length ? (openWithAnalyst / tickets.length) * 100 : 0
       const prioCount = { Alta: 0, Media: 0, Baja: 0 }
       openTickets.forEach(t => { const p = String(t.priority || "Media"); if(prioCount[p] === undefined) prioCount[p] = 0; prioCount[p] += 1 })
+      const priorityBuckets = {
+        Alta: openTickets.filter(t => String(t.priority || "Media") === "Alta"),
+        Media: openTickets.filter(t => String(t.priority || "Media") === "Media"),
+        Baja: openTickets.filter(t => String(t.priority || "Media") === "Baja")
+      }
       const totalOpen = Math.max(1, openTickets.length)
+      const recurrentTickets = tickets.filter(t => recurrenceDaysFromTicket(t).length > 0)
       const commentsRows = openTickets.map(t => {
         const comments = Object.values(parseCommentsValue(t.comments || {})).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))
         const last = comments[0]
@@ -3704,7 +3761,9 @@ Cliente B`)
         const role = String(usersByEmail[emailKey(lastAuthor)]?.role || "").toLowerCase()
         return { ticket: t, last, isAnalystComment: role === "analista" }
       }).filter(r => r.last && r.isAnalystComment).sort((a,b)=>new Date(b.last?.createdAt||0)-new Date(a.last?.createdAt||0))
-      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? accounts.map(a => htmlEscape(a)).join(" · ") : "Sin cuentas asignadas."}</div></div><div class="kpi"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar)</div></div><div class="kpi"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada</div></div><div class="kpi"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
+      consultorSummaryCache = { accounts, tickets, openTickets, recurrentTickets, openWithAnalystTickets, priorityBuckets }
+      const recurrenceRows = buildConsultorRecurrenceTableRows(openTickets)
+      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('accounts')"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? "Click para ver clientes asignados" : "Sin cuentas asignadas."}</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('open')"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar) · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('recurrent')"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('created_open')"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('priority')"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Recurrencia de tickets</h4><div class="small" style="margin-bottom:8px">Matriz de tareas en curso por día hábil (L-V). Click en un ticket para abrirlo.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lunes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Martes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Miércoles</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jueves</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Viernes</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="7" class="small" style="padding:8px">No hay tickets en curso para mostrar.</td></tr>`}</tbody></table></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
     }
 
     function setConsultorPortfolioSearch(value){
@@ -6097,17 +6156,87 @@ Cliente B`)
       await loadMyProfileForm()
     }
 
+    async function setGoogleCalendarConnectionState(connected){
+      const email = String(currentUser?.email || "").toLowerCase()
+      if(!email) return
+      const user = await getUserFromDb(email)
+      if(!user) return
+      const payload = {
+        ...user,
+        key: emailKey(email),
+        googleCalendarConnected: !!connected,
+        googleCalendarConnectedAt: connected ? new Date().toISOString() : "",
+        googleCalendarLastProvider: connected ? "oauth_google_calendar" : ""
+      }
+      await db.ref("users_by_email").child(payload.key).update(payload)
+      await adminWrite("upsertUser", payload).catch(()=>{})
+      await loadUsersByEmail()
+      await loadMyProfileForm()
+    }
+
+    function buildGoogleCalendarOauthUrl(email){
+      const clientId = String(GOOGLE_CALENDAR_OAUTH_CLIENT_ID || "").trim()
+      if(!clientId) return ""
+      const state = btoa(unescape(encodeURIComponent(JSON.stringify({
+        email: String(email || "").toLowerCase(),
+        nonce: generateId(),
+        ts: Date.now()
+      }))))
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: window.location.origin + window.location.pathname,
+        response_type: "token",
+        scope: "https://www.googleapis.com/auth/calendar.events",
+        include_granted_scopes: "true",
+        prompt: "consent",
+        state
+      })
+      return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+    }
+
+    async function processGoogleCalendarOAuthCallback(){
+      const hash = String(window.location.hash || "")
+      if(!hash.includes("access_token=")) return false
+      const params = new URLSearchParams(hash.replace(/^#/, ""))
+      const accessToken = params.get("access_token") || ""
+      const stateRaw = params.get("state") || ""
+      let state = {}
+      if(stateRaw){
+        try{ state = JSON.parse(decodeURIComponent(escape(atob(stateRaw)))) }catch(_){}
+      }
+      const stateEmail = String(state?.email || "").toLowerCase()
+      const sessionEmail = String(currentUser?.email || localStorage.getItem("sessionUserEmail") || "").toLowerCase()
+      history.replaceState(null, "", window.location.pathname + window.location.search)
+      if(!accessToken){
+        showToast("No se pudo validar el permiso de Google Calendar.", "error", 2200)
+        return false
+      }
+      if(!sessionEmail || (stateEmail && stateEmail !== sessionEmail)){
+        showToast("Iniciá sesión con el usuario que conectó Google Calendar para completar la vinculación.", "error", 2600)
+        return false
+      }
+      await setGoogleCalendarConnectionState(true)
+      showToast("Google Calendar conectado con permisos.", "ok", 1800)
+      return true
+    }
+
     async function toggleGoogleCalendarConnection(){
       const email = String(currentUser?.email || "").toLowerCase()
       if(!email) return
       const user = await getUserFromDb(email)
       if(!user) return
-      const next = !(user.googleCalendarConnected === true || String(user.googleCalendarConnected || "").toLowerCase() === "true")
-      const payload = { ...user, key: emailKey(email), googleCalendarConnected: next, googleCalendarConnectedAt: next ? new Date().toISOString() : "" }
-      await db.ref("users_by_email").child(payload.key).update(payload)
-      await adminWrite("upsertUser", payload).catch(()=>{})
-      showToast(next ? "Google Calendar conectado." : "Google Calendar desconectado.", "ok", 1500)
-      await loadMyProfileForm()
+      const connected = user.googleCalendarConnected === true || String(user.googleCalendarConnected || "").toLowerCase() === "true"
+      if(connected){
+        await setGoogleCalendarConnectionState(false)
+        showToast("Google Calendar desconectado.", "ok", 1500)
+        return
+      }
+      const oauthUrl = buildGoogleCalendarOauthUrl(email)
+      if(!oauthUrl){
+        showToast("Falta configurar GOOGLE_CALENDAR_OAUTH_CLIENT_ID para abrir permisos reales de Google Calendar.", "error", 3200)
+        return
+      }
+      window.open(oauthUrl, "_self")
     }
 
     function canCurrentUserScheduleInCalendar(){
@@ -12132,6 +12261,7 @@ Cliente B`)
             currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
             currentRole = user.role || savedRole || "consultor"
             persistSession()
+            await processGoogleCalendarOAuthCallback()
             await loadMenuPermissions()
             renderApp()
           }else{
