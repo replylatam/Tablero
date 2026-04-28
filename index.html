@@ -1768,6 +1768,7 @@
     var topPerformerGrupoAxoMlRowsByAnalyst = {}
     var topPerformerGrupoAxoLvpRowsByAnalyst = {}
     var topPerformerGrupoAxoLoadedKey = ""
+    var topPerformerGrupoAxoWeightsByMonth = {}
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -6540,7 +6541,7 @@ Cliente B`)
           updatedBy: String(currentUser?.email || "").toLowerCase()
         })
       }
-      showToast(`Evaluación aptitudinal guardada para ${userDisplayNameByEmail(email) || email}.`, "ok", 1400)
+      showToast(`Evaluación actitudinal guardada para ${userDisplayNameByEmail(email) || email}.`, "ok", 1400)
     }
 
     async function loadTopPerformerAptitudinalFromDb(){
@@ -6577,25 +6578,59 @@ Cliente B`)
     }
 
     function topPerformerGrupoAxoRowScore(row, tab){
+      const month = String(row?.month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const weights = topPerformerGrupoAxoWeightsByMonth[month] || {}
+      const wMl = weights.ml || { oportunidad: 15, tituloDescripcion: 15, precio: 3, categoria: 12, imagenesSku: 15, caracteristicasTecnicas: 20, finalizacionCarga: 20 }
+      const wLvp = weights.lvp || { oportunidad: 15, busquedaStatus: 20, categoria: 13, imagenes: 20, vinculacionEansTallas: 5, fichaTecnica: 27 }
       if(tab === "lvp"){
         return (
-          (Number(row?.oportunidadComercial || 0) * 0.15) +
-          (Number(row?.dataSheet || 0) * 0.20) +
-          (Number(row?.atributos || 0) * 0.15) +
-          (Number(row?.richContent || 0) * 0.20) +
-          (Number(row?.seo || 0) * 0.10) +
-          (Number(row?.calidadVisual || 0) * 0.20)
+          (Number(row?.oportunidad || 0) * (Number(wLvp.oportunidad || 0) / 100)) +
+          (Number(row?.busquedaStatus || 0) * (Number(wLvp.busquedaStatus || 0) / 100)) +
+          (Number(row?.categoria || 0) * (Number(wLvp.categoria || 0) / 100)) +
+          (Number(row?.imagenes || 0) * (Number(wLvp.imagenes || 0) / 100)) +
+          (Number(row?.vinculacionEansTallas || 0) * (Number(wLvp.vinculacionEansTallas || 0) / 100)) +
+          (Number(row?.fichaTecnica || 0) * (Number(wLvp.fichaTecnica || 0) / 100))
         )
       }
       return (
-        (Number(row?.oportunidad || 0) * 0.15) +
-        (Number(row?.tituloDescripcion || 0) * 0.15) +
-        (Number(row?.precio || 0) * 0.03) +
-        (Number(row?.categoria || 0) * 0.12) +
-        (Number(row?.imagenesSku || 0) * 0.15) +
-        (Number(row?.caracteristicasTecnicas || 0) * 0.20) +
-        (Number(row?.finalizacionCarga || 0) * 0.20)
+        (Number(row?.oportunidad || 0) * (Number(wMl.oportunidad || 0) / 100)) +
+        (Number(row?.tituloDescripcion || 0) * (Number(wMl.tituloDescripcion || 0) / 100)) +
+        (Number(row?.precio || 0) * (Number(wMl.precio || 0) / 100)) +
+        (Number(row?.categoria || 0) * (Number(wMl.categoria || 0) / 100)) +
+        (Number(row?.imagenesSku || 0) * (Number(wMl.imagenesSku || 0) / 100)) +
+        (Number(row?.caracteristicasTecnicas || 0) * (Number(wMl.caracteristicasTecnicas || 0) / 100)) +
+        (Number(row?.finalizacionCarga || 0) * (Number(wMl.finalizacionCarga || 0) / 100))
       )
+    }
+
+    function topPerformerGrupoAxoDefaultWeights(){
+      return {
+        ml: { oportunidad: 15, tituloDescripcion: 15, precio: 3, categoria: 12, imagenesSku: 15, caracteristicasTecnicas: 20, finalizacionCarga: 20 },
+        lvp: { oportunidad: 15, busquedaStatus: 20, categoria: 13, imagenes: 20, vinculacionEansTallas: 5, fichaTecnica: 27 }
+      }
+    }
+
+    function ensureTopPerformerGrupoAxoWeights(month){
+      const key = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      if(!topPerformerGrupoAxoWeightsByMonth[key]){
+        topPerformerGrupoAxoWeightsByMonth[key] = topPerformerGrupoAxoDefaultWeights()
+      }
+      return topPerformerGrupoAxoWeightsByMonth[key]
+    }
+
+    async function saveTopPerformerGrupoAxoWeights(month){
+      const key = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      await db.ref("top_performer_grupo_axo_weights").child(key).set(ensureTopPerformerGrupoAxoWeights(key))
+    }
+
+    async function setTopPerformerGrupoAxoWeight(tab, field, rawValue){
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const weights = ensureTopPerformerGrupoAxoWeights(month)
+      if(!weights[tab]) return
+      weights[tab][field] = Math.max(0, Math.min(100, Number(rawValue || 0)))
+      topPerformerGrupoAxoWeightsByMonth[month] = weights
+      await saveTopPerformerGrupoAxoWeights(month)
+      renderApp()
     }
 
     function topPerformerGrupoAxoAnalystAverage(analystEmail, month){
@@ -6652,13 +6687,13 @@ Cliente B`)
           key: `${emailKey(key)}_lvp_${idx + 1}`,
           month: toLocalDateOnly(new Date()).slice(0, 7),
           evaluatorEmail: "",
-          skuModelLvpBrand: "",
-          oportunidadComercial: 0,
-          dataSheet: 0,
-          atributos: 0,
-          richContent: 0,
-          seo: 0,
-          calidadVisual: 0,
+          skuIdAgrupadorMarca: "",
+          oportunidad: 0,
+          busquedaStatus: 0,
+          categoria: 0,
+          imagenes: 0,
+          vinculacionEansTallas: 0,
+          fichaTecnica: 0,
           observaciones: ""
         }))
       }
@@ -6685,7 +6720,7 @@ Cliente B`)
       const rows = ensureGrupoAxoLvpRows(key)
       const idx = rows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
       if(idx < 0) return
-      const numeric = new Set(["oportunidadComercial","dataSheet","atributos","richContent","seo","calidadVisual"])
+      const numeric = new Set(["oportunidad","busquedaStatus","categoria","imagenes","vinculacionEansTallas","fichaTecnica"])
       const value = numeric.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
       rows[idx] = { ...rows[idx], [field]: value }
       topPerformerGrupoAxoLvpRowsByAnalyst[key] = rows
@@ -6704,6 +6739,13 @@ Cliente B`)
         db.ref("top_performer_grupo_axo").child("ml").child(month).once("value"),
         db.ref("top_performer_grupo_axo").child("lvp").child(month).once("value")
       ])
+      const weights = (await db.ref("top_performer_grupo_axo_weights").child(month).once("value")).val()
+      topPerformerGrupoAxoWeightsByMonth[month] = {
+        ...topPerformerGrupoAxoDefaultWeights(),
+        ...(weights || {}),
+        ml: { ...topPerformerGrupoAxoDefaultWeights().ml, ...((weights || {}).ml || {}) },
+        lvp: { ...topPerformerGrupoAxoDefaultWeights().lvp, ...((weights || {}).lvp || {}) }
+      }
       const mlData = mlSnapshot.val() || {}
       const lvpData = lvpSnapshot.val() || {}
       analysts.forEach(analyst => {
@@ -6734,13 +6776,13 @@ Cliente B`)
             ...row,
             month: String(saved.month || month),
             evaluatorEmail: String(saved.evaluatorEmail || ""),
-            skuModelLvpBrand: String(saved.skuModelLvpBrand || ""),
-            oportunidadComercial: Number(saved.oportunidadComercial || 0),
-            dataSheet: Number(saved.dataSheet || 0),
-            atributos: Number(saved.atributos || 0),
-            richContent: Number(saved.richContent || 0),
-            seo: Number(saved.seo || 0),
-            calidadVisual: Number(saved.calidadVisual || 0),
+            skuIdAgrupadorMarca: String(saved.skuIdAgrupadorMarca || saved.skuModelLvpBrand || ""),
+            oportunidad: Number(saved.oportunidad || saved.oportunidadComercial || 0),
+            busquedaStatus: Number(saved.busquedaStatus || saved.dataSheet || 0),
+            categoria: Number(saved.categoria || saved.atributos || 0),
+            imagenes: Number(saved.imagenes || saved.richContent || 0),
+            vinculacionEansTallas: Number(saved.vinculacionEansTallas || saved.seo || 0),
+            fichaTecnica: Number(saved.fichaTecnica || saved.calidadVisual || 0),
             observaciones: String(saved.observaciones || "")
           }
         })
@@ -6753,13 +6795,15 @@ Cliente B`)
     async function saveTopPerformerGrupoAxoByAnalyst(analystEmail){
       const email = String(analystEmail || "").toLowerCase()
       if(currentRole !== "admin" || !email) return
-      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const tab = adminTopPerformerGrupoAxoTab === "lvp" ? "lvp" : "ml"
       const rows = tab === "lvp" ? ensureGrupoAxoLvpRows(email) : ensureGrupoAxoMlRows(email)
-      const filtered = rows.filter(row => String(row?.month || "") === month)
-      for(let idx = 0; idx < filtered.length; idx += 1){
-        await db.ref("top_performer_grupo_axo").child(tab).child(month).child(emailKey(email)).child(idx + 1).set({
-          ...filtered[idx],
+      for(const row of rows){
+        const month = String(row?.month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+        const idxMatch = String(row?.key || "").match(/(\d+)$/)
+        const idx = Number(idxMatch?.[1] || 1)
+        await db.ref("top_performer_grupo_axo").child(tab).child(month).child(emailKey(email)).child(idx).set({
+          ...row,
+          month,
           updatedAt: new Date().toISOString(),
           updatedBy: String(currentUser?.email || "").toLowerCase()
         })
@@ -6811,7 +6855,7 @@ Cliente B`)
         const rating = totalPoints >= 91 ? "Excelente" : totalPoints >= 70 ? "Bueno" : totalPoints >= 40 ? "A mejorar" : "Insuficiente"
         return { email, diffPct, quality, aptAvg, grupoAxoAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore: totalPoints }
       }).sort((a,b)=>b.rankingScore-a.rankingScore)
-      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración aptitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.grupoAxoAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración actitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.grupoAxoAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
     }
 
     async function loadTopPerformerIncidenciasTable(){
@@ -6852,7 +6896,7 @@ Cliente B`)
         .map(u => ({ email: String(u?.email || "").toLowerCase(), name: userDisplayNameByEmail(u?.email || "") || u?.email || "-" }))
       const tabs = [
         { key: "summary", label: "Resumen" },
-        { key: "aptitudinal", label: "Aptitudinal" },
+        { key: "aptitudinal", label: "Actitudinal" },
         { key: "internal_quality", label: "Calidad interna" },
         { key: "activity_quality", label: "Calidad de las actividades" },
         { key: "grupo_axo", label: "Grupo Axo" },
@@ -6871,7 +6915,8 @@ Cliente B`)
         const selectedAnalyst = adminTopPerformerGrupoAxoAnalyst || String(analysts?.[0]?.email || "")
         const rows = adminTopPerformerGrupoAxoTab === "lvp" ? ensureGrupoAxoLvpRows(selectedAnalyst) : ensureGrupoAxoMlRows(selectedAnalyst)
         const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
-        const monthRows = rows.filter(row => String(row?.month || "") === month)
+        const monthRows = rows
+        const weights = ensureTopPerformerGrupoAxoWeights(month)
         const detailMl = [
           ["Oportunidad comercial", "15% · Evalúa si la publicación captura una oportunidad real de venta."],
           ["Título y descripción", "15% · Claridad, consistencia comercial y foco en intención de búsqueda."],
@@ -6882,27 +6927,29 @@ Cliente B`)
           ["Finalización de carga", "20% · Checklist final, consistencia y publicación sin errores."]
         ]
         const detailLvp = [
-          ["Oportunidad comercial", "15% · Priorización de contenido con mayor potencial de venta."],
-          ["Data Sheet", "20% · Exactitud y cobertura de ficha técnica."],
-          ["Atributos", "15% · Carga completa y estructurada para filtrado y SEO interno."],
-          ["Rich Content", "20% · Calidad del contenido enriquecido y lineamientos de marca."],
-          ["SEO", "10% · Uso correcto de términos y estructura orientada a posicionamiento."],
-          ["Calidad visual", "20% · Uniformidad gráfica y presentación corporativa del catálogo."]
+          ["Oportunidad", "Se evalúa si el analista gestiona la actividad asignada en un tiempo acorde durante el día. Se tienen en cuenta las observaciones que registre."],
+          ["Búsqueda y status correctos", "El analista debe realizar correctamente la búsqueda de la propuesta existente utilizando el ID agrupador y el modelo. Además, debe indicar con precisión el status y el ID Pimpro correspondiente en la planilla."],
+          ["Categoría", "El analista debe seleccionar correctamente la categoría y el producto, asegurándose de seguir los criterios establecidos y el código de categorías."],
+          ["Imágenes", "El analista debe generar, editar y gestionar las imágenes de acuerdo con los criterios establecidos y la guía fotográfica de Liverpool (LVP), asegurando la calidad y relevancia de las mismas."],
+          ["Vinculación de EANs y tallas", "El analista debe vincular correctamente los EANs con las tallas y las imágenes correspondientes, en caso de aplicar. También debe realizar una elección precisa de las tallas disponibles y en el mismo formato."],
+          ["Ficha técnica", "El analista debe completar correctamente la descripción, la ficha técnica y la información adicional, asegurando que toda la información sea clara, precisa y conforme a los lineamientos."]
         ]
         const rowsHtml = monthRows.map((row, idx) => {
           const inputScore = (field, value, max = 10) => `<input type="number" min="0" max="${max}" step="1" value="${Number(value||0)||''}" onchange="${adminTopPerformerGrupoAxoTab === "lvp" ? `updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','${field}', this.value)` : `updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','${field}', this.value)`}">`
           if(adminTopPerformerGrupoAxoTab === "lvp"){
             const score = topPerformerGrupoAxoRowScore(row, "lvp")
-            return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuModelLvpBrand || ""))}" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','skuModelLvpBrand', this.value)" placeholder="SKU / Modelo / LVP / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidadComercial", row.oportunidadComercial)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("dataSheet", row.dataSheet)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("atributos", row.atributos)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("richContent", row.richContent)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("seo", row.seo)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("calidadVisual", row.calidadVisual)}</td><td id="grupoAxoLvpScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td></tr>`
+            return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="month" value="${htmlEscape(String(row.month || month))}" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuIdAgrupadorMarca || ""))}" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','skuIdAgrupadorMarca', this.value)" placeholder="SKU / ID agrupador / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidad", row.oportunidad)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("busquedaStatus", row.busquedaStatus)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("categoria", row.categoria)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenes", row.imagenes)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("vinculacionEansTallas", row.vinculacionEansTallas)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("fichaTecnica", row.fichaTecnica)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td><td id="grupoAxoLvpScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td></tr>`
           }
           const score = topPerformerGrupoAxoRowScore(row, "ml")
-          return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuModelMlmBrand || ""))}" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','skuModelMlmBrand', this.value)" placeholder="SKU / Modelo / MLM / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidad", row.oportunidad)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("tituloDescripcion", row.tituloDescripcion)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("precio", row.precio)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("categoria", row.categoria)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenesSku", row.imagenesSku)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("caracteristicasTecnicas", row.caracteristicasTecnicas)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("finalizacionCarga", row.finalizacionCarga)}</td><td id="grupoAxoMlScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td></tr>`
+          return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="month" value="${htmlEscape(String(row.month || month))}" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuModelMlmBrand || ""))}" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','skuModelMlmBrand', this.value)" placeholder="SKU / Modelo / MLM / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidad", row.oportunidad)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("tituloDescripcion", row.tituloDescripcion)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("precio", row.precio)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("categoria", row.categoria)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenesSku", row.imagenesSku)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("caracteristicasTecnicas", row.caracteristicasTecnicas)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("finalizacionCarga", row.finalizacionCarga)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td><td id="grupoAxoMlScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td></tr>`
         }).join("")
         const headers = adminTopPerformerGrupoAxoTab === "lvp"
-          ? `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / Modelo / LVP / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Data Sheet</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Atributos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rich Content</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SEO</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Visual</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th></tr>`
-          : `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / Modelo / MLM / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título y descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Precio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Categoría</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes SKU</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Características técnicas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Finalización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th></tr>`
+          ? `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes a analizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / ID agrupador / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Búsqueda y status correctos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Categoría</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Vinculación de EANs y tallas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ficha técnica</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntuación final</th></tr>`
+          : `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes a analizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / Modelo / MLM / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título y descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Precio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Categoría</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes SKU</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Características técnicas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Finalización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntuación final</th></tr>`
         const detail = adminTopPerformerGrupoAxoTab === "lvp" ? detailLvp : detailMl
-        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Grupo Axo</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div><div><label>Canal</label><div class="inline" style="gap:8px"><button class="${adminTopPerformerGrupoAxoTab==='ml'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('ml')">Carga Mercado Libre</button><button class="${adminTopPerformerGrupoAxoTab==='lvp'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('lvp')">Carga LVP</button></div></div><div><label>Analista</label><select onchange="setTopPerformerGrupoAxoAnalyst(this.value)"><option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a.email)}" ${a.email===selectedAnalyst?'selected':''}>${htmlEscape(a.name)}</option>`).join("")}</select></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="saveTopPerformerGrupoAxoByAnalyst('${selectedAnalyst}')">Guardar ${adminTopPerformerGrupoAxoTab.toUpperCase()}</button></div></div><div class="small" style="margin:10px 0 8px">Promedio del analista en ${adminTopPerformerGrupoAxoTab.toUpperCase()}: <strong>${(() => { const relevant = monthRows.map(r => topPerformerGrupoAxoRowScore(r, adminTopPerformerGrupoAxoTab)).filter(v => v > 0); return (relevant.length ? relevant.reduce((a,b)=>a+b,0)/relevant.length : 0).toFixed(2) })()} / 10</strong></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead>${headers}</thead><tbody>${rowsHtml || `<tr><td colspan="12" class="small" style="padding:8px">Sin filas para este analista.</td></tr>`}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios ${adminTopPerformerGrupoAxoTab.toUpperCase()}</h4>${detail.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
+        const mlWeightsEditor = `<div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Ponderaciones ML (editable)</h4><div class="row"><div><label>Oportunidad (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.oportunidad || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','oportunidad', this.value)"></div><div><label>Título y descripción (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.tituloDescripcion || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','tituloDescripcion', this.value)"></div><div><label>Precio (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.precio || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','precio', this.value)"></div><div><label>Categoría (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.categoria || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','categoria', this.value)"></div><div><label>Imágenes SKU (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.imagenesSku || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','imagenesSku', this.value)"></div><div><label>Características técnicas (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.caracteristicasTecnicas || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','caracteristicasTecnicas', this.value)"></div><div><label>Finalización (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.finalizacionCarga || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','finalizacionCarga', this.value)"></div></div></div>`
+        const lvpWeightsEditor = `<div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Ponderaciones LVP (editable)</h4><div class="row"><div><label>Oportunidad (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.oportunidad || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','oportunidad', this.value)"></div><div><label>Búsqueda y status (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.busquedaStatus || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','busquedaStatus', this.value)"></div><div><label>Categoría (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.categoria || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','categoria', this.value)"></div><div><label>Imágenes (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.imagenes || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','imagenes', this.value)"></div><div><label>Vinculación EANs/tallas (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.vinculacionEansTallas || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','vinculacionEansTallas', this.value)"></div><div><label>Ficha técnica (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.fichaTecnica || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','fichaTecnica', this.value)"></div></div></div>`
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Grupo Axo</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div><div><label>Canal</label><div class="inline" style="gap:8px"><button class="${adminTopPerformerGrupoAxoTab==='ml'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('ml')">Carga Mercado Libre</button><button class="${adminTopPerformerGrupoAxoTab==='lvp'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('lvp')">Carga LVP</button></div></div><div><label>Analista</label><select onchange="setTopPerformerGrupoAxoAnalyst(this.value)"><option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a.email)}" ${a.email===selectedAnalyst?'selected':''}>${htmlEscape(a.name)}</option>`).join("")}</select></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="saveTopPerformerGrupoAxoByAnalyst('${selectedAnalyst}')">Guardar ${adminTopPerformerGrupoAxoTab.toUpperCase()}</button></div></div><div class="small" style="margin:10px 0 8px">Promedio del analista en ${adminTopPerformerGrupoAxoTab.toUpperCase()}: <strong>${(() => { const relevant = monthRows.filter(r => String(r?.month || "") === month).map(r => topPerformerGrupoAxoRowScore(r, adminTopPerformerGrupoAxoTab)).filter(v => v > 0); return (relevant.length ? relevant.reduce((a,b)=>a+b,0)/relevant.length : 0).toFixed(2) })()} / 10</strong></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead>${headers}</thead><tbody>${rowsHtml || `<tr><td colspan="13" class="small" style="padding:8px">Sin filas para este analista.</td></tr>`}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios ${adminTopPerformerGrupoAxoTab.toUpperCase()}</h4>${detail.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div>${adminTopPerformerGrupoAxoTab === "lvp" ? lvpWeightsEditor : mlWeightsEditor}</div>`
       }
       if(adminTopPerformerTab === "incidencias"){
         return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Incidencias</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerIncidenciasTable" class="small" style="margin-top:10px"></div></div>`
@@ -6940,7 +6987,7 @@ Cliente B`)
         const rowBg = groupIndex % 2 === 0 ? "rgba(255,255,255,.035)" : "rgba(61,110,245,.07)"
         return `<tr style="background:${rowBg}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${htmlEscape(userDisplayNameByEmail(row.analystEmail) || row.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><input type="month" value="${htmlEscape(String(row.month || ""))}" onchange="updateTopPerformerAptitudinalCell('${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><select onchange="updateTopPerformerAptitudinalCell('${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("workManagement", row.workManagement)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("problemSolving", row.problemSolving)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("adaptabilityLearning", row.adaptabilityLearning)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("teamwork", row.teamwork)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("focusCommitment", row.focusCommitment)}</td><td id="tp_final_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${final.toFixed(2)}</td><td data-tp-total="${emailKey(row.analystEmail)}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${total.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><textarea style="min-height:42px" onchange="updateTopPerformerAptitudinalCell('${row.key}','observations', this.value)">${htmlEscape(String(row.observations || ""))}</textarea></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><button class="ghost" onclick="saveTopPerformerAptitudinalByAnalyst('${encodeURIComponent(row.analystEmail)}')">Guardar</button></td></tr>`
       }).join("")
-      return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Aptitudinal</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes evaluación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador (admin)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Gestión de trabajo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Resolución de problemas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Adaptabilidad y aprendizaje</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Colaboración y equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Enfoque y compromiso</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio total</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Guardar</th></tr></thead><tbody>${bodyRows}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios</h4>${details.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
+      return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Actitudinal</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes evaluación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador (admin)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Gestión de trabajo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Resolución de problemas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Adaptabilidad y aprendizaje</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Colaboración y equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Enfoque y compromiso</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio total</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Guardar</th></tr></thead><tbody>${bodyRows}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios</h4>${details.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
     }
 
     function renderApp(){
@@ -7128,7 +7175,7 @@ Cliente B`)
         ` : showConsultorProfile ? `
           <div class="card"><h3 style="margin-top:0">Mi configuración (Consultor)</h3><div class="small" style="margin-bottom:8px">Conectá Google Calendar para poder agendar tickets desde su detalle.</div><div class="inline"><button class="ghost" onclick="toggleGoogleCalendarConnection()">Conectar Google Calendar</button><span class="small">Estado: <strong id="profileGoogleCalendarStatus">-</strong></span></div></div>
         ` : showTopPerformer ? `
-          <div class="card"><div class="inline" style="gap:8px;flex-wrap:wrap">${(currentRole === "admin" ? [{key:"summary",label:"Resumen"},{key:"aptitudinal",label:"Aptitudinal"},{key:"internal_quality",label:"Calidad interna"},{key:"activity_quality",label:"Calidad de las actividades"},{key:"grupo_axo",label:"Grupo Axo"},{key:"incidencias",label:"Incidencias"}] : [{key:"summary",label:"Resumen"}]).map(tab => `<button class="${currentRole === "admin" ? (adminTopPerformerTab===tab.key?'':'ghost') : 'ghost'}" onclick="${currentRole === "admin" ? `setAdminTopPerformerTab('${tab.key}')` : ''}">${tab.label}</button>`).join("")}</div></div>
+          <div class="card"><div class="inline" style="gap:8px;flex-wrap:wrap">${(currentRole === "admin" ? [{key:"summary",label:"Resumen"},{key:"aptitudinal",label:"Actitudinal"},{key:"internal_quality",label:"Calidad interna"},{key:"activity_quality",label:"Calidad de las actividades"},{key:"grupo_axo",label:"Grupo Axo"},{key:"incidencias",label:"Incidencias"}] : [{key:"summary",label:"Resumen"}]).map(tab => `<button class="${currentRole === "admin" ? (adminTopPerformerTab===tab.key?'':'ghost') : 'ghost'}" onclick="${currentRole === "admin" ? `setAdminTopPerformerTab('${tab.key}')` : ''}">${tab.label}</button>`).join("")}</div></div>
           ${currentRole === "admin" ? renderTopPerformerAdminHtml() : `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">Top performer</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`}
         ` : (isAdmin && mainViewTab==='hoja_vida') ? `
           <div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Hoja de vida</h3><button onclick="openAnalystCvModal()">Crear hoja de vida</button></div><div id="adminAnalystCvGrid" style="margin-top:10px"></div></div>
