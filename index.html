@@ -1694,6 +1694,22 @@
     var adminReassignPanelVisible = false
     var dailyHistoryModalOpen = false
     var menuPermissionsByRole = { admin: {}, analista: {}, consultor: {} }
+    const DEFAULT_MENU_VISIBILITY_BY_ROLE = {
+      admin: new Set([
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
+        "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines",
+        "admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center"
+      ]),
+      analista: new Set([
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
+        "main:registro_horas","main:dailys","main:portfolio_overview","main:support"
+      ]),
+      consultor: new Set([
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:summary_general","main:portfolio",
+        "main:agenda_today","main:consultor_guidelines","main:support","main:profile"
+      ])
+    }
+    var menuPermissionsUnsubscribe = null
     var encuentroProfileUserEmail = ""
     var coreTicketFieldSettings = {}
     var qualityAdminMonthFilter = ""
@@ -1742,6 +1758,9 @@
     var commentEditContext = null
     var pendingCommentImageByTicket = {}
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
+    var adminTopPerformerTab = "summary"
+    var topPerformerAptitudinalRows = []
+    var topPerformerSummaryMonth = toLocalDateOnly(new Date()).slice(0, 7)
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -1921,7 +1940,7 @@
       if(role === "admin" && isAdminLevel1()) return true
       const roleCfg = menuPermissionsByRole?.[role] || {}
       if(typeof roleCfg?.[menuKey] === "boolean") return roleCfg[menuKey]
-      return true
+      return !!DEFAULT_MENU_VISIBILITY_BY_ROLE?.[role]?.has(menuKey)
     }
 
     async function loadMenuPermissions(){
@@ -1931,6 +1950,31 @@
         analista: raw.analista || {},
         consultor: raw.consultor || {}
       }
+    }
+
+    function startMenuPermissionsSync(){
+      if(menuPermissionsUnsubscribe) return
+      const ref = db.ref("app_settings/menu_permissions")
+      const onValue = (snap) => {
+        const raw = snap.val() || {}
+        menuPermissionsByRole = {
+          admin: raw.admin || {},
+          analista: raw.analista || {},
+          consultor: raw.consultor || {}
+        }
+        if(!currentUser?.email) return
+        if(currentRole === "admin" && adminPanelTab !== "panel" && !canCurrentRoleSeeMenu(`admin:${adminPanelTab}`)) adminPanelTab = "panel"
+        if(mainViewTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${mainViewTab}`)) mainViewTab = "tickets"
+        renderApp()
+      }
+      ref.on("value", onValue)
+      menuPermissionsUnsubscribe = () => ref.off("value", onValue)
+    }
+
+    function stopMenuPermissionsSync(){
+      if(!menuPermissionsUnsubscribe) return
+      menuPermissionsUnsubscribe()
+      menuPermissionsUnsubscribe = null
     }
 
     function setAdminTab(tab){
@@ -2012,7 +2056,8 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
+      let nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
+      if(currentRole === "consultor" && nextTab === "portfolio_overview") nextTab = "portfolio"
       if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
         showToast("No tenés permisos para ver este menú.", "error", 1600)
         return
@@ -3593,7 +3638,20 @@ Cliente B`)
     }
 
     async function saveConsultorClient(button){
-      return saveClient(button, "consultor")
+      if(currentRole !== "consultor") return
+      const select = document.getElementById("consultorClientName")
+      const clientKey = String(select?.value || "").trim()
+      if(!clientKey) return alert("Seleccioná un cliente.")
+      const oldText = button?.textContent || ""
+      try{
+        if(button){ button.disabled = true; button.textContent = "Asignando..." }
+        await setClientAssignedConsultor(clientKey, String(currentUser?.email || "").toLowerCase())
+        showToast("Cliente asignado a tu cartera.", "ok", 1200)
+        if(select) select.value = ""
+        await loadConsultorPortfolio()
+      }finally{
+        if(button){ button.disabled = false; button.textContent = oldText || "Asignar cliente" }
+      }
     }
 
     async function deleteClient(key){
@@ -3633,13 +3691,6 @@ Cliente B`)
       }
     }
 
-    async function updateClientAssignmentFromPortfolio(clientKey, consultorEmail){
-      if(currentRole !== "consultor") return
-      await setClientAssignedConsultor(clientKey, consultorEmail)
-      loadConsultorPortfolio()
-      loadClientsAdmin()
-    }
-
     async function updateClientStatusFromPortfolio(clientKey, status){
       if(currentRole !== "consultor") return
       await db.ref("clients").child(clientKey).update({ status: String(status || "activo").toLowerCase() })
@@ -3647,26 +3698,139 @@ Cliente B`)
       loadClientsAdmin()
     }
 
+    function portfolioRiskLabel(level){
+      const key = String(level || "").toLowerCase()
+      if(key === "bajo_control") return "🟢 Cuenta bajo control"
+      if(key === "atencion_preventiva") return "🟡 Atención preventiva"
+      if(key === "riesgo_real") return "🔴 Riesgo real"
+      return "Sin definir"
+    }
+
+    function portfolioRiskTone(level){
+      const key = String(level || "").toLowerCase()
+      if(key === "bajo_control") return "ok"
+      if(key === "atencion_preventiva") return "warn"
+      if(key === "riesgo_real") return "off"
+      return ""
+    }
+
+    function daysFromDateUntilToday(dateIso){
+      const value = String(dateIso || "").trim()
+      if(!value) return null
+      const target = new Date(`${value}T00:00:00`)
+      if(Number.isNaN(target.getTime())) return null
+      const now = new Date(`${toLocalDateOnly(new Date())}T00:00:00`)
+      const diff = Math.floor((now.getTime() - target.getTime()) / 86400000)
+      return diff < 0 ? 0 : diff
+    }
+
+    function portfolioUpdateBadge(days){
+      if(days === null || days === undefined) return ""
+      if(days <= 5) return "🟢 OK"
+      if(days <= 6) return "🟡 Atención"
+      return "🔴 Crítica"
+    }
+
+    async function updateConsultorClientPortfolioField(clientKey, field, rawValue){
+      if(currentRole !== "consultor") return
+      const key = String(clientKey || "")
+      if(!key || !field) return
+      const client = (await db.ref("clients").child(key).once("value")).val() || {}
+      const me = String(currentUser?.email || "").toLowerCase()
+      if(String(client?.assignedConsultor || "").toLowerCase() !== me) return
+      const normalized = String(field || "")
+      const payload = { updatedAt: new Date().toISOString(), portfolioLastTouchedAt: new Date().toISOString() }
+      if(normalized === "riskLevel") payload.riskLevel = String(rawValue || "")
+      if(normalized === "riskUpdatedAt") payload.riskUpdatedAt = String(rawValue || "")
+      if(normalized === "nextAction") payload.nextAction = String(rawValue || "")
+      if(normalized === "nextActionDate") payload.nextActionDate = String(rawValue || "")
+      if(normalized === "grantAds") payload.grantAds = !!rawValue
+      if(normalized === "grantConsultoria") payload.grantConsultoria = !!rawValue
+      await db.ref("clients").child(key).update(payload)
+      loadConsultorPortfolio()
+    }
+
     async function loadConsultorPortfolio(){
       if(currentRole !== "consultor" || mainViewTab !== "portfolio") return
       const wrap = document.getElementById("consultorPortfolioList")
       if(!wrap) return
       const clientsObj = (await db.ref("clients").once("value")).val() || {}
+      const me = String(currentUser?.email || "").toLowerCase()
       const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
       const consultors = users.filter(u => String(u?.role||"").toLowerCase() === "consultor" && u?.active !== false)
       const query = String(consultorPortfolioSearch || "").trim().toLowerCase()
+      const assignSelect = document.getElementById("consultorClientName")
+      if(assignSelect){
+        const allClients = Object.entries(clientsObj)
+          .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+        assignSelect.innerHTML = `<option value="">Seleccionar cliente</option>${allClients.map(([key, c]) => `<option value="${htmlEscape(key)}">${htmlEscape(String(c?.name || key))}</option>`).join("")}`
+      }
       const items = Object.entries(clientsObj)
         .filter(([key, c]) => {
+          if(String(c?.assignedConsultor || "").toLowerCase() !== me) return false
           if(!query) return true
           return String(c?.name || key).toLowerCase().includes(query)
         })
+      const rows = items
+        .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+        .map(([key, c]) => {
+          const riskLevel = String(c?.riskLevel || "")
+          const riskSelectStyle = riskLevel === "bajo_control"
+            ? "background:rgba(34,199,122,.18);border-color:rgba(34,199,122,.55);"
+            : riskLevel === "atencion_preventiva"
+              ? "background:rgba(240,160,48,.18);border-color:rgba(240,160,48,.55);"
+              : riskLevel === "riesgo_real"
+                ? "background:rgba(224,64,64,.18);border-color:rgba(224,64,64,.55);"
+                : ""
+          const nextActionDate = String(c?.nextActionDate || "")
+          const daysWithoutUpdate = daysFromDateUntilToday(String(c?.riskUpdatedAt || ""))
+          const updateBadge = portfolioUpdateBadge(daysWithoutUpdate)
+          return `<tr>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(String(c?.name || key))}</strong></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">
+              <select style="margin:0;min-width:220px;${riskSelectStyle}" onchange="updateConsultorClientPortfolioField('${key}', 'riskLevel', this.value)">
+                <option value="">Sin definir</option>
+                <option value="bajo_control" ${riskLevel==='bajo_control'?'selected':''}>🟢 Cuenta bajo control</option>
+                <option value="atencion_preventiva" ${riskLevel==='atencion_preventiva'?'selected':''}>🟡 Atención preventiva</option>
+                <option value="riesgo_real" ${riskLevel==='riesgo_real'?'selected':''}>🔴 Riesgo real</option>
+              </select>
+            </td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="date" value="${htmlEscape(String(c?.riskUpdatedAt || ""))}" onchange="updateConsultorClientPortfolioField('${key}', 'riskUpdatedAt', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input placeholder="Detalle de próxima acción" value="${htmlEscape(String(c?.nextAction || ""))}" onchange="updateConsultorClientPortfolioField('${key}', 'nextAction', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="date" value="${htmlEscape(nextActionDate)}" onchange="updateConsultorClientPortfolioField('${key}', 'nextActionDate', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysWithoutUpdate === null ? "-" : daysWithoutUpdate}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${updateBadge ? `<span class="badge ${updateBadge.includes("Crítica") ? "off" : updateBadge.includes("Atención") ? "warn" : "ok"}">${updateBadge}</span>` : "-"}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${c?.grantAds ? "checked" : ""} onchange="updateConsultorClientPortfolioField('${key}', 'grantAds', this.checked)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${c?.grantConsultoria ? "checked" : ""} onchange="updateConsultorClientPortfolioField('${key}', 'grantConsultoria', this.checked)"></td>
+          </tr>`
+        }).join("")
+      const riskSummary = items.reduce((acc, [,client]) => {
+        const level = String(client?.riskLevel || "")
+        if(level === "bajo_control") acc.bajo += 1
+        else if(level === "atencion_preventiva") acc.preventiva += 1
+        else if(level === "riesgo_real") acc.real += 1
+        else acc.sinDefinir += 1
+        return acc
+      }, { bajo: 0, preventiva: 0, real: 0, sinDefinir: 0 })
       const clientsByConsultor = Object.fromEntries(consultors.map(c => [String(c.email||"").toLowerCase(), []]))
-      items.forEach(([key,c]) => {
-        const k = String(c?.assignedConsultor || "").toLowerCase()
-        if(k && clientsByConsultor[k]) clientsByConsultor[k].push(String(c?.name || key))
+      Object.entries(clientsObj).forEach(([key,c]) => {
+        const owner = String(c?.assignedConsultor || "").toLowerCase()
+        if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push(String(c?.name || key))
       })
-      const countersTable = `<div style="overflow:auto;margin-bottom:10px"><table style="width:100%;border-collapse:collapse"><thead><tr>${consultors.map(c => `<th style="padding:6px;border-bottom:1px solid var(--stroke)">${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</th>`).join("")}</tr></thead><tbody><tr>${consultors.map(c => { const list = clientsByConsultor[String(c.email||"").toLowerCase()] || []; return `<td style="padding:6px;border-bottom:1px solid var(--stroke-2);vertical-align:top">${list.length ? list.map(name => `<div class="small">• ${htmlEscape(name)}</div>`).join("") : `<span class="small">Sin clientes asignados</span>`}</td>` }).join("")}</tr></tbody></table></div>`
-      wrap.innerHTML = countersTable + (items.length ? items.map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span><div class="inline" style="gap:8px;flex-wrap:nowrap"><select style="margin:0;min-width:190px" onchange="updateClientAssignmentFromPortfolio('${key}', this.value)"><option value="">Sin asignar</option>${consultors.map(con => `<option value="${htmlEscape(String(con.email||"").toLowerCase())}" ${String(c?.assignedConsultor||"").toLowerCase()===String(con.email||"").toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</option>`).join("")}</select><select style="margin:0;min-width:140px" onchange="updateClientStatusFromPortfolio('${key}', this.value)"><option value="activo" ${String(c?.status||'activo').toLowerCase()==='activo'?'selected':''}>Activo</option><option value="inactivo" ${String(c?.status||'activo').toLowerCase()==='inactivo'?'selected':''}>Inactivo</option></select></div></div>`).join("") : `<div class="small">No hay clientes para la búsqueda indicada.</div>`)
+      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(name => `• ${htmlEscape(name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td></tr>` }).join("")}</tbody></table></div>`
+      const summaryCards = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:12px">
+        <div class="kpi"><div class="label">🟢 Bajo control</div><div class="value">${riskSummary.bajo}</div></div>
+        <div class="kpi"><div class="label">🟡 Atención preventiva</div><div class="value">${riskSummary.preventiva}</div></div>
+        <div class="kpi"><div class="label">🔴 Riesgo real</div><div class="value">${riskSummary.real}</div></div>
+        <div class="kpi"><div class="label">⚪ Sin definir</div><div class="value">${riskSummary.sinDefinir}</div></div>
+      </div>`
+      const riskSection = `<div class="card" style="padding:12px;margin-top:10px"><h4 style="margin:0 0 8px">Gestión de riesgo y seguimiento de cuentas asignadas</h4><div class="small" style="margin-bottom:8px">Gestioná riesgo y seguimiento de tus cuentas asignadas.</div>${
+        items.length
+          ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Riesgo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última actualización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días sin actualizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Actualización</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Ads</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Consultoría</th></tr></thead><tbody>${rows}</tbody></table></div>`
+          : `<div class="small">No hay clientes asignados para la búsqueda indicada.</div>`
+      }</div>`
+      const consultorSection = `<div class="card" style="padding:12px;margin-top:12px"><h4 style="margin:0 0 8px">Cuentas asignadas a consultores</h4><div class="small" style="margin-bottom:8px">Vista general de la asignación de cuentas en el equipo.</div>${peersTable}</div>`
+      wrap.innerHTML = `${summaryCards}${riskSection}${consultorSection}`
     }
 
     function openConsultorSummaryDetail(kind){
@@ -3733,7 +3897,7 @@ Cliente B`)
     }
 
     async function loadConsultorGeneralSummary(){
-      if(!(currentRole === "consultor" && mainViewTab === "summary_general")) return
+      if(!(mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general"))) return
       const wrap = document.getElementById("consultorGeneralSummary")
       if(!wrap) return
       const myEmail = String(currentUser?.email || "").toLowerCase()
@@ -3784,7 +3948,7 @@ Cliente B`)
     }
 
     async function loadPortfolioOverview(){
-      if(!(mainViewTab === "portfolio_overview" && (currentRole === "admin" || currentRole === "analista"))) return
+      if(!(mainViewTab === "portfolio_overview" && canCurrentRoleSeeMenu("main:portfolio_overview"))) return
       const wrap = document.getElementById("portfolioOverviewContainer")
       if(!wrap) return
       const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
@@ -3872,7 +4036,7 @@ Cliente B`)
     }
 
     function setAdminCapacityViewMode(mode){
-      adminCapacityViewMode = mode === "chart" || mode === "projections" ? mode : "cards"
+      adminCapacityViewMode = mode === "chart" || mode === "projections" || mode === "microservices" ? mode : "cards"
       loadAdminHoursTable()
     }
 
@@ -4585,10 +4749,22 @@ Cliente B`)
         const projKpiCard = (key, label, value, small, extraHtml) => `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('${key}')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">${label}</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('${key}')">?</button></div><div class="value">${value}</div><div class="small">${small}</div>${extraHtml || ""}</div>`
         const projectionClientRowsHtml = `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ejecutado a hoy (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Proyección (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Δ h vs ejecutado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consumo (personas)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Δ personas vs ejecutado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Quitar</th></tr></thead><tbody>${adminCapacityProjectionRows.map(item => { const dropped = droppedClients.includes(item.client); const executedPeople = hhEffective > 0 ? (item.executedHours / hhEffective) : 0; const diffHoursPct = item.executedHours > 0 ? ((item.projectedHours - item.executedHours) / item.executedHours) * 100 : (item.projectedHours > 0 ? 100 : 0); const diffPeoplePct = executedPeople > 0 ? ((item.projectedPeople - executedPeople) / executedPeople) * 100 : (item.projectedPeople > 0 ? 100 : 0); return `<tr style="${dropped ? "opacity:.55;background:rgba(224,64,64,.1)" : ""}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.client)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.executedHours.toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.projectedHours.toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${diffHoursPct >= 0 ? "+" : ""}${diffHoursPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.projectedPeople.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${diffPeoplePct >= 0 ? "+" : ""}${diffPeoplePct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="${dropped ? "danger" : "ghost"}" onclick="toggleAdminCapacityProjectionClientDrop('${encodeURIComponent(item.client)}')">${dropped ? "Restaurar" : "Quitar"}</button></td></tr>` }).join("")}</tbody></table></div>`
         const projectionsHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Proyecciones</h4><div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0">${projKpiCard("proj_consumption","Consumo proyectado fin de mes",`${projectedMonthHours.toFixed(2)} h`,`${projectedVsPrevPct >= 0 ? "+" : ""}${projectedVsPrevPct.toFixed(2)}% vs ${htmlEscape(previousMonthKey)} · Click para detalle por cliente`)}${projKpiCard("next_capacity_base",`Capacidad teórica ${nextMonthLabel}`,`${nextMonthCapacityBase.toFixed(2)} h`,`Dotación actual: ${activeAnalystCount} analistas`)}${projKpiCard("next_capacity_adjusted",`Capacidad teórica ${nextMonthLabel} ajustada`,`${nextMonthScenarioCapacity.toFixed(2)} h`,`Bajas: ${adminCapacityProjectionLeavers} · Altas: ${adminCapacityProjectionJoiners} · Dotación: ${nextAnalystsScenario}`)}${projKpiCard("next_capacity_clients_drop","Capacidad tras baja de clientes",`${capacityAfterDrop.toFixed(2)} h`,`Clientes dados de baja: ${droppedClients.length ? htmlEscape(droppedClients.join(", ")) : "Ninguno"} · Ahorro: ${droppedPeopleSavings.toFixed(2)} personas`)}${projKpiCard("scenario_gap_use","GAP y Utilización proyectada",`${scenarioUsePct.toFixed(2)}%`,`GAP: ${scenarioGap.toFixed(2)} personas`,`<div class="small" style="margin-top:4px"><strong>Recomendación:</strong> ${htmlEscape(scenarioDecision)}</div>`)}${projKpiCard("real_gap_use","GAP y Utilización real",`${realUsePct.toFixed(2)}%`,`GAP real: ${realGap.toFixed(2)} personas`,`<div class="small" style="margin-top:4px"><strong>Recomendación:</strong> ${htmlEscape(realDecision)}</div>`)}</div><div class="inline" style="margin-top:10px;align-items:flex-end;gap:10px"><div><label style="margin:0">Bajas de analistas</label><input type="number" min="0" value="${adminCapacityProjectionLeavers}" onchange="setAdminCapacityProjectionLeavers(this.value)" style="max-width:130px;margin:0"></div><div><label style="margin:0">Altas de analistas</label><input type="number" min="0" value="${adminCapacityProjectionJoiners}" onchange="setAdminCapacityProjectionJoiners(this.value)" style="max-width:130px;margin:0"></div><button class="ghost" onclick="openCapacityProjectionDetailModal()">Ver tabla completa</button></div><div class="small" style="margin-top:6px">Horas consideradas para proyección: desde el primer día hábil del mes hasta hoy (${daysElapsed} días hábiles).</div>${projectionBars}${projectionClientRowsHtml}</div>`
-        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button><button class="${adminCapacityViewMode==='projections'?'':'ghost'}" onclick="setAdminCapacityViewMode('projections')">Proyecciones</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : (adminCapacityViewMode==='projections' ? projectionsHtml : cardsHtml)}`
+        const microservicesMap = {}
+        ;(tickets || []).forEach(t => {
+          const microservice = String(t?.activityType || t?.service || "Sin microservicio")
+          const entries = Array.isArray(t?.timeTracking?.monthlyFolders?.[monthKey]?.entries) ? t.timeTracking.monthlyFolders[monthKey].entries : []
+          if(!entries.length) return
+          if(!microservicesMap[microservice]) microservicesMap[microservice] = { tasks: 0, hours: 0 }
+          microservicesMap[microservice].tasks += 1
+          microservicesMap[microservice].hours += entries.reduce((acc,e)=> acc + (Number(e?.minutes || Number(e?.hours || 0) * 60 || 0) / 60), 0)
+        })
+        const microserviceRows = Object.entries(microservicesMap).sort((a,b)=>b[1].hours-a[1].hours)
+        const microservicesHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Microservicios</h4><div class="small" style="margin-bottom:8px">Listado de tareas por microservicio y tiempo promedio diario/mensual del período.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Microservicio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio diario (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio mensual (h)</th></tr></thead><tbody>${microserviceRows.length ? microserviceRows.map(([name, data]) => { const dailyAvg = Number(daysElapsed || 1) > 0 ? data.hours / Number(daysElapsed || 1) : 0; const monthlyAvg = data.tasks > 0 ? data.hours / data.tasks : 0; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(name)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${data.tasks}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${dailyAvg.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${monthlyAvg.toFixed(2)}</td></tr>` }).join("") : `<tr><td colspan="4" class="small" style="padding:8px">Sin información de microservicios para el período.</td></tr>`}</tbody></table></div></div>`
+        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button><button class="${adminCapacityViewMode==='projections'?'':'ghost'}" onclick="setAdminCapacityViewMode('projections')">Proyecciones</button><button class="${adminCapacityViewMode==='microservices'?'':'ghost'}" onclick="setAdminCapacityViewMode('microservices')">Microservicios</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : (adminCapacityViewMode==='projections' ? projectionsHtml : (adminCapacityViewMode==='microservices' ? microservicesHtml : cardsHtml))}`
       }
-      if(adminCapacityViewMode === "chart" || adminCapacityViewMode === "projections"){
-        wrap.innerHTML = `<div class="small">Modo ${adminCapacityViewMode === "chart" ? "gráfico" : "proyecciones"} activo: para ver asistencia y gestión de horas, cambiá a “Mostrar cuadros”.</div>`
+      if(adminCapacityViewMode === "chart" || adminCapacityViewMode === "projections" || adminCapacityViewMode === "microservices"){
+        const modeLabel = adminCapacityViewMode === "chart" ? "gráfico" : (adminCapacityViewMode === "projections" ? "proyecciones" : "microservicios")
+        wrap.innerHTML = `<div class="small">Modo ${modeLabel} activo: para ver asistencia y gestión de horas, cambiá a “Mostrar cuadros”.</div>`
         return
       }
       wrap.innerHTML = analysts.length ? `
@@ -5947,6 +6123,7 @@ Cliente B`)
         currentRole = user.role
         persistSession()
         await loadMenuPermissions()
+        startMenuPermissionsSync()
         renderApp()
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
@@ -5973,6 +6150,7 @@ Cliente B`)
     function logout(){
       stopConsultorAutoRefresh()
       stopRealtimeStreams()
+      stopMenuPermissionsSync()
       currentUser = null
       currentRole = null
       clearSession()
@@ -6288,6 +6466,157 @@ Cliente B`)
       </div>`
     }
 
+    function topPerformerScoreAverage(row){
+      const keys = ["workManagement","problemSolving","adaptabilityLearning","teamwork","focusCommitment"]
+      const values = keys.map(k => Number(row?.[k] || 0)).filter(v => Number.isFinite(v) && v > 0)
+      if(!values.length) return 0
+      return values.reduce((a,b)=>a+b,0) / values.length
+    }
+
+    function initializeTopPerformerAptitudinalRows(){
+      const analysts = Object.values(cachedUsersByEmail || {})
+        .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const month = toLocalDateOnly(new Date()).slice(0, 7)
+      topPerformerAptitudinalRows = analysts.flatMap(analyst => {
+        const analystEmail = String(analyst?.email || "").toLowerCase()
+        return [1,2,3].map(idx => ({
+          key: `${emailKey(analystEmail)}_${idx}`,
+          analystEmail,
+          month,
+          evaluatorEmail: "",
+          workManagement: 0,
+          problemSolving: 0,
+          adaptabilityLearning: 0,
+          teamwork: 0,
+          focusCommitment: 0,
+          observations: ""
+        }))
+      })
+    }
+
+    function setAdminTopPerformerTab(tab){
+      const allowed = new Set(["summary","aptitudinal","internal_quality","activity_quality","grupo_axo"])
+      const next = allowed.has(String(tab || "")) ? String(tab) : "summary"
+      if(adminTopPerformerTab === next) return
+      adminTopPerformerTab = next
+      renderApp()
+    }
+
+    function setTopPerformerSummaryMonth(value){
+      topPerformerSummaryMonth = String(value || "").trim() || toLocalDateOnly(new Date()).slice(0, 7)
+      if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "summary"){
+        loadTopPerformerSummaryTable()
+      }
+    }
+
+    async function saveTopPerformerAptitudinalByAnalyst(analystEmail){
+      const email = String(analystEmail || "").toLowerCase()
+      if(currentRole !== "admin" || !email) return
+      const rows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "") === email)
+      if(!rows.length) return
+      for(const row of rows){
+        const month = String(row?.month || toLocalDateOnly(new Date()).slice(0,7))
+        const idx = String(row?.key || "").split("_").pop() || "1"
+        await db.ref("top_performer_aptitudinal").child(month).child(emailKey(email)).child(idx).set({
+          ...row,
+          updatedAt: new Date().toISOString(),
+          updatedBy: String(currentUser?.email || "").toLowerCase()
+        })
+      }
+      showToast(`Evaluación aptitudinal guardada para ${userDisplayNameByEmail(email) || email}.`, "ok", 1400)
+    }
+
+    async function loadTopPerformerSummaryTable(){
+      const wrap = document.getElementById("topPerformerSummaryTable")
+      if(!wrap || currentRole !== "admin" || adminTopPerformerTab !== "summary") return
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const tickets = cachedTickets?.length ? cachedTickets : await fetchTicketsFromDb()
+      const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
+      const monthRows = analysts.map(analyst => {
+        const email = String(analyst?.email || "").toLowerCase()
+        const row = getAdminHoursRowValues(email)
+        const businessDays = monthBusinessDaysARG(month)
+        const theoretical = Math.max(1, Number((Math.max(0, businessDays - Number(row.holidays || 0)) * Number(row.adjustedHours || 0)) || 0))
+        const executed = tickets
+          .filter(t => String(t?.assignedTo || "").toLowerCase() === email)
+          .reduce((acc, t) => {
+            const entries = Array.isArray(t?.timeTracking?.monthlyFolders?.[month]?.entries) ? t.timeTracking.monthlyFolders[month].entries : []
+            return acc + entries.reduce((sum, e) => sum + (Number(e?.minutes || Number(e?.hours || 0) * 60 || 0) / 60), 0)
+          }, 0)
+        const diffPct = ((executed - theoretical) / theoretical) * 100
+        const quality = (() => {
+          const list = surveys.filter(s => String(s?.ratedRole || "").toLowerCase() === "analista" && String(s?.ratedEmail || "").toLowerCase() === email && String(s?.createdAt || "").slice(0,7) === month)
+          if(!list.length) return 0
+          const avg = list.reduce((acc, s) => acc + Number(normalizeQualityToTen(s?.overall || 0) || 0), 0) / list.length
+          return avg
+        })()
+        const aptRows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "").toLowerCase() === email && String(r?.month || "") === month)
+        const aptAvg = aptRows.length ? aptRows.reduce((acc, r) => acc + topPerformerScoreAverage(r), 0) / aptRows.length : 0
+        const timeScore = Math.max(0, 10 - Math.min(10, Math.abs(diffPct) / 10))
+        const rankingScore = (timeScore * 0.3) + (quality * 0.3) + (aptAvg * 0.4)
+        return { email, diffPct, quality, aptAvg, rankingScore }
+      }).sort((a,b)=>b.rankingScore-a.rankingScore)
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración aptitudinal</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td></tr>`).join("") || `<tr><td colspan="5" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
+    }
+
+    function updateTopPerformerAptitudinalCell(rowKey, field, rawValue){
+      const idx = topPerformerAptitudinalRows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numericFields = new Set(["workManagement","problemSolving","adaptabilityLearning","teamwork","focusCommitment"])
+      const nextValue = numericFields.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      topPerformerAptitudinalRows[idx] = { ...topPerformerAptitudinalRows[idx], [field]: nextValue }
+      const rowFinal = document.getElementById(`tp_final_${rowKey}`)
+      if(rowFinal) rowFinal.textContent = topPerformerScoreAverage(topPerformerAptitudinalRows[idx]).toFixed(2)
+      const analystEmail = String(topPerformerAptitudinalRows[idx]?.analystEmail || "")
+      const analystRows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "") === analystEmail)
+      const total = analystRows.length ? analystRows.reduce((acc, row) => acc + topPerformerScoreAverage(row), 0) / analystRows.length : 0
+      document.querySelectorAll(`[data-tp-total='${emailKey(analystEmail)}']`).forEach(node => { node.textContent = total.toFixed(2) })
+    }
+
+    function renderTopPerformerAdminHtml(){
+      if(!topPerformerAptitudinalRows.length) initializeTopPerformerAptitudinalRows()
+      const admins = Object.values(cachedUsersByEmail || {})
+        .filter(u => String(u?.role || "").toLowerCase() === "admin" && u?.active !== false)
+        .map(u => ({ email: String(u?.email || "").toLowerCase(), name: userDisplayNameByEmail(u?.email || "") || u?.email || "-" }))
+      const tabs = [
+        { key: "summary", label: "Resumen" },
+        { key: "aptitudinal", label: "Aptitudinal" },
+        { key: "internal_quality", label: "Calidad interna" },
+        { key: "activity_quality", label: "Calidad de las actividades" },
+        { key: "grupo_axo", label: "Grupo Axo" }
+      ]
+      if(adminTopPerformerTab === "summary"){
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Resumen</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerSummaryTable" class="small" style="margin-top:10px"></div></div>`
+      }
+      if(["internal_quality","activity_quality","grupo_axo"].includes(adminTopPerformerTab)){
+        return `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">${htmlEscape(tabs.find(t => t.key === adminTopPerformerTab)?.label || "Módulo")}</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`
+      }
+      const byAnalystTotal = {}
+      topPerformerAptitudinalRows.forEach(row => {
+        const key = String(row?.analystEmail || "")
+        if(!byAnalystTotal[key]) byAnalystTotal[key] = []
+        byAnalystTotal[key].push(topPerformerScoreAverage(row))
+      })
+      const details = [
+        ["Gestión del Trabajo","Evalúa cómo el analista organiza y prioriza sus actividades, asegurando el cumplimiento de los plazos establecidos y la adecuada gestión de imprevistos. Se considera la autonomía en la planificación y la capacidad de manejar múltiples tareas de manera eficiente."],
+        ["Resolución de Problemas","Analiza la capacidad del analista para identificar, analizar y resolver problemas en la gestión de sus actividades. Se evalúa su habilidad para proponer soluciones prácticas, creativas y efectivas utilizando recursos disponibles (instructivos, manuales, sección de ayuda, soporte). También se valora si solicita ayuda de manera proactiva después de haber realizado un análisis previo."],
+        ["Comunicación Efectiva","Evalúa la claridad, precisión y profesionalismo en la comunicación del analista. Se revisa cómo redacta mensajes, solicitudes y reportes, asegurando que sean comprensibles, respetuosos y oportunos. También se valora su capacidad para hacer seguimiento a conversaciones y gestiones pendientes."],
+        ["Adaptabilidad y Aprendizaje","Evalúa la capacidad del analista para adaptarse a cambios en procesos, herramientas o prioridades. Se valora su disposición para aprender nuevas habilidades, aplicar retroalimentación de manera efectiva y mejorar continuamente su desempeño."],
+        ["Colaboración y Trabajo en Equipo","Evalúa la capacidad del analista para trabajar de manera efectiva con otros miembros del equipo. Se observa si responde oportunamente a solicitudes, colabora activamente en la resolución de dudas planteadas por los integrantes del equipo, e innova proponiendo soluciones o enfoques que mejoren la dinámica y el desempeño grupal."],
+        ["Enfoque y Compromiso en la Tarea","Mide el nivel de atención constante y sostenida del analista en cada actividad asignada. Verifica que cumple con los criterios y detalles necesarios para evitar errores y retrabajos. Se valora la dedicación para superar las expectativas de calidad en cada tarea."]
+      ]
+      const bodyRows = topPerformerAptitudinalRows.map((row, idx) => {
+        const final = topPerformerScoreAverage(row)
+        const total = (byAnalystTotal[row.analystEmail] || []).length ? (byAnalystTotal[row.analystEmail].reduce((a,b)=>a+b,0) / byAnalystTotal[row.analystEmail].length) : 0
+        const inputScore = (id, val) => `<input type="number" min="1" max="10" step="1" value="${Number(val||0)||''}" onchange="updateTopPerformerAptitudinalCell('${row.key}','${id}', this.value)">`
+        const isNewAnalyst = idx === 0 || String(topPerformerAptitudinalRows[idx - 1]?.analystEmail || "") !== String(row.analystEmail || "")
+        const borderTop = isNewAnalyst ? "border-top:2px solid var(--accent);" : ""
+        return `<tr style="${isNewAnalyst ? "background:rgba(61,110,245,.08);" : ""}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${htmlEscape(userDisplayNameByEmail(row.analystEmail) || row.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><input type="month" value="${htmlEscape(String(row.month || ""))}" onchange="updateTopPerformerAptitudinalCell('${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><select onchange="updateTopPerformerAptitudinalCell('${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("workManagement", row.workManagement)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("problemSolving", row.problemSolving)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("adaptabilityLearning", row.adaptabilityLearning)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("teamwork", row.teamwork)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("focusCommitment", row.focusCommitment)}</td><td id="tp_final_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${final.toFixed(2)}</td><td data-tp-total="${emailKey(row.analystEmail)}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${total.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><textarea style="min-height:42px" onchange="updateTopPerformerAptitudinalCell('${row.key}','observations', this.value)">${htmlEscape(String(row.observations || ""))}</textarea></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><button class="ghost" onclick="saveTopPerformerAptitudinalByAnalyst('${htmlEscape(row.analystEmail)}')">Guardar</button></td></tr>`
+      }).join("")
+      return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Aptitudinal</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes evaluación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador (admin)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Gestión de trabajo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Resolución de problemas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Adaptabilidad y aprendizaje</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Colaboración y equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Enfoque y compromiso</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio total</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Guardar</th></tr></thead><tbody>${bodyRows}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios</h4>${details.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
+    }
+
     function renderApp(){
       const isAdmin = currentRole === "admin"
       const adminCanAccess = (tab) => canAccessAdminTab(tab)
@@ -6313,16 +6642,16 @@ Cliente B`)
       const showAdminGuidelines = isAdmin && adminPanelTab === "guidelines"
       const showAdminManuals = isAdmin && adminPanelTab === "manuals"
       const showSavedItems = mainViewTab === "saved"
-      const showConsultorPortfolio = currentRole === "consultor" && mainViewTab === "portfolio"
-      const showPortfolioOverview = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "portfolio_overview"
-      const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
-      const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
-      const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
-      const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
-      const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
-      const showConsultorTodayAgenda = currentRole === "consultor" && mainViewTab === "agenda_today"
-      const showConsultorSummary = currentRole === "consultor" && mainViewTab === "summary_general"
-      const showConsultorProfile = currentRole === "consultor" && mainViewTab === "profile"
+      const showConsultorPortfolio = mainViewTab === "portfolio" && canCurrentRoleSeeMenu("main:portfolio")
+      const showPortfolioOverview = mainViewTab === "portfolio_overview" && canCurrentRoleSeeMenu("main:portfolio_overview")
+      const showQualityResults = mainViewTab === "quality_results" && canCurrentRoleSeeMenu("main:quality_results")
+      const showAnalystHoursLog = mainViewTab === "registro_horas" && canCurrentRoleSeeMenu("main:registro_horas")
+      const showSupportCasesView = mainViewTab === "support" && canCurrentRoleSeeMenu("main:support")
+      const showDailysView = mainViewTab === "dailys" && canCurrentRoleSeeMenu("main:dailys")
+      const showConsultorGuidelines = mainViewTab === "consultor_guidelines" && canCurrentRoleSeeMenu("main:consultor_guidelines")
+      const showConsultorTodayAgenda = mainViewTab === "agenda_today" && canCurrentRoleSeeMenu("main:agenda_today")
+      const showConsultorSummary = mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general")
+      const showConsultorProfile = mainViewTab === "profile" && canCurrentRoleSeeMenu("main:profile")
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
       const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer
@@ -6373,20 +6702,20 @@ Cliente B`)
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
-          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
+          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
         ].filter(Boolean)}
       ]
       const visibleSidebarSections = sidebarSections
@@ -6401,7 +6730,9 @@ Cliente B`)
             <div class="sideNavList">
               ${visibleSidebarSections.map(section => `<div class="sideSection"><div class="sideSectionTitle">${section.title}</div>${(section.items || []).map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}</div>`).join("")}
             </div>
-            <div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>
+            ${canCurrentRoleSeeMenu(currentRole === 'admin' ? "admin:quality" : "main:quality_results")
+              ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>`
+              : ``}
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -6465,18 +6796,14 @@ Cliente B`)
         ` : showConsultorTodayAgenda ? `
           <div class="card"><h3 style="margin-top:0">Agenda de hoy</h3><div class="small" style="margin-bottom:8px">Tickets creados por vos y planificados para hoy en la agenda operativa del analista.</div><div id="consultorTodayAgendaList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
-          <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná cuáles clientes pertenecen a tu cartera y agregá nuevos si hace falta.</div><div class="row"><div><label>Nuevo cliente</label><input id="consultorClientName" placeholder="Nombre del cliente"></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Agregar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
+          <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná clientes del listado general para sumarlos a tu cartera y actualizá su riesgo operativo.</div><div class="row"><div><label>Nuevo cliente</label><select id="consultorClientName"><option value="">Seleccionar cliente</option></select></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Asignar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
         ` : showConsultorSummary ? `
           <div class="card"><h3 style="margin-top:0">Resumen general</h3><div id="consultorGeneralSummary" class="small"></div></div>
         ` : showConsultorProfile ? `
           <div class="card"><h3 style="margin-top:0">Mi configuración (Consultor)</h3><div class="small" style="margin-bottom:8px">Conectá Google Calendar para poder agendar tickets desde su detalle.</div><div class="inline"><button class="ghost" onclick="toggleGoogleCalendarConnection()">Conectar Google Calendar</button><span class="small">Estado: <strong id="profileGoogleCalendarStatus">-</strong></span></div></div>
         ` : showTopPerformer ? `
-          <div class="card" style="min-height:56vh;display:flex;align-items:center;justify-content:center;background:transparent;border:1px dashed var(--stroke)">
-            <div style="text-align:center">
-              <div style="font-size:52px;line-height:1">🛠️</div>
-              <div style="font-size:42px;font-weight:800;letter-spacing:.04em">Próximamente</div>
-            </div>
-          </div>
+          <div class="card"><div class="inline" style="gap:8px;flex-wrap:wrap">${(currentRole === "admin" ? [{key:"summary",label:"Resumen"},{key:"aptitudinal",label:"Aptitudinal"},{key:"internal_quality",label:"Calidad interna"},{key:"activity_quality",label:"Calidad de las actividades"},{key:"grupo_axo",label:"Grupo Axo"}] : [{key:"summary",label:"Resumen"}]).map(tab => `<button class="${currentRole === "admin" ? (adminTopPerformerTab===tab.key?'':'ghost') : 'ghost'}" onclick="${currentRole === "admin" ? `setAdminTopPerformerTab('${tab.key}')` : ''}">${tab.label}</button>`).join("")}</div></div>
+          ${currentRole === "admin" ? renderTopPerformerAdminHtml() : `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">Top performer</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`}
         ` : (isAdmin && mainViewTab==='hoja_vida') ? `
           <div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Hoja de vida</h3><button onclick="openAnalystCvModal()">Crear hoja de vida</button></div><div id="adminAnalystCvGrid" style="margin-top:10px"></div></div>
         ` : (currentRole==='analista' && mainViewTab==='my_ticket_status') ? `
@@ -6695,6 +7022,10 @@ Cliente B`)
         loadConsultorGeneralSummary()
       }else if(showConsultorProfile){
         loadMyProfileForm()
+      }else if(showTopPerformer){
+        if(currentRole === "admin" && adminTopPerformerTab === "summary"){
+          loadTopPerformerSummaryTable()
+        }
       }else if(showPortfolioOverview){
         loadPortfolioOverview()
       }else if(showQualityResults){
@@ -7775,7 +8106,7 @@ Cliente B`)
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de tickets con deadline vencida", ${JSON.stringify(withExpiredDeadline.map(t=>t.id))})'><div class="label">Cantidad de tickets con deadline vencida</div><div class="value">${withExpiredDeadline.length}</div></div>
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Próximos a vencerse", ${JSON.stringify(nearDeadline.map(t=>t.id))})'><div class="label">Próximos a vencerse (5 días)</div><div class="value">${nearDeadline.length}</div></div>
           <div class="kpi"><div class="label">Cantidad de comentarios sin ver</div><div class="value">${unreadComments}</div></div>
-          <div class="kpi"><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
+          <div class="kpi" style="cursor:pointer" onclick='openIncompleteTicketFieldsDetail(${JSON.stringify(incompleteTickets.map(t => ({ id: t.id, missing: getTicketMissingFields(t) })) )})'><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
         </div>
         <div style="overflow:auto;margin-top:10px">
           <table style="width:100%;border-collapse:collapse">
@@ -7827,6 +8158,20 @@ Cliente B`)
         content.innerHTML = list.length
           ? list.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id || "-")} · ${htmlEscape(t.title || "-")}</div><div class="feedMeta">Cliente: ${htmlEscape(t.client || "-")} · Deadline: ${htmlEscape(t.deadline || "-")}</div></div>`).join("")
           : `<div class="small">No hay tickets en esta categoría.</div>`
+      }
+      if(modal) modal.classList.remove("hidden")
+    }
+
+    function openIncompleteTicketFieldsDetail(rows){
+      const modal = document.getElementById("dashboardListModal")
+      const modalTitle = document.getElementById("dashboardListModalTitle")
+      const content = document.getElementById("dashboardListModalContent")
+      const list = Array.isArray(rows) ? rows : []
+      if(modalTitle) modalTitle.textContent = "Tickets sin campos completados"
+      if(content){
+        content.innerHTML = list.length
+          ? list.map(row => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${htmlEscape(String(row?.id || ""))}')"><div class="feedType">${htmlEscape(String(row?.id || "-"))}</div><div class="feedMeta">Campos faltantes: ${htmlEscape((Array.isArray(row?.missing) ? row.missing : []).join(" · ") || "Sin detalle")}</div></div>`).join("")
+          : `<div class="small">No hay tickets incompletos.</div>`
       }
       if(modal) modal.classList.remove("hidden")
     }
@@ -10482,7 +10827,7 @@ Cliente B`)
       if(!isAdminLevel1()) return alert("Solo admin nivel 1 puede editar permisos.")
       const roles = ["admin","analista","consultor"]
       const menuKeys = [
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile",
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile","main:hoja_vida",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines","admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center","admin:people","admin:user_management","admin:settings","admin:control_center_accesses","admin:control_center_permissions"
       ]
       const payload = { admin: {}, analista: {}, consultor: {} }
@@ -10505,6 +10850,7 @@ Cliente B`)
         { key:"main:tickets", label:"Tickets" }, { key:"main:saved", label:"Guardados" }, { key:"main:encuentro", label:"Encuentro" }, { key:"main:top_performer", label:"Top performer" },
         { key:"main:portfolio", label:"Cartera" }, { key:"main:agenda_today", label:"Agenda de hoy (consultor)" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
         { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" }, { key:"main:summary_general", label:"Resumen general (consultor)" }, { key:"main:profile", label:"Perfil/Configuración" },
+        { key:"main:hoja_vida", label:"Hoja de vida" },
         { key:"admin:dailys", label:"Admin · Daily's" }, { key:"admin:agenda", label:"Admin · Organizar agendas" }, { key:"admin:comments", label:"Admin · Comentarios" }, { key:"admin:capacity", label:"Admin · Capacidad instalada" },
         { key:"admin:announcements", label:"Admin · Comunicados" }, { key:"admin:guidelines", label:"Admin · Lineamientos" }, { key:"admin:manuals", label:"Admin · Manuales" }, { key:"admin:internal_quality", label:"Admin · Calidad interna" },
         { key:"admin:quality", label:"Admin · Encuesta calidad" }, { key:"admin:support", label:"Admin · Soporte técnico" }, { key:"admin:help", label:"Admin · Ayuda" }, { key:"admin:connections", label:"Admin · Conexiones" },
@@ -12298,6 +12644,7 @@ Cliente B`)
             persistSession()
             await processGoogleCalendarOAuthCallback()
             await loadMenuPermissions()
+            startMenuPermissionsSync()
             renderApp()
           }else{
             clearSession()
