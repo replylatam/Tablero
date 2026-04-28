@@ -3796,17 +3796,33 @@ Cliente B`)
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${c?.grantConsultoria ? "checked" : ""} onchange="updateConsultorClientPortfolioField('${key}', 'grantConsultoria', this.checked)"></td>
           </tr>`
         }).join("")
+      const riskSummary = items.reduce((acc, [,client]) => {
+        const level = String(client?.riskLevel || "")
+        if(level === "bajo_control") acc.bajo += 1
+        else if(level === "atencion_preventiva") acc.preventiva += 1
+        else if(level === "riesgo_real") acc.real += 1
+        else acc.sinDefinir += 1
+        return acc
+      }, { bajo: 0, preventiva: 0, real: 0, sinDefinir: 0 })
       const clientsByConsultor = Object.fromEntries(consultors.map(c => [String(c.email||"").toLowerCase(), []]))
       Object.entries(clientsObj).forEach(([key,c]) => {
         const owner = String(c?.assignedConsultor || "").toLowerCase()
         if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push(String(c?.name || key))
       })
-      const peersTable = `<div style="margin-top:14px"><h4 style="margin:0 0 8px">Cuentas asignadas a consultores</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(name => `• ${htmlEscape(name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td></tr>` }).join("")}</tbody></table></div></div>`
-      wrap.innerHTML = `<div class="small" style="margin-bottom:8px">Gestioná riesgo y seguimiento de tus cuentas asignadas.</div>${
+      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(name => `• ${htmlEscape(name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td></tr>` }).join("")}</tbody></table></div>`
+      const summaryCards = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:12px">
+        <div class="kpi"><div class="label">🟢 Bajo control</div><div class="value">${riskSummary.bajo}</div></div>
+        <div class="kpi"><div class="label">🟡 Atención preventiva</div><div class="value">${riskSummary.preventiva}</div></div>
+        <div class="kpi"><div class="label">🔴 Riesgo real</div><div class="value">${riskSummary.real}</div></div>
+        <div class="kpi"><div class="label">⚪ Sin definir</div><div class="value">${riskSummary.sinDefinir}</div></div>
+      </div>`
+      const riskSection = `<div class="card" style="padding:12px;margin-top:10px"><h4 style="margin:0 0 8px">Gestión de riesgo y seguimiento de cuentas asignadas</h4><div class="small" style="margin-bottom:8px">Gestioná riesgo y seguimiento de tus cuentas asignadas.</div>${
         items.length
           ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Riesgo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última actualización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días sin actualizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Actualización</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Ads</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Consultoría</th></tr></thead><tbody>${rows}</tbody></table></div>`
           : `<div class="small">No hay clientes asignados para la búsqueda indicada.</div>`
-      }${peersTable}`
+      }</div>`
+      const consultorSection = `<div class="card" style="padding:12px;margin-top:12px"><h4 style="margin:0 0 8px">Cuentas asignadas a consultores</h4><div class="small" style="margin-bottom:8px">Vista general de la asignación de cuentas en el equipo.</div>${peersTable}</div>`
+      wrap.innerHTML = `${summaryCards}${riskSection}${consultorSection}`
     }
 
     function openConsultorSummaryDetail(kind){
@@ -6517,7 +6533,7 @@ Cliente B`)
         { title: "Herramientas", items: [
           ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
@@ -6526,6 +6542,7 @@ Cliente B`)
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
           { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
         ].filter(Boolean)}
