@@ -1762,11 +1762,12 @@
     var topPerformerAptitudinalRows = []
     var topPerformerSummaryMonth = toLocalDateOnly(new Date()).slice(0, 7)
     var topPerformerAptitudinalLoaded = false
-    var topPerformerIncidenceInclusionByMonth = {}
     var topPerformerIncidenceSelectionByMonth = {}
     var adminTopPerformerGrupoAxoTab = "ml"
     var adminTopPerformerGrupoAxoAnalyst = ""
     var topPerformerGrupoAxoMlRowsByAnalyst = {}
+    var topPerformerGrupoAxoLvpRowsByAnalyst = {}
+    var topPerformerGrupoAxoLoadedKey = ""
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -6514,8 +6515,11 @@ Cliente B`)
 
     function setTopPerformerSummaryMonth(value){
       topPerformerSummaryMonth = String(value || "").trim() || toLocalDateOnly(new Date()).slice(0, 7)
+      topPerformerGrupoAxoLoadedKey = ""
       if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "summary"){
         loadTopPerformerSummaryTable()
+      }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "grupo_axo"){
+        loadTopPerformerGrupoAxoFromDb().then(()=>renderApp())
       }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "incidencias"){
         loadTopPerformerIncidenciasTable()
       }
@@ -6572,6 +6576,42 @@ Cliente B`)
       return `${String(action?.date || "").slice(0,10)}__${emailKey(String(action?.sourceTicketId || action?.detail || idx || ""))}__${idx}`
     }
 
+    function topPerformerGrupoAxoRowScore(row, tab){
+      if(tab === "lvp"){
+        return (
+          (Number(row?.oportunidadComercial || 0) * 0.15) +
+          (Number(row?.dataSheet || 0) * 0.20) +
+          (Number(row?.atributos || 0) * 0.15) +
+          (Number(row?.richContent || 0) * 0.20) +
+          (Number(row?.seo || 0) * 0.10) +
+          (Number(row?.calidadVisual || 0) * 0.20)
+        )
+      }
+      return (
+        (Number(row?.oportunidad || 0) * 0.15) +
+        (Number(row?.tituloDescripcion || 0) * 0.15) +
+        (Number(row?.precio || 0) * 0.03) +
+        (Number(row?.categoria || 0) * 0.12) +
+        (Number(row?.imagenesSku || 0) * 0.15) +
+        (Number(row?.caracteristicasTecnicas || 0) * 0.20) +
+        (Number(row?.finalizacionCarga || 0) * 0.20)
+      )
+    }
+
+    function topPerformerGrupoAxoAnalystAverage(analystEmail, month){
+      const email = String(analystEmail || "").toLowerCase()
+      if(!email) return 0
+      const monthKey = String(month || toLocalDateOnly(new Date()).slice(0, 7))
+      const mlRows = ensureGrupoAxoMlRows(email).filter(row => String(row?.month || "") === monthKey)
+      const lvpRows = ensureGrupoAxoLvpRows(email).filter(row => String(row?.month || "") === monthKey)
+      const scores = []
+      mlRows.forEach(row => scores.push(topPerformerGrupoAxoRowScore(row, "ml")))
+      lvpRows.forEach(row => scores.push(topPerformerGrupoAxoRowScore(row, "lvp")))
+      const nonZero = scores.filter(v => Number(v || 0) > 0)
+      if(!nonZero.length) return 0
+      return nonZero.reduce((a,b)=>a+b,0) / nonZero.length
+    }
+
     function setTopPerformerGrupoAxoTab(tab){
       adminTopPerformerGrupoAxoTab = tab === "lvp" ? "lvp" : "ml"
       renderApp()
@@ -6604,6 +6644,27 @@ Cliente B`)
       return topPerformerGrupoAxoMlRowsByAnalyst[key]
     }
 
+    function ensureGrupoAxoLvpRows(analystEmail){
+      const key = String(analystEmail || "").toLowerCase()
+      if(!key) return []
+      if(!topPerformerGrupoAxoLvpRowsByAnalyst[key]){
+        topPerformerGrupoAxoLvpRowsByAnalyst[key] = Array.from({ length: 10 }, (_, idx) => ({
+          key: `${emailKey(key)}_lvp_${idx + 1}`,
+          month: toLocalDateOnly(new Date()).slice(0, 7),
+          evaluatorEmail: "",
+          skuModelLvpBrand: "",
+          oportunidadComercial: 0,
+          dataSheet: 0,
+          atributos: 0,
+          richContent: 0,
+          seo: 0,
+          calidadVisual: 0,
+          observaciones: ""
+        }))
+      }
+      return topPerformerGrupoAxoLvpRowsByAnalyst[key]
+    }
+
     function updateGrupoAxoMlCell(analystEmail, rowKey, field, rawValue){
       const key = String(analystEmail || "").toLowerCase()
       const rows = ensureGrupoAxoMlRows(key)
@@ -6615,23 +6676,102 @@ Cliente B`)
       topPerformerGrupoAxoMlRowsByAnalyst[key] = rows
       const scoreEl = document.getElementById(`grupoAxoMlScore_${rows[idx].key}`)
       if(scoreEl){
-        const row = rows[idx]
-        const score =
-          (Number(row.oportunidad || 0) * 0.15) +
-          (Number(row.tituloDescripcion || 0) * 0.15) +
-          (Number(row.precio || 0) * 0.03) +
-          (Number(row.categoria || 0) * 0.12) +
-          (Number(row.imagenesSku || 0) * 0.15) +
-          (Number(row.caracteristicasTecnicas || 0) * 0.20) +
-          (Number(row.finalizacionCarga || 0) * 0.20)
-        scoreEl.textContent = score.toFixed(2)
+        scoreEl.textContent = topPerformerGrupoAxoRowScore(rows[idx], "ml").toFixed(2)
       }
+    }
+
+    function updateGrupoAxoLvpCell(analystEmail, rowKey, field, rawValue){
+      const key = String(analystEmail || "").toLowerCase()
+      const rows = ensureGrupoAxoLvpRows(key)
+      const idx = rows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numeric = new Set(["oportunidadComercial","dataSheet","atributos","richContent","seo","calidadVisual"])
+      const value = numeric.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      rows[idx] = { ...rows[idx], [field]: value }
+      topPerformerGrupoAxoLvpRowsByAnalyst[key] = rows
+      const scoreEl = document.getElementById(`grupoAxoLvpScore_${rows[idx].key}`)
+      if(scoreEl){
+        scoreEl.textContent = topPerformerGrupoAxoRowScore(rows[idx], "lvp").toFixed(2)
+      }
+    }
+
+    async function loadTopPerformerGrupoAxoFromDb(){
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      if(topPerformerGrupoAxoLoadedKey === month) return
+      const analysts = Object.values(cachedUsersByEmail || {})
+        .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const [mlSnapshot, lvpSnapshot] = await Promise.all([
+        db.ref("top_performer_grupo_axo").child("ml").child(month).once("value"),
+        db.ref("top_performer_grupo_axo").child("lvp").child(month).once("value")
+      ])
+      const mlData = mlSnapshot.val() || {}
+      const lvpData = lvpSnapshot.val() || {}
+      analysts.forEach(analyst => {
+        const email = String(analyst?.email || "").toLowerCase()
+        const key = emailKey(email)
+        const mlRows = ensureGrupoAxoMlRows(email).map((row, idx) => {
+          const saved = mlData?.[key]?.[idx + 1]
+          if(!saved) return { ...row, month }
+          return {
+            ...row,
+            month: String(saved.month || month),
+            evaluatorEmail: String(saved.evaluatorEmail || ""),
+            skuModelMlmBrand: String(saved.skuModelMlmBrand || ""),
+            oportunidad: Number(saved.oportunidad || 0),
+            tituloDescripcion: Number(saved.tituloDescripcion || 0),
+            precio: Number(saved.precio || 0),
+            categoria: Number(saved.categoria || 0),
+            imagenesSku: Number(saved.imagenesSku || 0),
+            caracteristicasTecnicas: Number(saved.caracteristicasTecnicas || 0),
+            finalizacionCarga: Number(saved.finalizacionCarga || 0),
+            observaciones: String(saved.observaciones || "")
+          }
+        })
+        const lvpRows = ensureGrupoAxoLvpRows(email).map((row, idx) => {
+          const saved = lvpData?.[key]?.[idx + 1]
+          if(!saved) return { ...row, month }
+          return {
+            ...row,
+            month: String(saved.month || month),
+            evaluatorEmail: String(saved.evaluatorEmail || ""),
+            skuModelLvpBrand: String(saved.skuModelLvpBrand || ""),
+            oportunidadComercial: Number(saved.oportunidadComercial || 0),
+            dataSheet: Number(saved.dataSheet || 0),
+            atributos: Number(saved.atributos || 0),
+            richContent: Number(saved.richContent || 0),
+            seo: Number(saved.seo || 0),
+            calidadVisual: Number(saved.calidadVisual || 0),
+            observaciones: String(saved.observaciones || "")
+          }
+        })
+        topPerformerGrupoAxoMlRowsByAnalyst[email] = mlRows
+        topPerformerGrupoAxoLvpRowsByAnalyst[email] = lvpRows
+      })
+      topPerformerGrupoAxoLoadedKey = month
+    }
+
+    async function saveTopPerformerGrupoAxoByAnalyst(analystEmail){
+      const email = String(analystEmail || "").toLowerCase()
+      if(currentRole !== "admin" || !email) return
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const tab = adminTopPerformerGrupoAxoTab === "lvp" ? "lvp" : "ml"
+      const rows = tab === "lvp" ? ensureGrupoAxoLvpRows(email) : ensureGrupoAxoMlRows(email)
+      const filtered = rows.filter(row => String(row?.month || "") === month)
+      for(let idx = 0; idx < filtered.length; idx += 1){
+        await db.ref("top_performer_grupo_axo").child(tab).child(month).child(emailKey(email)).child(idx + 1).set({
+          ...filtered[idx],
+          updatedAt: new Date().toISOString(),
+          updatedBy: String(currentUser?.email || "").toLowerCase()
+        })
+      }
+      showToast(`Calidad Grupo Axo (${tab.toUpperCase()}) guardada para ${userDisplayNameByEmail(email) || email}.`, "ok", 1400)
     }
 
     async function loadTopPerformerSummaryTable(){
       const wrap = document.getElementById("topPerformerSummaryTable")
       if(!wrap || currentRole !== "admin" || adminTopPerformerTab !== "summary") return
       if(!topPerformerAptitudinalLoaded) await loadTopPerformerAptitudinalFromDb()
+      await loadTopPerformerGrupoAxoFromDb()
       const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
       const tickets = cachedTickets?.length ? cachedTickets : await fetchTicketsFromDb()
@@ -6657,6 +6797,7 @@ Cliente B`)
         })()
         const aptRows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "").toLowerCase() === email && String(r?.month || "") === month)
         const aptAvg = aptRows.length ? aptRows.reduce((acc, r) => acc + topPerformerScoreAverage(r), 0) / aptRows.length : 0
+        const grupoAxoAvg = topPerformerGrupoAxoAnalystAverage(email, month)
         const adjustedTime = Math.max(0, 1 - Math.min(1, Math.abs(diffPct) / 100))
         const pointsCapacity = Math.min(adjustedTime * 30, 30)
         const pointsQuality = Math.min(quality * 3, 30)
@@ -6668,9 +6809,9 @@ Cliente B`)
         const incidenceDiscount = Object.values(selectedIncidences).filter(Boolean).length
         const totalPoints = pointsCapacity + pointsQuality + pointsAptitude - incidenceDiscount
         const rating = totalPoints >= 91 ? "Excelente" : totalPoints >= 70 ? "Bueno" : totalPoints >= 40 ? "A mejorar" : "Insuficiente"
-        return { email, diffPct, quality, aptAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore: totalPoints }
+        return { email, diffPct, quality, aptAvg, grupoAxoAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore: totalPoints }
       }).sort((a,b)=>b.rankingScore-a.rankingScore)
-      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración aptitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">-</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración aptitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.grupoAxoAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
     }
 
     async function loadTopPerformerIncidenciasTable(){
@@ -6720,8 +6861,48 @@ Cliente B`)
       if(adminTopPerformerTab === "summary"){
         return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Resumen</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerSummaryTable" class="small" style="margin-top:10px"></div></div>`
       }
-      if(["internal_quality","activity_quality","grupo_axo"].includes(adminTopPerformerTab)){
+      if(["internal_quality","activity_quality"].includes(adminTopPerformerTab)){
         return `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">${htmlEscape(tabs.find(t => t.key === adminTopPerformerTab)?.label || "Módulo")}</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`
+      }
+      if(adminTopPerformerTab === "grupo_axo"){
+        const analysts = Object.values(cachedUsersByEmail || {})
+          .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+          .map(u => ({ email: String(u?.email || "").toLowerCase(), name: userDisplayNameByEmail(u?.email || "") || u?.email || "-" }))
+        const selectedAnalyst = adminTopPerformerGrupoAxoAnalyst || String(analysts?.[0]?.email || "")
+        const rows = adminTopPerformerGrupoAxoTab === "lvp" ? ensureGrupoAxoLvpRows(selectedAnalyst) : ensureGrupoAxoMlRows(selectedAnalyst)
+        const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+        const monthRows = rows.filter(row => String(row?.month || "") === month)
+        const detailMl = [
+          ["Oportunidad comercial", "15% · Evalúa si la publicación captura una oportunidad real de venta."],
+          ["Título y descripción", "15% · Claridad, consistencia comercial y foco en intención de búsqueda."],
+          ["Precio", "3% · Coherencia del precio con estrategia y mercado."],
+          ["Categoría", "12% · Asignación correcta para mejorar visibilidad y conversión."],
+          ["Imágenes SKU", "15% · Calidad, ángulos y cumplimiento de estándar visual."],
+          ["Características técnicas", "20% · Completitud y precisión de información técnica."],
+          ["Finalización de carga", "20% · Checklist final, consistencia y publicación sin errores."]
+        ]
+        const detailLvp = [
+          ["Oportunidad comercial", "15% · Priorización de contenido con mayor potencial de venta."],
+          ["Data Sheet", "20% · Exactitud y cobertura de ficha técnica."],
+          ["Atributos", "15% · Carga completa y estructurada para filtrado y SEO interno."],
+          ["Rich Content", "20% · Calidad del contenido enriquecido y lineamientos de marca."],
+          ["SEO", "10% · Uso correcto de términos y estructura orientada a posicionamiento."],
+          ["Calidad visual", "20% · Uniformidad gráfica y presentación corporativa del catálogo."]
+        ]
+        const rowsHtml = monthRows.map((row, idx) => {
+          const inputScore = (field, value, max = 10) => `<input type="number" min="0" max="${max}" step="1" value="${Number(value||0)||''}" onchange="${adminTopPerformerGrupoAxoTab === "lvp" ? `updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','${field}', this.value)` : `updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','${field}', this.value)`}">`
+          if(adminTopPerformerGrupoAxoTab === "lvp"){
+            const score = topPerformerGrupoAxoRowScore(row, "lvp")
+            return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuModelLvpBrand || ""))}" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','skuModelLvpBrand', this.value)" placeholder="SKU / Modelo / LVP / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidadComercial", row.oportunidadComercial)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("dataSheet", row.dataSheet)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("atributos", row.atributos)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("richContent", row.richContent)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("seo", row.seo)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("calidadVisual", row.calidadVisual)}</td><td id="grupoAxoLvpScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td></tr>`
+          }
+          const score = topPerformerGrupoAxoRowScore(row, "ml")
+          return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuModelMlmBrand || ""))}" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','skuModelMlmBrand', this.value)" placeholder="SKU / Modelo / MLM / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidad", row.oportunidad)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("tituloDescripcion", row.tituloDescripcion)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("precio", row.precio)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("categoria", row.categoria)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenesSku", row.imagenesSku)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("caracteristicasTecnicas", row.caracteristicasTecnicas)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("finalizacionCarga", row.finalizacionCarga)}</td><td id="grupoAxoMlScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td></tr>`
+        }).join("")
+        const headers = adminTopPerformerGrupoAxoTab === "lvp"
+          ? `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / Modelo / LVP / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Data Sheet</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Atributos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Rich Content</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SEO</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Visual</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th></tr>`
+          : `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / Modelo / MLM / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título y descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Precio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Categoría</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes SKU</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Características técnicas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Finalización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th></tr>`
+        const detail = adminTopPerformerGrupoAxoTab === "lvp" ? detailLvp : detailMl
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Grupo Axo</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div><div><label>Canal</label><div class="inline" style="gap:8px"><button class="${adminTopPerformerGrupoAxoTab==='ml'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('ml')">Carga Mercado Libre</button><button class="${adminTopPerformerGrupoAxoTab==='lvp'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('lvp')">Carga LVP</button></div></div><div><label>Analista</label><select onchange="setTopPerformerGrupoAxoAnalyst(this.value)"><option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a.email)}" ${a.email===selectedAnalyst?'selected':''}>${htmlEscape(a.name)}</option>`).join("")}</select></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="saveTopPerformerGrupoAxoByAnalyst('${selectedAnalyst}')">Guardar ${adminTopPerformerGrupoAxoTab.toUpperCase()}</button></div></div><div class="small" style="margin:10px 0 8px">Promedio del analista en ${adminTopPerformerGrupoAxoTab.toUpperCase()}: <strong>${(() => { const relevant = monthRows.map(r => topPerformerGrupoAxoRowScore(r, adminTopPerformerGrupoAxoTab)).filter(v => v > 0); return (relevant.length ? relevant.reduce((a,b)=>a+b,0)/relevant.length : 0).toFixed(2) })()} / 10</strong></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead>${headers}</thead><tbody>${rowsHtml || `<tr><td colspan="12" class="small" style="padding:8px">Sin filas para este analista.</td></tr>`}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios ${adminTopPerformerGrupoAxoTab.toUpperCase()}</h4>${detail.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
       }
       if(adminTopPerformerTab === "incidencias"){
         return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Incidencias</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerIncidenciasTable" class="small" style="margin-top:10px"></div></div>`
@@ -7170,6 +7351,11 @@ Cliente B`)
       }else if(showTopPerformer){
         if(currentRole === "admin" && adminTopPerformerTab === "summary"){
           loadTopPerformerSummaryTable()
+        }else if(currentRole === "admin" && adminTopPerformerTab === "grupo_axo"){
+          const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+          if(topPerformerGrupoAxoLoadedKey !== month){
+            loadTopPerformerGrupoAxoFromDb().then(()=>renderApp())
+          }
         }else if(currentRole === "admin" && adminTopPerformerTab === "incidencias"){
           loadTopPerformerIncidenciasTable()
         }
