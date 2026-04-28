@@ -6689,6 +6689,21 @@ Cliente B`)
       return nonZero.reduce((a,b)=>a+b,0) / nonZero.length
     }
 
+    function topPerformerGrupoAxoAnalystAverageByTab(analystEmail, month, tab){
+      const email = String(analystEmail || "").toLowerCase()
+      const monthKey = String(month || toLocalDateOnly(new Date()).slice(0, 7))
+      if(tab === "ml"){
+        const rows = ensureGrupoAxoMlRows(email).filter(r => String(r?.month || "") === monthKey).map(r => topPerformerGrupoAxoRowScore(r, "ml")).filter(v => v > 0)
+        return rows.length ? rows.reduce((a,b)=>a+b,0) / rows.length : 0
+      }
+      if(tab === "lvp"){
+        const rows = ensureGrupoAxoLvpRows(email).filter(r => String(r?.month || "") === monthKey).map(r => topPerformerGrupoAxoRowScore(r, "lvp")).filter(v => v > 0)
+        return rows.length ? rows.reduce((a,b)=>a+b,0) / rows.length : 0
+      }
+      const rows = ensureGrupoAxoCorreccionesRows(email).filter(r => String(r?.month || "") === monthKey).map(r => topPerformerGrupoAxoRowScore(r, "correcciones")).filter(v => v > 0)
+      return rows.length ? rows.reduce((a,b)=>a+b,0) / rows.length : 0
+    }
+
     function setTopPerformerGrupoAxoTab(tab){
       adminTopPerformerGrupoAxoTab = tab === "lvp" ? "lvp" : tab === "correcciones" ? "correcciones" : "ml"
       renderApp()
@@ -6951,9 +6966,20 @@ Cliente B`)
         const incidenceDiscount = Object.values(selectedIncidences).filter(Boolean).length
         const totalPoints = pointsCapacity + pointsQuality + pointsAptitude - incidenceDiscount
         const rating = totalPoints >= 91 ? "Excelente" : totalPoints >= 70 ? "Bueno" : totalPoints >= 40 ? "A mejorar" : "Insuficiente"
-        return { email, diffPct, quality, aptAvg, grupoAxoAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore: totalPoints }
+        const rankingScore = 100 - Math.abs(100 - Number(totalPoints || 0))
+        return { email, diffPct, quality, aptAvg, grupoAxoAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore }
       }).sort((a,b)=>b.rankingScore-a.rankingScore)
-      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración actitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos satisfacción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.grupoAxoAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
+      const avg = (arr, fn) => arr.length ? arr.reduce((acc, item) => acc + Number(fn(item) || 0), 0) / arr.length : 0
+      const summaryAvg = {
+        time: avg(monthRows, r => r.diffPct),
+        satisfaction: avg(monthRows, r => r.quality),
+        attitude: avg(monthRows, r => r.aptAvg),
+        axo: avg(monthRows, r => r.grupoAxoAvg),
+        ml: avg(monthRows, r => topPerformerGrupoAxoAnalystAverageByTab(r.email, month, "ml")),
+        lvp: avg(monthRows, r => topPerformerGrupoAxoAnalystAverageByTab(r.email, month, "lvp")),
+        corr: avg(monthRows, r => topPerformerGrupoAxoAnalystAverageByTab(r.email, month, "correcciones"))
+      }
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración actitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos satisfacción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.grupoAxoAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Promedios del mes (${htmlEscape(month)})</h4><div class="small">Tiempo de gestión promedio: <strong>${summaryAvg.time.toFixed(2)}%</strong></div><div class="small">Satisfacción promedio: <strong>${summaryAvg.satisfaction.toFixed(2)} / 10</strong></div><div class="small">Actitudinal promedio: <strong>${summaryAvg.attitude.toFixed(2)} / 10</strong></div><div class="small">Calidad Axo promedio general: <strong>${summaryAvg.axo.toFixed(2)} / 10</strong></div><div class="small">Axo ML promedio: <strong>${summaryAvg.ml.toFixed(2)} / 10</strong></div><div class="small">Axo LVP promedio: <strong>${summaryAvg.lvp.toFixed(2)} / 10</strong></div><div class="small">Axo Correcciones promedio: <strong>${summaryAvg.corr.toFixed(2)} / 10</strong></div></div>`
     }
 
     async function loadTopPerformerIncidenciasTable(){
@@ -6985,7 +7011,26 @@ Cliente B`)
         const avg = list.length ? (list.reduce((acc, s) => acc + Number(normalizeQualityToTen(s?.overall || 0) || 0), 0) / list.length) : 0
         return { email, avg, count: list.length }
       }).sort((a,b)=>b.avg-a.avg)
-      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción promedio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Encuestas</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.email) || r.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.avg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.count}</td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin encuestas en este período.</td></tr>`}</tbody></table></div>`
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción promedio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Encuestas</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openTopPerformerSatisfaccionDetail('${r.email}','${month}')">${htmlEscape(userDisplayNameByEmail(r.email) || r.email)}</button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.avg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.count}</td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin encuestas en este período.</td></tr>`}</tbody></table></div><div id="topPerformerSatisfaccionDetail" class="small" style="margin-top:10px"></div>`
+    }
+
+    async function openTopPerformerSatisfaccionDetail(email, month){
+      const wrap = document.getElementById("topPerformerSatisfaccionDetail")
+      if(!wrap) return
+      const analystEmail = String(email || "").toLowerCase()
+      const monthKey = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0,7))
+      const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
+        .filter(s => String(s?.ratedRole || "").toLowerCase() === "analista" && String(s?.ratedEmail || "").toLowerCase() === analystEmail && String(s?.createdAt || "").slice(0,7) === monthKey)
+      if(!surveys.length){
+        wrap.innerHTML = `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)}</div><div class="feedMeta">Sin encuestas para el período ${htmlEscape(monthKey)}.</div></div>`
+        return
+      }
+      const metric = (label, getter) => {
+        const values = surveys.map(getter).map(v => Number(v || 0)).filter(v => Number.isFinite(v) && v > 0)
+        const avg = values.length ? (values.reduce((a,b)=>a+b,0) / values.length) : 0
+        return `<div class="feedItem"><div class="feedType">${htmlEscape(label)}</div><div class="feedMeta">${avg.toFixed(2)} / 10 · respuestas: ${values.length}</div></div>`
+      }
+      wrap.innerHTML = `<div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Detalle de satisfacción · ${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)} (${htmlEscape(monthKey)})</h4>${metric("Recepción", s => normalizeQualityToTen(s?.reception || 0))}${metric("Comunicación", s => normalizeQualityToTen(s?.communication || 0))}${metric("Satisfacción general", s => normalizeQualityToTen(s?.overall || 0))}</div>`
     }
 
     function updateTopPerformerAptitudinalCell(rowKey, field, rawValue){
@@ -7183,8 +7228,7 @@ Cliente B`)
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
           { icon: "🧾", label: "Comentarios", action: "setAdminTab('comments')" },
-          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" },
-          { icon: "🛠️", label: "Top performer", action: "setMainViewTab('top_performer')" }
+          { icon: "🤝", label: "Encuentros", action: "setMainViewTab('encuentro')" }
         ]},
         { title: "Área", items: [
           { icon: "🧮", label: "Capacidad instalada", action: "setAdminTab('capacity')" },
@@ -7196,7 +7240,8 @@ Cliente B`)
           { icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" },
           { icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" },
           { icon: "🎯", label: "Calidad interna", action: "setAdminTab('internal_quality')" },
-          { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" }
+          { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" },
+          ...(isAdminLevel1() ? [{ icon: "🛠️", label: "Top performer", action: "setMainViewTab('top_performer')" }] : [])
         ]},
         { title: "Técnico", items: [
           ...(adminCanAccess("support") ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
