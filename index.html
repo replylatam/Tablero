@@ -1694,6 +1694,22 @@
     var adminReassignPanelVisible = false
     var dailyHistoryModalOpen = false
     var menuPermissionsByRole = { admin: {}, analista: {}, consultor: {} }
+    const DEFAULT_MENU_VISIBILITY_BY_ROLE = {
+      admin: new Set([
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
+        "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines",
+        "admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center"
+      ]),
+      analista: new Set([
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
+        "main:registro_horas","main:dailys","main:portfolio_overview","main:support"
+      ]),
+      consultor: new Set([
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:summary_general","main:portfolio",
+        "main:agenda_today","main:consultor_guidelines","main:support","main:profile"
+      ])
+    }
+    var menuPermissionsUnsubscribe = null
     var encuentroProfileUserEmail = ""
     var coreTicketFieldSettings = {}
     var qualityAdminMonthFilter = ""
@@ -1921,7 +1937,7 @@
       if(role === "admin" && isAdminLevel1()) return true
       const roleCfg = menuPermissionsByRole?.[role] || {}
       if(typeof roleCfg?.[menuKey] === "boolean") return roleCfg[menuKey]
-      return true
+      return !!DEFAULT_MENU_VISIBILITY_BY_ROLE?.[role]?.has(menuKey)
     }
 
     async function loadMenuPermissions(){
@@ -1931,6 +1947,31 @@
         analista: raw.analista || {},
         consultor: raw.consultor || {}
       }
+    }
+
+    function startMenuPermissionsSync(){
+      if(menuPermissionsUnsubscribe) return
+      const ref = db.ref("app_settings/menu_permissions")
+      const onValue = (snap) => {
+        const raw = snap.val() || {}
+        menuPermissionsByRole = {
+          admin: raw.admin || {},
+          analista: raw.analista || {},
+          consultor: raw.consultor || {}
+        }
+        if(!currentUser?.email) return
+        if(currentRole === "admin" && adminPanelTab !== "panel" && !canCurrentRoleSeeMenu(`admin:${adminPanelTab}`)) adminPanelTab = "panel"
+        if(mainViewTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${mainViewTab}`)) mainViewTab = "tickets"
+        renderApp()
+      }
+      ref.on("value", onValue)
+      menuPermissionsUnsubscribe = () => ref.off("value", onValue)
+    }
+
+    function stopMenuPermissionsSync(){
+      if(!menuPermissionsUnsubscribe) return
+      menuPermissionsUnsubscribe()
+      menuPermissionsUnsubscribe = null
     }
 
     function setAdminTab(tab){
@@ -3733,7 +3774,7 @@ Cliente B`)
     }
 
     async function loadConsultorGeneralSummary(){
-      if(!(currentRole === "consultor" && mainViewTab === "summary_general")) return
+      if(!(mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general"))) return
       const wrap = document.getElementById("consultorGeneralSummary")
       if(!wrap) return
       const myEmail = String(currentUser?.email || "").toLowerCase()
@@ -3784,7 +3825,7 @@ Cliente B`)
     }
 
     async function loadPortfolioOverview(){
-      if(!(mainViewTab === "portfolio_overview" && (currentRole === "admin" || currentRole === "analista"))) return
+      if(!(mainViewTab === "portfolio_overview" && canCurrentRoleSeeMenu("main:portfolio_overview"))) return
       const wrap = document.getElementById("portfolioOverviewContainer")
       if(!wrap) return
       const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
@@ -5947,6 +5988,7 @@ Cliente B`)
         currentRole = user.role
         persistSession()
         await loadMenuPermissions()
+        startMenuPermissionsSync()
         renderApp()
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
@@ -5973,6 +6015,7 @@ Cliente B`)
     function logout(){
       stopConsultorAutoRefresh()
       stopRealtimeStreams()
+      stopMenuPermissionsSync()
       currentUser = null
       currentRole = null
       clearSession()
@@ -6313,16 +6356,16 @@ Cliente B`)
       const showAdminGuidelines = isAdmin && adminPanelTab === "guidelines"
       const showAdminManuals = isAdmin && adminPanelTab === "manuals"
       const showSavedItems = mainViewTab === "saved"
-      const showConsultorPortfolio = currentRole === "consultor" && mainViewTab === "portfolio"
-      const showPortfolioOverview = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "portfolio_overview"
-      const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
-      const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
-      const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
-      const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
-      const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
-      const showConsultorTodayAgenda = currentRole === "consultor" && mainViewTab === "agenda_today"
-      const showConsultorSummary = currentRole === "consultor" && mainViewTab === "summary_general"
-      const showConsultorProfile = currentRole === "consultor" && mainViewTab === "profile"
+      const showConsultorPortfolio = mainViewTab === "portfolio" && canCurrentRoleSeeMenu("main:portfolio")
+      const showPortfolioOverview = mainViewTab === "portfolio_overview" && canCurrentRoleSeeMenu("main:portfolio_overview")
+      const showQualityResults = mainViewTab === "quality_results" && canCurrentRoleSeeMenu("main:quality_results")
+      const showAnalystHoursLog = mainViewTab === "registro_horas" && canCurrentRoleSeeMenu("main:registro_horas")
+      const showSupportCasesView = mainViewTab === "support" && canCurrentRoleSeeMenu("main:support")
+      const showDailysView = mainViewTab === "dailys" && canCurrentRoleSeeMenu("main:dailys")
+      const showConsultorGuidelines = mainViewTab === "consultor_guidelines" && canCurrentRoleSeeMenu("main:consultor_guidelines")
+      const showConsultorTodayAgenda = mainViewTab === "agenda_today" && canCurrentRoleSeeMenu("main:agenda_today")
+      const showConsultorSummary = mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general")
+      const showConsultorProfile = mainViewTab === "profile" && canCurrentRoleSeeMenu("main:profile")
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
       const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer
@@ -6373,20 +6416,20 @@ Cliente B`)
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
-          ...(currentRole === "consultor" ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
+          { icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" },
+          { icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" },
+          { icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" },
+          { icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" },
+          { icon: "📄", label: "Hoja de vida", action: "setMainViewTab('hoja_vida')" },
+          { icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" },
+          { icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" },
           ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
-          ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
-          ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
-          ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
+          { icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" },
+          { icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" },
+          { icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" },
+          { icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" },
+          { icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" },
+          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
         ].filter(Boolean)}
       ]
       const visibleSidebarSections = sidebarSections
@@ -10482,7 +10525,7 @@ Cliente B`)
       if(!isAdminLevel1()) return alert("Solo admin nivel 1 puede editar permisos.")
       const roles = ["admin","analista","consultor"]
       const menuKeys = [
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile",
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile","main:hoja_vida",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines","admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center","admin:people","admin:user_management","admin:settings","admin:control_center_accesses","admin:control_center_permissions"
       ]
       const payload = { admin: {}, analista: {}, consultor: {} }
@@ -10505,6 +10548,7 @@ Cliente B`)
         { key:"main:tickets", label:"Tickets" }, { key:"main:saved", label:"Guardados" }, { key:"main:encuentro", label:"Encuentro" }, { key:"main:top_performer", label:"Top performer" },
         { key:"main:portfolio", label:"Cartera" }, { key:"main:agenda_today", label:"Agenda de hoy (consultor)" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
         { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" }, { key:"main:summary_general", label:"Resumen general (consultor)" }, { key:"main:profile", label:"Perfil/Configuración" },
+        { key:"main:hoja_vida", label:"Hoja de vida" },
         { key:"admin:dailys", label:"Admin · Daily's" }, { key:"admin:agenda", label:"Admin · Organizar agendas" }, { key:"admin:comments", label:"Admin · Comentarios" }, { key:"admin:capacity", label:"Admin · Capacidad instalada" },
         { key:"admin:announcements", label:"Admin · Comunicados" }, { key:"admin:guidelines", label:"Admin · Lineamientos" }, { key:"admin:manuals", label:"Admin · Manuales" }, { key:"admin:internal_quality", label:"Admin · Calidad interna" },
         { key:"admin:quality", label:"Admin · Encuesta calidad" }, { key:"admin:support", label:"Admin · Soporte técnico" }, { key:"admin:help", label:"Admin · Ayuda" }, { key:"admin:connections", label:"Admin · Conexiones" },
@@ -12298,6 +12342,7 @@ Cliente B`)
             persistSession()
             await processGoogleCalendarOAuthCallback()
             await loadMenuPermissions()
+            startMenuPermissionsSync()
             renderApp()
           }else{
             clearSession()
