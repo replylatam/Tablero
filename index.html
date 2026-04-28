@@ -1694,6 +1694,22 @@
     var adminReassignPanelVisible = false
     var dailyHistoryModalOpen = false
     var menuPermissionsByRole = { admin: {}, analista: {}, consultor: {} }
+    const DEFAULT_MENU_VISIBILITY_BY_ROLE = {
+      admin: new Set([
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
+        "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines",
+        "admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center"
+      ]),
+      analista: new Set([
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
+        "main:registro_horas","main:dailys","main:portfolio_overview","main:support"
+      ]),
+      consultor: new Set([
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:summary_general","main:portfolio",
+        "main:agenda_today","main:consultor_guidelines","main:support","main:profile"
+      ])
+    }
+    var menuPermissionsUnsubscribe = null
     var encuentroProfileUserEmail = ""
     var coreTicketFieldSettings = {}
     var qualityAdminMonthFilter = ""
@@ -1742,6 +1758,18 @@
     var commentEditContext = null
     var pendingCommentImageByTicket = {}
     var roleTicketEditSettings = { analystEnabled: true, consultorEnabled: true }
+    var adminTopPerformerTab = "summary"
+    var topPerformerAptitudinalRows = []
+    var topPerformerSummaryMonth = toLocalDateOnly(new Date()).slice(0, 7)
+    var topPerformerAptitudinalLoaded = false
+    var topPerformerIncidenceSelectionByMonth = {}
+    var adminTopPerformerGrupoAxoTab = "ml"
+    var adminTopPerformerGrupoAxoAnalyst = ""
+    var topPerformerGrupoAxoMlRowsByAnalyst = {}
+    var topPerformerGrupoAxoLvpRowsByAnalyst = {}
+    var topPerformerGrupoAxoCorreccionesRowsByAnalyst = {}
+    var topPerformerGrupoAxoLoadedKey = ""
+    var topPerformerGrupoAxoWeightsByMonth = {}
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -1921,7 +1949,7 @@
       if(role === "admin" && isAdminLevel1()) return true
       const roleCfg = menuPermissionsByRole?.[role] || {}
       if(typeof roleCfg?.[menuKey] === "boolean") return roleCfg[menuKey]
-      return true
+      return !!DEFAULT_MENU_VISIBILITY_BY_ROLE?.[role]?.has(menuKey)
     }
 
     async function loadMenuPermissions(){
@@ -1931,6 +1959,31 @@
         analista: raw.analista || {},
         consultor: raw.consultor || {}
       }
+    }
+
+    function startMenuPermissionsSync(){
+      if(menuPermissionsUnsubscribe) return
+      const ref = db.ref("app_settings/menu_permissions")
+      const onValue = (snap) => {
+        const raw = snap.val() || {}
+        menuPermissionsByRole = {
+          admin: raw.admin || {},
+          analista: raw.analista || {},
+          consultor: raw.consultor || {}
+        }
+        if(!currentUser?.email) return
+        if(currentRole === "admin" && adminPanelTab !== "panel" && !canCurrentRoleSeeMenu(`admin:${adminPanelTab}`)) adminPanelTab = "panel"
+        if(mainViewTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${mainViewTab}`)) mainViewTab = "tickets"
+        renderApp()
+      }
+      ref.on("value", onValue)
+      menuPermissionsUnsubscribe = () => ref.off("value", onValue)
+    }
+
+    function stopMenuPermissionsSync(){
+      if(!menuPermissionsUnsubscribe) return
+      menuPermissionsUnsubscribe()
+      menuPermissionsUnsubscribe = null
     }
 
     function setAdminTab(tab){
@@ -2012,7 +2065,8 @@
     }
 
     function setMainViewTab(tab){
-      const nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
+      let nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile"].includes(tab) ? tab : "tickets"
+      if(currentRole === "consultor" && nextTab === "portfolio_overview") nextTab = "portfolio"
       if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
         showToast("No tenés permisos para ver este menú.", "error", 1600)
         return
@@ -3593,7 +3647,20 @@ Cliente B`)
     }
 
     async function saveConsultorClient(button){
-      return saveClient(button, "consultor")
+      if(currentRole !== "consultor") return
+      const select = document.getElementById("consultorClientName")
+      const clientKey = String(select?.value || "").trim()
+      if(!clientKey) return alert("Seleccioná un cliente.")
+      const oldText = button?.textContent || ""
+      try{
+        if(button){ button.disabled = true; button.textContent = "Asignando..." }
+        await setClientAssignedConsultor(clientKey, String(currentUser?.email || "").toLowerCase())
+        showToast("Cliente asignado a tu cartera.", "ok", 1200)
+        if(select) select.value = ""
+        await loadConsultorPortfolio()
+      }finally{
+        if(button){ button.disabled = false; button.textContent = oldText || "Asignar cliente" }
+      }
     }
 
     async function deleteClient(key){
@@ -3633,13 +3700,6 @@ Cliente B`)
       }
     }
 
-    async function updateClientAssignmentFromPortfolio(clientKey, consultorEmail){
-      if(currentRole !== "consultor") return
-      await setClientAssignedConsultor(clientKey, consultorEmail)
-      loadConsultorPortfolio()
-      loadClientsAdmin()
-    }
-
     async function updateClientStatusFromPortfolio(clientKey, status){
       if(currentRole !== "consultor") return
       await db.ref("clients").child(clientKey).update({ status: String(status || "activo").toLowerCase() })
@@ -3647,26 +3707,139 @@ Cliente B`)
       loadClientsAdmin()
     }
 
+    function portfolioRiskLabel(level){
+      const key = String(level || "").toLowerCase()
+      if(key === "bajo_control") return "🟢 Cuenta bajo control"
+      if(key === "atencion_preventiva") return "🟡 Atención preventiva"
+      if(key === "riesgo_real") return "🔴 Riesgo real"
+      return "Sin definir"
+    }
+
+    function portfolioRiskTone(level){
+      const key = String(level || "").toLowerCase()
+      if(key === "bajo_control") return "ok"
+      if(key === "atencion_preventiva") return "warn"
+      if(key === "riesgo_real") return "off"
+      return ""
+    }
+
+    function daysFromDateUntilToday(dateIso){
+      const value = String(dateIso || "").trim()
+      if(!value) return null
+      const target = new Date(`${value}T00:00:00`)
+      if(Number.isNaN(target.getTime())) return null
+      const now = new Date(`${toLocalDateOnly(new Date())}T00:00:00`)
+      const diff = Math.floor((now.getTime() - target.getTime()) / 86400000)
+      return diff < 0 ? 0 : diff
+    }
+
+    function portfolioUpdateBadge(days){
+      if(days === null || days === undefined) return ""
+      if(days <= 5) return "🟢 OK"
+      if(days <= 6) return "🟡 Atención"
+      return "🔴 Crítica"
+    }
+
+    async function updateConsultorClientPortfolioField(clientKey, field, rawValue){
+      if(currentRole !== "consultor") return
+      const key = String(clientKey || "")
+      if(!key || !field) return
+      const client = (await db.ref("clients").child(key).once("value")).val() || {}
+      const me = String(currentUser?.email || "").toLowerCase()
+      if(String(client?.assignedConsultor || "").toLowerCase() !== me) return
+      const normalized = String(field || "")
+      const payload = { updatedAt: new Date().toISOString(), portfolioLastTouchedAt: new Date().toISOString() }
+      if(normalized === "riskLevel") payload.riskLevel = String(rawValue || "")
+      if(normalized === "riskUpdatedAt") payload.riskUpdatedAt = String(rawValue || "")
+      if(normalized === "nextAction") payload.nextAction = String(rawValue || "")
+      if(normalized === "nextActionDate") payload.nextActionDate = String(rawValue || "")
+      if(normalized === "grantAds") payload.grantAds = !!rawValue
+      if(normalized === "grantConsultoria") payload.grantConsultoria = !!rawValue
+      await db.ref("clients").child(key).update(payload)
+      loadConsultorPortfolio()
+    }
+
     async function loadConsultorPortfolio(){
       if(currentRole !== "consultor" || mainViewTab !== "portfolio") return
       const wrap = document.getElementById("consultorPortfolioList")
       if(!wrap) return
       const clientsObj = (await db.ref("clients").once("value")).val() || {}
+      const me = String(currentUser?.email || "").toLowerCase()
       const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
       const consultors = users.filter(u => String(u?.role||"").toLowerCase() === "consultor" && u?.active !== false)
       const query = String(consultorPortfolioSearch || "").trim().toLowerCase()
+      const assignSelect = document.getElementById("consultorClientName")
+      if(assignSelect){
+        const allClients = Object.entries(clientsObj)
+          .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+        assignSelect.innerHTML = `<option value="">Seleccionar cliente</option>${allClients.map(([key, c]) => `<option value="${htmlEscape(key)}">${htmlEscape(String(c?.name || key))}</option>`).join("")}`
+      }
       const items = Object.entries(clientsObj)
         .filter(([key, c]) => {
+          if(String(c?.assignedConsultor || "").toLowerCase() !== me) return false
           if(!query) return true
           return String(c?.name || key).toLowerCase().includes(query)
         })
+      const rows = items
+        .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+        .map(([key, c]) => {
+          const riskLevel = String(c?.riskLevel || "")
+          const riskSelectStyle = riskLevel === "bajo_control"
+            ? "background:rgba(34,199,122,.18);border-color:rgba(34,199,122,.55);"
+            : riskLevel === "atencion_preventiva"
+              ? "background:rgba(240,160,48,.18);border-color:rgba(240,160,48,.55);"
+              : riskLevel === "riesgo_real"
+                ? "background:rgba(224,64,64,.18);border-color:rgba(224,64,64,.55);"
+                : ""
+          const nextActionDate = String(c?.nextActionDate || "")
+          const daysWithoutUpdate = daysFromDateUntilToday(String(c?.riskUpdatedAt || ""))
+          const updateBadge = portfolioUpdateBadge(daysWithoutUpdate)
+          return `<tr>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(String(c?.name || key))}</strong></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">
+              <select style="margin:0;min-width:220px;${riskSelectStyle}" onchange="updateConsultorClientPortfolioField('${key}', 'riskLevel', this.value)">
+                <option value="">Sin definir</option>
+                <option value="bajo_control" ${riskLevel==='bajo_control'?'selected':''}>🟢 Cuenta bajo control</option>
+                <option value="atencion_preventiva" ${riskLevel==='atencion_preventiva'?'selected':''}>🟡 Atención preventiva</option>
+                <option value="riesgo_real" ${riskLevel==='riesgo_real'?'selected':''}>🔴 Riesgo real</option>
+              </select>
+            </td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="date" value="${htmlEscape(String(c?.riskUpdatedAt || ""))}" onchange="updateConsultorClientPortfolioField('${key}', 'riskUpdatedAt', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input placeholder="Detalle de próxima acción" value="${htmlEscape(String(c?.nextAction || ""))}" onchange="updateConsultorClientPortfolioField('${key}', 'nextAction', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="date" value="${htmlEscape(nextActionDate)}" onchange="updateConsultorClientPortfolioField('${key}', 'nextActionDate', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysWithoutUpdate === null ? "-" : daysWithoutUpdate}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${updateBadge ? `<span class="badge ${updateBadge.includes("Crítica") ? "off" : updateBadge.includes("Atención") ? "warn" : "ok"}">${updateBadge}</span>` : "-"}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${c?.grantAds ? "checked" : ""} onchange="updateConsultorClientPortfolioField('${key}', 'grantAds', this.checked)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center"><input type="checkbox" ${c?.grantConsultoria ? "checked" : ""} onchange="updateConsultorClientPortfolioField('${key}', 'grantConsultoria', this.checked)"></td>
+          </tr>`
+        }).join("")
+      const riskSummary = items.reduce((acc, [,client]) => {
+        const level = String(client?.riskLevel || "")
+        if(level === "bajo_control") acc.bajo += 1
+        else if(level === "atencion_preventiva") acc.preventiva += 1
+        else if(level === "riesgo_real") acc.real += 1
+        else acc.sinDefinir += 1
+        return acc
+      }, { bajo: 0, preventiva: 0, real: 0, sinDefinir: 0 })
       const clientsByConsultor = Object.fromEntries(consultors.map(c => [String(c.email||"").toLowerCase(), []]))
-      items.forEach(([key,c]) => {
-        const k = String(c?.assignedConsultor || "").toLowerCase()
-        if(k && clientsByConsultor[k]) clientsByConsultor[k].push(String(c?.name || key))
+      Object.entries(clientsObj).forEach(([key,c]) => {
+        const owner = String(c?.assignedConsultor || "").toLowerCase()
+        if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push(String(c?.name || key))
       })
-      const countersTable = `<div style="overflow:auto;margin-bottom:10px"><table style="width:100%;border-collapse:collapse"><thead><tr>${consultors.map(c => `<th style="padding:6px;border-bottom:1px solid var(--stroke)">${htmlEscape(userDisplayNameByEmail(c.email || "") || c.email || "-")}</th>`).join("")}</tr></thead><tbody><tr>${consultors.map(c => { const list = clientsByConsultor[String(c.email||"").toLowerCase()] || []; return `<td style="padding:6px;border-bottom:1px solid var(--stroke-2);vertical-align:top">${list.length ? list.map(name => `<div class="small">• ${htmlEscape(name)}</div>`).join("") : `<span class="small">Sin clientes asignados</span>`}</td>` }).join("")}</tr></tbody></table></div>`
-      wrap.innerHTML = countersTable + (items.length ? items.map(([key, c]) => `<div class="portfolioItem"><span class="name">${htmlEscape(String(c?.name || key))}</span><div class="inline" style="gap:8px;flex-wrap:nowrap"><select style="margin:0;min-width:190px" onchange="updateClientAssignmentFromPortfolio('${key}', this.value)"><option value="">Sin asignar</option>${consultors.map(con => `<option value="${htmlEscape(String(con.email||"").toLowerCase())}" ${String(c?.assignedConsultor||"").toLowerCase()===String(con.email||"").toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</option>`).join("")}</select><select style="margin:0;min-width:140px" onchange="updateClientStatusFromPortfolio('${key}', this.value)"><option value="activo" ${String(c?.status||'activo').toLowerCase()==='activo'?'selected':''}>Activo</option><option value="inactivo" ${String(c?.status||'activo').toLowerCase()==='inactivo'?'selected':''}>Inactivo</option></select></div></div>`).join("") : `<div class="small">No hay clientes para la búsqueda indicada.</div>`)
+      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(name => `• ${htmlEscape(name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td></tr>` }).join("")}</tbody></table></div>`
+      const summaryCards = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:12px">
+        <div class="kpi"><div class="label">🟢 Bajo control</div><div class="value">${riskSummary.bajo}</div></div>
+        <div class="kpi"><div class="label">🟡 Atención preventiva</div><div class="value">${riskSummary.preventiva}</div></div>
+        <div class="kpi"><div class="label">🔴 Riesgo real</div><div class="value">${riskSummary.real}</div></div>
+        <div class="kpi"><div class="label">⚪ Sin definir</div><div class="value">${riskSummary.sinDefinir}</div></div>
+      </div>`
+      const riskSection = `<div class="card" style="padding:12px;margin-top:10px"><h4 style="margin:0 0 8px">Gestión de riesgo y seguimiento de cuentas asignadas</h4><div class="small" style="margin-bottom:8px">Gestioná riesgo y seguimiento de tus cuentas asignadas.</div>${
+        items.length
+          ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Riesgo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última actualización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días sin actualizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Actualización</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Ads</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Consultoría</th></tr></thead><tbody>${rows}</tbody></table></div>`
+          : `<div class="small">No hay clientes asignados para la búsqueda indicada.</div>`
+      }</div>`
+      const consultorSection = `<div class="card" style="padding:12px;margin-top:12px"><h4 style="margin:0 0 8px">Cuentas asignadas a consultores</h4><div class="small" style="margin-bottom:8px">Vista general de la asignación de cuentas en el equipo.</div>${peersTable}</div>`
+      wrap.innerHTML = `${summaryCards}${riskSection}${consultorSection}`
     }
 
     function openConsultorSummaryDetail(kind){
@@ -3733,7 +3906,7 @@ Cliente B`)
     }
 
     async function loadConsultorGeneralSummary(){
-      if(!(currentRole === "consultor" && mainViewTab === "summary_general")) return
+      if(!(mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general"))) return
       const wrap = document.getElementById("consultorGeneralSummary")
       if(!wrap) return
       const myEmail = String(currentUser?.email || "").toLowerCase()
@@ -3784,7 +3957,7 @@ Cliente B`)
     }
 
     async function loadPortfolioOverview(){
-      if(!(mainViewTab === "portfolio_overview" && (currentRole === "admin" || currentRole === "analista"))) return
+      if(!(mainViewTab === "portfolio_overview" && canCurrentRoleSeeMenu("main:portfolio_overview"))) return
       const wrap = document.getElementById("portfolioOverviewContainer")
       if(!wrap) return
       const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
@@ -3872,7 +4045,7 @@ Cliente B`)
     }
 
     function setAdminCapacityViewMode(mode){
-      adminCapacityViewMode = mode === "chart" || mode === "projections" ? mode : "cards"
+      adminCapacityViewMode = mode === "chart" || mode === "projections" || mode === "microservices" ? mode : "cards"
       loadAdminHoursTable()
     }
 
@@ -4585,10 +4758,22 @@ Cliente B`)
         const projKpiCard = (key, label, value, small, extraHtml) => `<div class="kpi" style="cursor:pointer" onclick="openCapacityKpiDetailModal('${key}')"><div class="inline" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="label">${label}</div><button class="ghost" style="padding:2px 7px;min-height:auto;font-size:12px;line-height:1" onclick="event.stopPropagation();openCapacityKpiDetailModal('${key}')">?</button></div><div class="value">${value}</div><div class="small">${small}</div>${extraHtml || ""}</div>`
         const projectionClientRowsHtml = `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ejecutado a hoy (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Proyección (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Δ h vs ejecutado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consumo (personas)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Δ personas vs ejecutado</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Quitar</th></tr></thead><tbody>${adminCapacityProjectionRows.map(item => { const dropped = droppedClients.includes(item.client); const executedPeople = hhEffective > 0 ? (item.executedHours / hhEffective) : 0; const diffHoursPct = item.executedHours > 0 ? ((item.projectedHours - item.executedHours) / item.executedHours) * 100 : (item.projectedHours > 0 ? 100 : 0); const diffPeoplePct = executedPeople > 0 ? ((item.projectedPeople - executedPeople) / executedPeople) * 100 : (item.projectedPeople > 0 ? 100 : 0); return `<tr style="${dropped ? "opacity:.55;background:rgba(224,64,64,.1)" : ""}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(item.client)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.executedHours.toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.projectedHours.toFixed(2)} h</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${diffHoursPct >= 0 ? "+" : ""}${diffHoursPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${item.projectedPeople.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${diffPeoplePct >= 0 ? "+" : ""}${diffPeoplePct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="${dropped ? "danger" : "ghost"}" onclick="toggleAdminCapacityProjectionClientDrop('${encodeURIComponent(item.client)}')">${dropped ? "Restaurar" : "Quitar"}</button></td></tr>` }).join("")}</tbody></table></div>`
         const projectionsHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Proyecciones</h4><div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0">${projKpiCard("proj_consumption","Consumo proyectado fin de mes",`${projectedMonthHours.toFixed(2)} h`,`${projectedVsPrevPct >= 0 ? "+" : ""}${projectedVsPrevPct.toFixed(2)}% vs ${htmlEscape(previousMonthKey)} · Click para detalle por cliente`)}${projKpiCard("next_capacity_base",`Capacidad teórica ${nextMonthLabel}`,`${nextMonthCapacityBase.toFixed(2)} h`,`Dotación actual: ${activeAnalystCount} analistas`)}${projKpiCard("next_capacity_adjusted",`Capacidad teórica ${nextMonthLabel} ajustada`,`${nextMonthScenarioCapacity.toFixed(2)} h`,`Bajas: ${adminCapacityProjectionLeavers} · Altas: ${adminCapacityProjectionJoiners} · Dotación: ${nextAnalystsScenario}`)}${projKpiCard("next_capacity_clients_drop","Capacidad tras baja de clientes",`${capacityAfterDrop.toFixed(2)} h`,`Clientes dados de baja: ${droppedClients.length ? htmlEscape(droppedClients.join(", ")) : "Ninguno"} · Ahorro: ${droppedPeopleSavings.toFixed(2)} personas`)}${projKpiCard("scenario_gap_use","GAP y Utilización proyectada",`${scenarioUsePct.toFixed(2)}%`,`GAP: ${scenarioGap.toFixed(2)} personas`,`<div class="small" style="margin-top:4px"><strong>Recomendación:</strong> ${htmlEscape(scenarioDecision)}</div>`)}${projKpiCard("real_gap_use","GAP y Utilización real",`${realUsePct.toFixed(2)}%`,`GAP real: ${realGap.toFixed(2)} personas`,`<div class="small" style="margin-top:4px"><strong>Recomendación:</strong> ${htmlEscape(realDecision)}</div>`)}</div><div class="inline" style="margin-top:10px;align-items:flex-end;gap:10px"><div><label style="margin:0">Bajas de analistas</label><input type="number" min="0" value="${adminCapacityProjectionLeavers}" onchange="setAdminCapacityProjectionLeavers(this.value)" style="max-width:130px;margin:0"></div><div><label style="margin:0">Altas de analistas</label><input type="number" min="0" value="${adminCapacityProjectionJoiners}" onchange="setAdminCapacityProjectionJoiners(this.value)" style="max-width:130px;margin:0"></div><button class="ghost" onclick="openCapacityProjectionDetailModal()">Ver tabla completa</button></div><div class="small" style="margin-top:6px">Horas consideradas para proyección: desde el primer día hábil del mes hasta hoy (${daysElapsed} días hábiles).</div>${projectionBars}${projectionClientRowsHtml}</div>`
-        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button><button class="${adminCapacityViewMode==='projections'?'':'ghost'}" onclick="setAdminCapacityViewMode('projections')">Proyecciones</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : (adminCapacityViewMode==='projections' ? projectionsHtml : cardsHtml)}`
+        const microservicesMap = {}
+        ;(tickets || []).forEach(t => {
+          const microservice = String(t?.activityType || t?.service || "Sin microservicio")
+          const entries = Array.isArray(t?.timeTracking?.monthlyFolders?.[monthKey]?.entries) ? t.timeTracking.monthlyFolders[monthKey].entries : []
+          if(!entries.length) return
+          if(!microservicesMap[microservice]) microservicesMap[microservice] = { tasks: 0, hours: 0 }
+          microservicesMap[microservice].tasks += 1
+          microservicesMap[microservice].hours += entries.reduce((acc,e)=> acc + (Number(e?.minutes || Number(e?.hours || 0) * 60 || 0) / 60), 0)
+        })
+        const microserviceRows = Object.entries(microservicesMap).sort((a,b)=>b[1].hours-a[1].hours)
+        const microservicesHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Microservicios</h4><div class="small" style="margin-bottom:8px">Listado de tareas por microservicio y tiempo promedio diario/mensual del período.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Microservicio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio diario (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio mensual (h)</th></tr></thead><tbody>${microserviceRows.length ? microserviceRows.map(([name, data]) => { const dailyAvg = Number(daysElapsed || 1) > 0 ? data.hours / Number(daysElapsed || 1) : 0; const monthlyAvg = data.tasks > 0 ? data.hours / data.tasks : 0; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(name)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${data.tasks}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${dailyAvg.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${monthlyAvg.toFixed(2)}</td></tr>` }).join("") : `<tr><td colspan="4" class="small" style="padding:8px">Sin información de microservicios para el período.</td></tr>`}</tbody></table></div></div>`
+        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button><button class="${adminCapacityViewMode==='projections'?'':'ghost'}" onclick="setAdminCapacityViewMode('projections')">Proyecciones</button><button class="${adminCapacityViewMode==='microservices'?'':'ghost'}" onclick="setAdminCapacityViewMode('microservices')">Microservicios</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : (adminCapacityViewMode==='projections' ? projectionsHtml : (adminCapacityViewMode==='microservices' ? microservicesHtml : cardsHtml))}`
       }
-      if(adminCapacityViewMode === "chart" || adminCapacityViewMode === "projections"){
-        wrap.innerHTML = `<div class="small">Modo ${adminCapacityViewMode === "chart" ? "gráfico" : "proyecciones"} activo: para ver asistencia y gestión de horas, cambiá a “Mostrar cuadros”.</div>`
+      if(adminCapacityViewMode === "chart" || adminCapacityViewMode === "projections" || adminCapacityViewMode === "microservices"){
+        const modeLabel = adminCapacityViewMode === "chart" ? "gráfico" : (adminCapacityViewMode === "projections" ? "proyecciones" : "microservicios")
+        wrap.innerHTML = `<div class="small">Modo ${modeLabel} activo: para ver asistencia y gestión de horas, cambiá a “Mostrar cuadros”.</div>`
         return
       }
       wrap.innerHTML = analysts.length ? `
@@ -5947,6 +6132,7 @@ Cliente B`)
         currentRole = user.role
         persistSession()
         await loadMenuPermissions()
+        startMenuPermissionsSync()
         renderApp()
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
@@ -5973,6 +6159,7 @@ Cliente B`)
     function logout(){
       stopConsultorAutoRefresh()
       stopRealtimeStreams()
+      stopMenuPermissionsSync()
       currentUser = null
       currentRole = null
       clearSession()
@@ -6288,6 +6475,609 @@ Cliente B`)
       </div>`
     }
 
+    function topPerformerScoreAverage(row){
+      const keys = ["workManagement","problemSolving","adaptabilityLearning","teamwork","focusCommitment"]
+      const values = keys.map(k => Number(row?.[k] || 0)).filter(v => Number.isFinite(v) && v > 0)
+      if(!values.length) return 0
+      return values.reduce((a,b)=>a+b,0) / values.length
+    }
+
+    function initializeTopPerformerAptitudinalRows(){
+      const analysts = Object.values(cachedUsersByEmail || {})
+        .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const month = toLocalDateOnly(new Date()).slice(0, 7)
+      topPerformerAptitudinalRows = analysts.flatMap(analyst => {
+        const analystEmail = String(analyst?.email || "").toLowerCase()
+        return [1,2,3].map(idx => ({
+          key: `${emailKey(analystEmail)}_${idx}`,
+          analystEmail,
+          month,
+          evaluatorEmail: "",
+          workManagement: 0,
+          problemSolving: 0,
+          adaptabilityLearning: 0,
+          teamwork: 0,
+          focusCommitment: 0,
+          observations: ""
+        }))
+      })
+    }
+
+    function setAdminTopPerformerTab(tab){
+      const allowed = new Set(["summary","aptitudinal","internal_quality","activity_quality","grupo_axo","incidencias"])
+      const next = allowed.has(String(tab || "")) ? String(tab) : "summary"
+      if(adminTopPerformerTab === next) return
+      adminTopPerformerTab = next
+      if(next === "aptitudinal" && !topPerformerAptitudinalLoaded){
+        loadTopPerformerAptitudinalFromDb().then(()=>renderApp())
+        return
+      }
+      renderApp()
+    }
+
+    function setTopPerformerSummaryMonth(value){
+      topPerformerSummaryMonth = String(value || "").trim() || toLocalDateOnly(new Date()).slice(0, 7)
+      topPerformerGrupoAxoLoadedKey = ""
+      if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "summary"){
+        loadTopPerformerSummaryTable()
+      }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "grupo_axo"){
+        loadTopPerformerGrupoAxoFromDb().then(()=>renderApp())
+      }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "incidencias"){
+        loadTopPerformerIncidenciasTable()
+      }
+    }
+
+    async function saveTopPerformerAptitudinalByAnalyst(analystEmail){
+      const email = decodeURIComponent(String(analystEmail || "")).toLowerCase()
+      if(currentRole !== "admin" || !email) return
+      const rows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "") === email)
+      if(!rows.length) return
+      for(const row of rows){
+        const month = String(row?.month || toLocalDateOnly(new Date()).slice(0,7))
+        const idxMatch = String(row?.key || "").match(/_(\d+)$/)
+        const idx = idxMatch?.[1] || "1"
+        await db.ref("top_performer_aptitudinal").child(month).child(emailKey(email)).child(idx).set({
+          ...row,
+          updatedAt: new Date().toISOString(),
+          updatedBy: String(currentUser?.email || "").toLowerCase()
+        })
+      }
+      showToast(`Evaluación actitudinal guardada para ${userDisplayNameByEmail(email) || email}.`, "ok", 1400)
+    }
+
+    async function loadTopPerformerAptitudinalFromDb(){
+      initializeTopPerformerAptitudinalRows()
+      const month = toLocalDateOnly(new Date()).slice(0, 7)
+      const snapshot = (await db.ref("top_performer_aptitudinal").child(month).once("value")).val() || {}
+      topPerformerAptitudinalRows = topPerformerAptitudinalRows.map(row => {
+        const analystKey = emailKey(String(row?.analystEmail || ""))
+        const idxMatch = String(row?.key || "").match(/_(\d+)$/)
+        const idx = idxMatch?.[1] || "1"
+        const saved = snapshot?.[analystKey]?.[idx]
+        if(!saved) return row
+        return {
+          ...row,
+          month: String(saved.month || row.month || month),
+          evaluatorEmail: String(saved.evaluatorEmail || ""),
+          workManagement: Number(saved.workManagement || 0),
+          problemSolving: Number(saved.problemSolving || 0),
+          adaptabilityLearning: Number(saved.adaptabilityLearning || 0),
+          teamwork: Number(saved.teamwork || 0),
+          focusCommitment: Number(saved.focusCommitment || 0),
+          observations: String(saved.observations || "")
+        }
+      })
+      topPerformerAptitudinalLoaded = true
+    }
+
+    function topPerformerIncidenceKey(month, analystEmail){
+      return `${String(month || "")}__${emailKey(String(analystEmail || ""))}`
+    }
+
+    function topPerformerIncidenceActionId(action, idx){
+      return `${String(action?.date || "").slice(0,10)}__${emailKey(String(action?.sourceTicketId || action?.detail || idx || ""))}__${idx}`
+    }
+
+    function topPerformerGrupoAxoRowScore(row, tab){
+      const month = String(row?.month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const weights = topPerformerGrupoAxoWeightsByMonth[month] || {}
+      const wMl = weights.ml || { oportunidad: 15, tituloDescripcion: 15, precio: 3, categoria: 12, imagenesSku: 15, caracteristicasTecnicas: 20, finalizacionCarga: 20 }
+      const wLvp = weights.lvp || { oportunidad: 15, busquedaStatus: 20, categoria: 13, imagenes: 20, vinculacionEansTallas: 5, fichaTecnica: 27 }
+      const wCorrecciones = weights.correcciones || { fichaTecnica: 30, imagenesVinculacion: 30, seguimiento: 25, planilla: 15 }
+      if(tab === "correcciones"){
+        return (
+          (Number(row?.fichaTecnica || 0) * (Number(wCorrecciones.fichaTecnica || 0) / 100)) +
+          (Number(row?.imagenesVinculacion || 0) * (Number(wCorrecciones.imagenesVinculacion || 0) / 100)) +
+          (Number(row?.seguimiento || 0) * (Number(wCorrecciones.seguimiento || 0) / 100)) +
+          (Number(row?.planilla || 0) * (Number(wCorrecciones.planilla || 0) / 100))
+        )
+      }
+      if(tab === "lvp"){
+        return (
+          (Number(row?.oportunidad || 0) * (Number(wLvp.oportunidad || 0) / 100)) +
+          (Number(row?.busquedaStatus || 0) * (Number(wLvp.busquedaStatus || 0) / 100)) +
+          (Number(row?.categoria || 0) * (Number(wLvp.categoria || 0) / 100)) +
+          (Number(row?.imagenes || 0) * (Number(wLvp.imagenes || 0) / 100)) +
+          (Number(row?.vinculacionEansTallas || 0) * (Number(wLvp.vinculacionEansTallas || 0) / 100)) +
+          (Number(row?.fichaTecnica || 0) * (Number(wLvp.fichaTecnica || 0) / 100))
+        )
+      }
+      return (
+        (Number(row?.oportunidad || 0) * (Number(wMl.oportunidad || 0) / 100)) +
+        (Number(row?.tituloDescripcion || 0) * (Number(wMl.tituloDescripcion || 0) / 100)) +
+        (Number(row?.precio || 0) * (Number(wMl.precio || 0) / 100)) +
+        (Number(row?.categoria || 0) * (Number(wMl.categoria || 0) / 100)) +
+        (Number(row?.imagenesSku || 0) * (Number(wMl.imagenesSku || 0) / 100)) +
+        (Number(row?.caracteristicasTecnicas || 0) * (Number(wMl.caracteristicasTecnicas || 0) / 100)) +
+        (Number(row?.finalizacionCarga || 0) * (Number(wMl.finalizacionCarga || 0) / 100))
+      )
+    }
+
+    function topPerformerGrupoAxoDefaultWeights(){
+      return {
+        ml: { oportunidad: 15, tituloDescripcion: 15, precio: 3, categoria: 12, imagenesSku: 15, caracteristicasTecnicas: 20, finalizacionCarga: 20 },
+        lvp: { oportunidad: 15, busquedaStatus: 20, categoria: 13, imagenes: 20, vinculacionEansTallas: 5, fichaTecnica: 27 },
+        correcciones: { fichaTecnica: 30, imagenesVinculacion: 30, seguimiento: 25, planilla: 15 }
+      }
+    }
+
+    function ensureTopPerformerGrupoAxoWeights(month){
+      const key = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      if(!topPerformerGrupoAxoWeightsByMonth[key]){
+        topPerformerGrupoAxoWeightsByMonth[key] = topPerformerGrupoAxoDefaultWeights()
+      }
+      return topPerformerGrupoAxoWeightsByMonth[key]
+    }
+
+    async function saveTopPerformerGrupoAxoWeights(month){
+      const key = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      await db.ref("top_performer_grupo_axo_weights").child(key).set(ensureTopPerformerGrupoAxoWeights(key))
+    }
+
+    async function setTopPerformerGrupoAxoWeight(tab, field, rawValue){
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const weights = ensureTopPerformerGrupoAxoWeights(month)
+      if(!weights[tab]) return
+      weights[tab][field] = Math.max(0, Math.min(100, Number(rawValue || 0)))
+      topPerformerGrupoAxoWeightsByMonth[month] = weights
+      await saveTopPerformerGrupoAxoWeights(month)
+      renderApp()
+    }
+
+    function topPerformerGrupoAxoAnalystAverage(analystEmail, month){
+      const email = String(analystEmail || "").toLowerCase()
+      if(!email) return 0
+      const monthKey = String(month || toLocalDateOnly(new Date()).slice(0, 7))
+      const mlRows = ensureGrupoAxoMlRows(email).filter(row => String(row?.month || "") === monthKey)
+      const lvpRows = ensureGrupoAxoLvpRows(email).filter(row => String(row?.month || "") === monthKey)
+      const corrRows = ensureGrupoAxoCorreccionesRows(email).filter(row => String(row?.month || "") === monthKey)
+      const scores = []
+      mlRows.forEach(row => scores.push(topPerformerGrupoAxoRowScore(row, "ml")))
+      lvpRows.forEach(row => scores.push(topPerformerGrupoAxoRowScore(row, "lvp")))
+      corrRows.forEach(row => scores.push(topPerformerGrupoAxoRowScore(row, "correcciones")))
+      const nonZero = scores.filter(v => Number(v || 0) > 0)
+      if(!nonZero.length) return 0
+      return nonZero.reduce((a,b)=>a+b,0) / nonZero.length
+    }
+
+    function setTopPerformerGrupoAxoTab(tab){
+      adminTopPerformerGrupoAxoTab = tab === "lvp" ? "lvp" : tab === "correcciones" ? "correcciones" : "ml"
+      renderApp()
+    }
+
+    function setTopPerformerGrupoAxoAnalyst(email){
+      adminTopPerformerGrupoAxoAnalyst = String(email || "").toLowerCase()
+      renderApp()
+    }
+
+    function ensureGrupoAxoMlRows(analystEmail){
+      const key = String(analystEmail || "").toLowerCase()
+      if(!key) return []
+      if(!topPerformerGrupoAxoMlRowsByAnalyst[key]){
+        topPerformerGrupoAxoMlRowsByAnalyst[key] = Array.from({ length: 10 }, (_, idx) => ({
+          key: `${emailKey(key)}_${idx + 1}`,
+          month: toLocalDateOnly(new Date()).slice(0, 7),
+          evaluatorEmail: "",
+          skuModelMlmBrand: "",
+          oportunidad: 0,
+          tituloDescripcion: 0,
+          precio: 0,
+          categoria: 0,
+          imagenesSku: 0,
+          caracteristicasTecnicas: 0,
+          finalizacionCarga: 0,
+          observaciones: ""
+        }))
+      }
+      return topPerformerGrupoAxoMlRowsByAnalyst[key]
+    }
+
+    function ensureGrupoAxoLvpRows(analystEmail){
+      const key = String(analystEmail || "").toLowerCase()
+      if(!key) return []
+      if(!topPerformerGrupoAxoLvpRowsByAnalyst[key]){
+        topPerformerGrupoAxoLvpRowsByAnalyst[key] = Array.from({ length: 10 }, (_, idx) => ({
+          key: `${emailKey(key)}_lvp_${idx + 1}`,
+          month: toLocalDateOnly(new Date()).slice(0, 7),
+          evaluatorEmail: "",
+          skuIdAgrupadorMarca: "",
+          oportunidad: 0,
+          busquedaStatus: 0,
+          categoria: 0,
+          imagenes: 0,
+          vinculacionEansTallas: 0,
+          fichaTecnica: 0,
+          observaciones: ""
+        }))
+      }
+      return topPerformerGrupoAxoLvpRowsByAnalyst[key]
+    }
+
+    function ensureGrupoAxoCorreccionesRows(analystEmail){
+      const key = String(analystEmail || "").toLowerCase()
+      if(!key) return []
+      if(!topPerformerGrupoAxoCorreccionesRowsByAnalyst[key]){
+        topPerformerGrupoAxoCorreccionesRowsByAnalyst[key] = Array.from({ length: 10 }, (_, idx) => ({
+          key: `${emailKey(key)}_corr_${idx + 1}`,
+          month: toLocalDateOnly(new Date()).slice(0, 7),
+          evaluatorEmail: "",
+          skuOptimizaciones: "",
+          fichaTecnica: 0,
+          imagenesVinculacion: 0,
+          seguimiento: 0,
+          planilla: 0,
+          observaciones: ""
+        }))
+      }
+      return topPerformerGrupoAxoCorreccionesRowsByAnalyst[key]
+    }
+
+    function updateGrupoAxoMlCell(analystEmail, rowKey, field, rawValue){
+      const key = String(analystEmail || "").toLowerCase()
+      const rows = ensureGrupoAxoMlRows(key)
+      const idx = rows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numeric = new Set(["oportunidad","tituloDescripcion","precio","categoria","imagenesSku","caracteristicasTecnicas","finalizacionCarga"])
+      const value = numeric.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      rows[idx] = { ...rows[idx], [field]: value }
+      topPerformerGrupoAxoMlRowsByAnalyst[key] = rows
+      const scoreEl = document.getElementById(`grupoAxoMlScore_${rows[idx].key}`)
+      if(scoreEl){
+        scoreEl.textContent = topPerformerGrupoAxoRowScore(rows[idx], "ml").toFixed(2)
+      }
+    }
+
+    function updateGrupoAxoLvpCell(analystEmail, rowKey, field, rawValue){
+      const key = String(analystEmail || "").toLowerCase()
+      const rows = ensureGrupoAxoLvpRows(key)
+      const idx = rows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numeric = new Set(["oportunidad","busquedaStatus","categoria","imagenes","vinculacionEansTallas","fichaTecnica"])
+      const value = numeric.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      rows[idx] = { ...rows[idx], [field]: value }
+      topPerformerGrupoAxoLvpRowsByAnalyst[key] = rows
+      const scoreEl = document.getElementById(`grupoAxoLvpScore_${rows[idx].key}`)
+      if(scoreEl){
+        scoreEl.textContent = topPerformerGrupoAxoRowScore(rows[idx], "lvp").toFixed(2)
+      }
+    }
+
+    function updateGrupoAxoCorreccionesCell(analystEmail, rowKey, field, rawValue){
+      const key = String(analystEmail || "").toLowerCase()
+      const rows = ensureGrupoAxoCorreccionesRows(key)
+      const idx = rows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numeric = new Set(["fichaTecnica","imagenesVinculacion","seguimiento","planilla"])
+      const value = numeric.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      rows[idx] = { ...rows[idx], [field]: value }
+      topPerformerGrupoAxoCorreccionesRowsByAnalyst[key] = rows
+      const scoreEl = document.getElementById(`grupoAxoCorreccionesScore_${rows[idx].key}`)
+      if(scoreEl){
+        scoreEl.textContent = topPerformerGrupoAxoRowScore(rows[idx], "correcciones").toFixed(2)
+      }
+    }
+
+    async function loadTopPerformerGrupoAxoFromDb(){
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      if(topPerformerGrupoAxoLoadedKey === month) return
+      const analysts = Object.values(cachedUsersByEmail || {})
+        .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const [mlSnapshot, lvpSnapshot, correccionesSnapshot] = await Promise.all([
+        db.ref("top_performer_grupo_axo").child("ml").child(month).once("value"),
+        db.ref("top_performer_grupo_axo").child("lvp").child(month).once("value"),
+        db.ref("top_performer_grupo_axo").child("correcciones").child(month).once("value")
+      ])
+      const weights = (await db.ref("top_performer_grupo_axo_weights").child(month).once("value")).val()
+      topPerformerGrupoAxoWeightsByMonth[month] = {
+        ...topPerformerGrupoAxoDefaultWeights(),
+        ...(weights || {}),
+        ml: { ...topPerformerGrupoAxoDefaultWeights().ml, ...((weights || {}).ml || {}) },
+        lvp: { ...topPerformerGrupoAxoDefaultWeights().lvp, ...((weights || {}).lvp || {}) },
+        correcciones: { ...topPerformerGrupoAxoDefaultWeights().correcciones, ...((weights || {}).correcciones || {}) }
+      }
+      const mlData = mlSnapshot.val() || {}
+      const lvpData = lvpSnapshot.val() || {}
+      const correccionesData = correccionesSnapshot.val() || {}
+      analysts.forEach(analyst => {
+        const email = String(analyst?.email || "").toLowerCase()
+        const key = emailKey(email)
+        const mlRows = ensureGrupoAxoMlRows(email).map((row, idx) => {
+          const saved = mlData?.[key]?.[idx + 1]
+          if(!saved) return { ...row, month }
+          return {
+            ...row,
+            month: String(saved.month || month),
+            evaluatorEmail: String(saved.evaluatorEmail || ""),
+            skuModelMlmBrand: String(saved.skuModelMlmBrand || ""),
+            oportunidad: Number(saved.oportunidad || 0),
+            tituloDescripcion: Number(saved.tituloDescripcion || 0),
+            precio: Number(saved.precio || 0),
+            categoria: Number(saved.categoria || 0),
+            imagenesSku: Number(saved.imagenesSku || 0),
+            caracteristicasTecnicas: Number(saved.caracteristicasTecnicas || 0),
+            finalizacionCarga: Number(saved.finalizacionCarga || 0),
+            observaciones: String(saved.observaciones || "")
+          }
+        })
+        const lvpRows = ensureGrupoAxoLvpRows(email).map((row, idx) => {
+          const saved = lvpData?.[key]?.[idx + 1]
+          if(!saved) return { ...row, month }
+          return {
+            ...row,
+            month: String(saved.month || month),
+            evaluatorEmail: String(saved.evaluatorEmail || ""),
+            skuIdAgrupadorMarca: String(saved.skuIdAgrupadorMarca || saved.skuModelLvpBrand || ""),
+            oportunidad: Number(saved.oportunidad || saved.oportunidadComercial || 0),
+            busquedaStatus: Number(saved.busquedaStatus || saved.dataSheet || 0),
+            categoria: Number(saved.categoria || saved.atributos || 0),
+            imagenes: Number(saved.imagenes || saved.richContent || 0),
+            vinculacionEansTallas: Number(saved.vinculacionEansTallas || saved.seo || 0),
+            fichaTecnica: Number(saved.fichaTecnica || saved.calidadVisual || 0),
+            observaciones: String(saved.observaciones || "")
+          }
+        })
+        const correccionesRows = ensureGrupoAxoCorreccionesRows(email).map((row, idx) => {
+          const saved = correccionesData?.[key]?.[idx + 1]
+          if(!saved) return { ...row, month }
+          return {
+            ...row,
+            month: String(saved.month || month),
+            evaluatorEmail: String(saved.evaluatorEmail || ""),
+            skuOptimizaciones: String(saved.skuOptimizaciones || ""),
+            fichaTecnica: Number(saved.fichaTecnica || 0),
+            imagenesVinculacion: Number(saved.imagenesVinculacion || 0),
+            seguimiento: Number(saved.seguimiento || 0),
+            planilla: Number(saved.planilla || 0),
+            observaciones: String(saved.observaciones || "")
+          }
+        })
+        topPerformerGrupoAxoMlRowsByAnalyst[email] = mlRows
+        topPerformerGrupoAxoLvpRowsByAnalyst[email] = lvpRows
+        topPerformerGrupoAxoCorreccionesRowsByAnalyst[email] = correccionesRows
+      })
+      topPerformerGrupoAxoLoadedKey = month
+    }
+
+    async function saveTopPerformerGrupoAxoByAnalyst(analystEmail){
+      const email = String(analystEmail || "").toLowerCase()
+      if(currentRole !== "admin" || !email) return
+      const tab = adminTopPerformerGrupoAxoTab === "lvp" ? "lvp" : adminTopPerformerGrupoAxoTab === "correcciones" ? "correcciones" : "ml"
+      const rows = tab === "lvp"
+        ? ensureGrupoAxoLvpRows(email)
+        : tab === "correcciones"
+          ? ensureGrupoAxoCorreccionesRows(email)
+          : ensureGrupoAxoMlRows(email)
+      for(const row of rows){
+        const month = String(row?.month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+        const idxMatch = String(row?.key || "").match(/(\d+)$/)
+        const idx = Number(idxMatch?.[1] || 1)
+        await db.ref("top_performer_grupo_axo").child(tab).child(month).child(emailKey(email)).child(idx).set({
+          ...row,
+          month,
+          updatedAt: new Date().toISOString(),
+          updatedBy: String(currentUser?.email || "").toLowerCase()
+        })
+      }
+      showToast(`Calidad Grupo Axo (${tab.toUpperCase()}) guardada para ${userDisplayNameByEmail(email) || email}.`, "ok", 1400)
+    }
+
+    async function loadTopPerformerSummaryTable(){
+      const wrap = document.getElementById("topPerformerSummaryTable")
+      if(!wrap || currentRole !== "admin" || adminTopPerformerTab !== "summary") return
+      if(!topPerformerAptitudinalLoaded) await loadTopPerformerAptitudinalFromDb()
+      await loadTopPerformerGrupoAxoFromDb()
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const tickets = cachedTickets?.length ? cachedTickets : await fetchTicketsFromDb()
+      const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
+      const cv = Object.values((await db.ref("analyst_cv").once("value")).val() || {})
+      const monthRows = analysts.map(analyst => {
+        const email = String(analyst?.email || "").toLowerCase()
+        const row = getAdminHoursRowValues(email)
+        const businessDays = monthBusinessDaysARG(month)
+        const theoretical = Math.max(1, Number((Math.max(0, businessDays - Number(row.holidays || 0)) * Number(row.adjustedHours || 0)) || 0))
+        const executed = tickets
+          .filter(t => String(t?.assignedTo || "").toLowerCase() === email)
+          .reduce((acc, t) => {
+            const entries = Array.isArray(t?.timeTracking?.monthlyFolders?.[month]?.entries) ? t.timeTracking.monthlyFolders[month].entries : []
+            return acc + entries.reduce((sum, e) => sum + (Number(e?.minutes || Number(e?.hours || 0) * 60 || 0) / 60), 0)
+          }, 0)
+        const diffPct = ((executed - theoretical) / theoretical) * 100
+        const quality = (() => {
+          const list = surveys.filter(s => String(s?.ratedRole || "").toLowerCase() === "analista" && String(s?.ratedEmail || "").toLowerCase() === email && String(s?.createdAt || "").slice(0,7) === month)
+          if(!list.length) return 0
+          const avg = list.reduce((acc, s) => acc + Number(normalizeQualityToTen(s?.overall || 0) || 0), 0) / list.length
+          return avg
+        })()
+        const aptRows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "").toLowerCase() === email && String(r?.month || "") === month)
+        const aptAvg = aptRows.length ? aptRows.reduce((acc, r) => acc + topPerformerScoreAverage(r), 0) / aptRows.length : 0
+        const grupoAxoAvg = topPerformerGrupoAxoAnalystAverage(email, month)
+        const adjustedTime = Math.max(0, 1 - Math.min(1, Math.abs(diffPct) / 100))
+        const pointsCapacity = Math.min(adjustedTime * 30, 30)
+        const pointsQuality = Math.min(quality * 3, 30)
+        const pointsAptitude = Math.min(aptAvg * 4, 40)
+        const incidenceCount = cv
+          .find(item => String(item?.analystEmail || "").toLowerCase() === email)
+          ?.actions?.filter(action => String(action?.date || "").slice(0,7) === month && String(action?.source || "") === "ticket_admin").length || 0
+        const selectedIncidences = topPerformerIncidenceSelectionByMonth[topPerformerIncidenceKey(month, email)] || {}
+        const incidenceDiscount = Object.values(selectedIncidences).filter(Boolean).length
+        const totalPoints = pointsCapacity + pointsQuality + pointsAptitude - incidenceDiscount
+        const rating = totalPoints >= 91 ? "Excelente" : totalPoints >= 70 ? "Bueno" : totalPoints >= 40 ? "A mejorar" : "Insuficiente"
+        return { email, diffPct, quality, aptAvg, grupoAxoAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore: totalPoints }
+      }).sort((a,b)=>b.rankingScore-a.rankingScore)
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración actitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.grupoAxoAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
+    }
+
+    async function loadTopPerformerIncidenciasTable(){
+      const wrap = document.getElementById("topPerformerIncidenciasTable")
+      if(!wrap || currentRole !== "admin" || adminTopPerformerTab !== "incidencias") return
+      const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+      const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+      const cv = Object.values((await db.ref("analyst_cv").once("value")).val() || {})
+      const rows = analysts.map(analyst => {
+        const email = String(analyst?.email || "").toLowerCase()
+        const actions = cv.find(item => String(item?.analystEmail || "").toLowerCase() === email)?.actions || []
+        const monthInc = actions.filter(action => String(action?.date || "").slice(0,7) === month && String(action?.source || "") === "ticket_admin")
+        const key = topPerformerIncidenceKey(month, email)
+        const selected = topPerformerIncidenceSelectionByMonth[key] || {}
+        return { email, incidences: monthInc, key, selected }
+      })
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Incidencias elevadas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Seleccionar incidencias a sumar</th></tr></thead><tbody>${rows.map(row => { const options = row.incidences.map((inc, idx) => { const id = topPerformerIncidenceActionId(inc, idx); const checked = !!row.selected[id]; return `<label style="display:block;text-transform:none;letter-spacing:0;margin-bottom:4px"><input type="checkbox" ${checked ? "checked" : ""} onchange="topPerformerIncidenceSelectionByMonth['${row.key}']=topPerformerIncidenceSelectionByMonth['${row.key}']||{};topPerformerIncidenceSelectionByMonth['${row.key}']['${id}']=this.checked"> ${htmlEscape(formatDateDMY(String(inc?.date || "").slice(0,10)) || String(inc?.date || "").slice(0,10) || "Sin fecha")} · ${htmlEscape(String(inc?.detail || "Incidencia"))}</label>` }).join(""); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidences.length}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${options || `<span class='small'>Sin incidencias en el período.</span>`}</td></tr>` }).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin incidencias en este período.</td></tr>`}</tbody></table></div>`
+    }
+
+    function updateTopPerformerAptitudinalCell(rowKey, field, rawValue){
+      const idx = topPerformerAptitudinalRows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numericFields = new Set(["workManagement","problemSolving","adaptabilityLearning","teamwork","focusCommitment"])
+      const nextValue = numericFields.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      topPerformerAptitudinalRows[idx] = { ...topPerformerAptitudinalRows[idx], [field]: nextValue }
+      const rowFinal = document.getElementById(`tp_final_${rowKey}`)
+      if(rowFinal) rowFinal.textContent = topPerformerScoreAverage(topPerformerAptitudinalRows[idx]).toFixed(2)
+      const analystEmail = String(topPerformerAptitudinalRows[idx]?.analystEmail || "")
+      const analystRows = topPerformerAptitudinalRows.filter(r => String(r?.analystEmail || "") === analystEmail)
+      const total = analystRows.length ? analystRows.reduce((acc, row) => acc + topPerformerScoreAverage(row), 0) / analystRows.length : 0
+      document.querySelectorAll(`[data-tp-total='${emailKey(analystEmail)}']`).forEach(node => { node.textContent = total.toFixed(2) })
+    }
+
+    function renderTopPerformerAdminHtml(){
+      if(!topPerformerAptitudinalRows.length) initializeTopPerformerAptitudinalRows()
+      const admins = Object.values(cachedUsersByEmail || {})
+        .filter(u => String(u?.role || "").toLowerCase() === "admin" && u?.active !== false)
+        .map(u => ({ email: String(u?.email || "").toLowerCase(), name: userDisplayNameByEmail(u?.email || "") || u?.email || "-" }))
+      const tabs = [
+        { key: "summary", label: "Resumen" },
+        { key: "aptitudinal", label: "Actitudinal" },
+        { key: "internal_quality", label: "Calidad interna" },
+        { key: "activity_quality", label: "Calidad de las actividades" },
+        { key: "grupo_axo", label: "Grupo Axo" },
+        { key: "incidencias", label: "Incidencias" }
+      ]
+      if(adminTopPerformerTab === "summary"){
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Resumen</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerSummaryTable" class="small" style="margin-top:10px"></div></div>`
+      }
+      if(["internal_quality","activity_quality"].includes(adminTopPerformerTab)){
+        return `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">${htmlEscape(tabs.find(t => t.key === adminTopPerformerTab)?.label || "Módulo")}</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`
+      }
+      if(adminTopPerformerTab === "grupo_axo"){
+        const analysts = Object.values(cachedUsersByEmail || {})
+          .filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
+          .map(u => ({ email: String(u?.email || "").toLowerCase(), name: userDisplayNameByEmail(u?.email || "") || u?.email || "-" }))
+        const selectedAnalyst = adminTopPerformerGrupoAxoAnalyst || String(analysts?.[0]?.email || "")
+        const rows = adminTopPerformerGrupoAxoTab === "lvp"
+          ? ensureGrupoAxoLvpRows(selectedAnalyst)
+          : adminTopPerformerGrupoAxoTab === "correcciones"
+            ? ensureGrupoAxoCorreccionesRows(selectedAnalyst)
+            : ensureGrupoAxoMlRows(selectedAnalyst)
+        const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+        const monthRows = rows
+        const weights = ensureTopPerformerGrupoAxoWeights(month)
+        const detailMl = [
+          ["Oportunidad comercial", "15% · Evalúa si la publicación captura una oportunidad real de venta."],
+          ["Título y descripción", "15% · Claridad, consistencia comercial y foco en intención de búsqueda."],
+          ["Precio", "3% · Coherencia del precio con estrategia y mercado."],
+          ["Categoría", "12% · Asignación correcta para mejorar visibilidad y conversión."],
+          ["Imágenes SKU", "15% · Calidad, ángulos y cumplimiento de estándar visual."],
+          ["Características técnicas", "20% · Completitud y precisión de información técnica."],
+          ["Finalización de carga", "20% · Checklist final, consistencia y publicación sin errores."]
+        ]
+        const detailLvp = [
+          ["Oportunidad", "Se evalúa si el analista gestiona la actividad asignada en un tiempo acorde durante el día. Se tienen en cuenta las observaciones que registre."],
+          ["Búsqueda y status correctos", "El analista debe realizar correctamente la búsqueda de la propuesta existente utilizando el ID agrupador y el modelo. Además, debe indicar con precisión el status y el ID Pimpro correspondiente en la planilla."],
+          ["Categoría", "El analista debe seleccionar correctamente la categoría y el producto, asegurándose de seguir los criterios establecidos y el código de categorías."],
+          ["Imágenes", "El analista debe generar, editar y gestionar las imágenes de acuerdo con los criterios establecidos y la guía fotográfica de Liverpool (LVP), asegurando la calidad y relevancia de las mismas."],
+          ["Vinculación de EANs y tallas", "El analista debe vincular correctamente los EANs con las tallas y las imágenes correspondientes, en caso de aplicar. También debe realizar una elección precisa de las tallas disponibles y en el mismo formato."],
+          ["Ficha técnica", "El analista debe completar correctamente la descripción, la ficha técnica y la información adicional, asegurando que toda la información sea clara, precisa y conforme a los lineamientos."]
+        ]
+        const detailCorrecciones = [
+          ["Ficha técnica", "El analista debe verificar y corregir, si corresponde, la descripción, la ficha técnica y la información adicional, asegurando que toda la información sea clara, precisa y conforme a los lineamientos establecidos."],
+          ["Imágenes y Vinculación de EANs y Tallas", "El analista debe verificar las imágenes y, en caso necesario, editarlas y gestionarlas según los comentario y la guía fotográfica de Liverpool (LVP), asegurando su calidad. Asimismo, debe comprobar que los EANs estén correctamente asociados con las tallas e imágenes correspondientes."],
+          ["Seguimiento", "El analista realiza el seguimiento diario de sus propuestas publicadas y se asigna casos, priorizando los más relevantes."],
+          ["Planilla", "El analista realizó el registro correctamente en la planilla. Si corresponde, indicó las observaciones para tomar en cuenta en futuras correcciones."]
+        ]
+        const rowsHtml = monthRows.map((row, idx) => {
+          if(adminTopPerformerGrupoAxoTab === "correcciones"){
+            const score = topPerformerGrupoAxoRowScore(row, "correcciones")
+            return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoCorreccionesCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="month" value="${htmlEscape(String(row.month || month))}" onchange="updateGrupoAxoCorreccionesCell('${selectedAnalyst}','${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuOptimizaciones || ""))}" onchange="updateGrupoAxoCorreccionesCell('${selectedAnalyst}','${row.key}','skuOptimizaciones', this.value)" placeholder="SKU y optimizaciones"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("fichaTecnica", row.fichaTecnica)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenesVinculacion", row.imagenesVinculacion)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("seguimiento", row.seguimiento)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("planilla", row.planilla)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoCorreccionesCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td><td id="grupoAxoCorreccionesScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td></tr>`
+          }
+          const onChangeFn = adminTopPerformerGrupoAxoTab === "lvp" ? "updateGrupoAxoLvpCell" : "updateGrupoAxoMlCell"
+          const inputScore = (field, value, max = 10) => `<input type="number" min="0" max="${max}" step="1" value="${Number(value||0)||''}" onchange="${onChangeFn}('${selectedAnalyst}','${row.key}','${field}', this.value)">`
+          if(adminTopPerformerGrupoAxoTab === "lvp"){
+            const score = topPerformerGrupoAxoRowScore(row, "lvp")
+            return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="month" value="${htmlEscape(String(row.month || month))}" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuIdAgrupadorMarca || ""))}" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','skuIdAgrupadorMarca', this.value)" placeholder="SKU / ID agrupador / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidad", row.oportunidad)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("busquedaStatus", row.busquedaStatus)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("categoria", row.categoria)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenes", row.imagenes)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("vinculacionEansTallas", row.vinculacionEansTallas)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("fichaTecnica", row.fichaTecnica)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoLvpCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td><td id="grupoAxoLvpScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td></tr>`
+          }
+          const score = topPerformerGrupoAxoRowScore(row, "ml")
+          return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input type="month" value="${htmlEscape(String(row.month || month))}" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><input value="${htmlEscape(String(row.skuModelMlmBrand || ""))}" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','skuModelMlmBrand', this.value)" placeholder="SKU / Modelo / MLM / Marca"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("oportunidad", row.oportunidad)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("tituloDescripcion", row.tituloDescripcion)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("precio", row.precio)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("categoria", row.categoria)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("imagenesSku", row.imagenesSku)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("caracteristicasTecnicas", row.caracteristicasTecnicas)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${inputScore("finalizacionCarga", row.finalizacionCarga)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><textarea style="min-height:42px" onchange="updateGrupoAxoMlCell('${selectedAnalyst}','${row.key}','observaciones', this.value)">${htmlEscape(String(row.observaciones || ""))}</textarea></td><td id="grupoAxoMlScore_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700">${score.toFixed(2)}</td></tr>`
+        }).join("")
+        const headers = adminTopPerformerGrupoAxoTab === "lvp"
+          ? `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes a analizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / ID agrupador / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Búsqueda y status correctos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Categoría</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Vinculación de EANs y tallas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ficha técnica</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntuación final</th></tr>`
+          : adminTopPerformerGrupoAxoTab === "correcciones"
+            ? `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes a analizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU y optimizaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ficha técnica</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes y vinculación EANs/tallas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Seguimiento</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planilla</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntuación final</th></tr>`
+            : `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes a analizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">SKU / Modelo / MLM / Marca</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Oportunidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título y descripción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Precio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Categoría</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Imágenes SKU</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Características técnicas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Finalización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntuación final</th></tr>`
+        const detail = adminTopPerformerGrupoAxoTab === "lvp" ? detailLvp : adminTopPerformerGrupoAxoTab === "correcciones" ? detailCorrecciones : detailMl
+        const mlWeightsEditor = `<div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Ponderaciones ML (editable)</h4><div class="row"><div><label>Oportunidad (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.oportunidad || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','oportunidad', this.value)"></div><div><label>Título y descripción (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.tituloDescripcion || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','tituloDescripcion', this.value)"></div><div><label>Precio (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.precio || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','precio', this.value)"></div><div><label>Categoría (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.categoria || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','categoria', this.value)"></div><div><label>Imágenes SKU (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.imagenesSku || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','imagenesSku', this.value)"></div><div><label>Características técnicas (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.caracteristicasTecnicas || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','caracteristicasTecnicas', this.value)"></div><div><label>Finalización (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.ml.finalizacionCarga || 0)}" onchange="setTopPerformerGrupoAxoWeight('ml','finalizacionCarga', this.value)"></div></div></div>`
+        const lvpWeightsEditor = `<div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Ponderaciones LVP (editable)</h4><div class="row"><div><label>Oportunidad (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.oportunidad || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','oportunidad', this.value)"></div><div><label>Búsqueda y status (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.busquedaStatus || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','busquedaStatus', this.value)"></div><div><label>Categoría (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.categoria || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','categoria', this.value)"></div><div><label>Imágenes (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.imagenes || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','imagenes', this.value)"></div><div><label>Vinculación EANs/tallas (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.vinculacionEansTallas || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','vinculacionEansTallas', this.value)"></div><div><label>Ficha técnica (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.lvp.fichaTecnica || 0)}" onchange="setTopPerformerGrupoAxoWeight('lvp','fichaTecnica', this.value)"></div></div></div>`
+        const correccionesWeightsEditor = `<div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Ponderaciones Correcciones (editable)</h4><div class="row"><div><label>Ficha técnica (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.correcciones.fichaTecnica || 0)}" onchange="setTopPerformerGrupoAxoWeight('correcciones','fichaTecnica', this.value)"></div><div><label>Imágenes y vinculación (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.correcciones.imagenesVinculacion || 0)}" onchange="setTopPerformerGrupoAxoWeight('correcciones','imagenesVinculacion', this.value)"></div><div><label>Seguimiento (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.correcciones.seguimiento || 0)}" onchange="setTopPerformerGrupoAxoWeight('correcciones','seguimiento', this.value)"></div><div><label>Planilla (%)</label><input type="number" min="0" max="100" step="1" value="${Number(weights.correcciones.planilla || 0)}" onchange="setTopPerformerGrupoAxoWeight('correcciones','planilla', this.value)"></div></div></div>`
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Grupo Axo</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div><div><label>Canal</label><div class="inline" style="gap:8px"><button class="${adminTopPerformerGrupoAxoTab==='ml'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('ml')">Carga Mercado Libre</button><button class="${adminTopPerformerGrupoAxoTab==='lvp'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('lvp')">Carga LVP</button><button class="${adminTopPerformerGrupoAxoTab==='correcciones'?'':'ghost'}" onclick="setTopPerformerGrupoAxoTab('correcciones')">Correcciones</button></div></div><div><label>Analista</label><select onchange="setTopPerformerGrupoAxoAnalyst(this.value)"><option value="">Seleccionar analista</option>${analysts.map(a => `<option value="${htmlEscape(a.email)}" ${a.email===selectedAnalyst?'selected':''}>${htmlEscape(a.name)}</option>`).join("")}</select></div><div style="display:flex;align-items:flex-end"><button class="ghost" onclick="saveTopPerformerGrupoAxoByAnalyst('${selectedAnalyst}')">Guardar ${adminTopPerformerGrupoAxoTab.toUpperCase()}</button></div></div><div class="small" style="margin:10px 0 8px">Promedio del analista en ${adminTopPerformerGrupoAxoTab.toUpperCase()}: <strong>${(() => { const relevant = monthRows.filter(r => String(r?.month || "") === month).map(r => topPerformerGrupoAxoRowScore(r, adminTopPerformerGrupoAxoTab)).filter(v => v > 0); return (relevant.length ? relevant.reduce((a,b)=>a+b,0)/relevant.length : 0).toFixed(2) })()} / 10</strong></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead>${headers}</thead><tbody>${rowsHtml || `<tr><td colspan="13" class="small" style="padding:8px">Sin filas para este analista.</td></tr>`}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios ${adminTopPerformerGrupoAxoTab.toUpperCase()}</h4>${detail.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div>${adminTopPerformerGrupoAxoTab === "lvp" ? lvpWeightsEditor : adminTopPerformerGrupoAxoTab === "correcciones" ? correccionesWeightsEditor : mlWeightsEditor}</div>`
+      }
+      if(adminTopPerformerTab === "incidencias"){
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Incidencias</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerIncidenciasTable" class="small" style="margin-top:10px"></div></div>`
+      }
+      const byAnalystTotal = {}
+      topPerformerAptitudinalRows.forEach(row => {
+        const key = String(row?.analystEmail || "")
+        if(!byAnalystTotal[key]) byAnalystTotal[key] = []
+        byAnalystTotal[key].push(topPerformerScoreAverage(row))
+      })
+      const details = [
+        ["Gestión del Trabajo","Evalúa cómo el analista organiza y prioriza sus actividades, asegurando el cumplimiento de los plazos establecidos y la adecuada gestión de imprevistos. Se considera la autonomía en la planificación y la capacidad de manejar múltiples tareas de manera eficiente."],
+        ["Resolución de Problemas","Analiza la capacidad del analista para identificar, analizar y resolver problemas en la gestión de sus actividades. Se evalúa su habilidad para proponer soluciones prácticas, creativas y efectivas utilizando recursos disponibles (instructivos, manuales, sección de ayuda, soporte). También se valora si solicita ayuda de manera proactiva después de haber realizado un análisis previo."],
+        ["Comunicación Efectiva","Evalúa la claridad, precisión y profesionalismo en la comunicación del analista. Se revisa cómo redacta mensajes, solicitudes y reportes, asegurando que sean comprensibles, respetuosos y oportunos. También se valora su capacidad para hacer seguimiento a conversaciones y gestiones pendientes."],
+        ["Adaptabilidad y Aprendizaje","Evalúa la capacidad del analista para adaptarse a cambios en procesos, herramientas o prioridades. Se valora su disposición para aprender nuevas habilidades, aplicar retroalimentación de manera efectiva y mejorar continuamente su desempeño."],
+        ["Colaboración y Trabajo en Equipo","Evalúa la capacidad del analista para trabajar de manera efectiva con otros miembros del equipo. Se observa si responde oportunamente a solicitudes, colabora activamente en la resolución de dudas planteadas por los integrantes del equipo, e innova proponiendo soluciones o enfoques que mejoren la dinámica y el desempeño grupal."],
+        ["Enfoque y Compromiso en la Tarea","Mide el nivel de atención constante y sostenida del analista en cada actividad asignada. Verifica que cumple con los criterios y detalles necesarios para evitar errores y retrabajos. Se valora la dedicación para superar las expectativas de calidad en cada tarea."]
+      ]
+      const analystOrder = []
+      const analystGroupByEmail = {}
+      topPerformerAptitudinalRows.forEach(row => {
+        const email = String(row?.analystEmail || "")
+        if(!(email in analystGroupByEmail)){
+          analystGroupByEmail[email] = analystOrder.length
+          analystOrder.push(email)
+        }
+      })
+      const bodyRows = topPerformerAptitudinalRows.map((row, idx) => {
+        const final = topPerformerScoreAverage(row)
+        const total = (byAnalystTotal[row.analystEmail] || []).length ? (byAnalystTotal[row.analystEmail].reduce((a,b)=>a+b,0) / byAnalystTotal[row.analystEmail].length) : 0
+        const inputScore = (id, val) => `<input type="number" min="0" max="10" step="1" value="${Number(val||0)||''}" onchange="updateTopPerformerAptitudinalCell('${row.key}','${id}', this.value)">`
+        const isNewAnalyst = idx === 0 || String(topPerformerAptitudinalRows[idx - 1]?.analystEmail || "") !== String(row.analystEmail || "")
+        const borderTop = isNewAnalyst ? "border-top:2px solid rgba(255,255,255,.85);" : ""
+        const groupIndex = Number(analystGroupByEmail[String(row?.analystEmail || "")] || 0)
+        const rowBg = groupIndex % 2 === 0 ? "rgba(255,255,255,.035)" : "rgba(61,110,245,.07)"
+        return `<tr style="background:${rowBg}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${htmlEscape(userDisplayNameByEmail(row.analystEmail) || row.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><input type="month" value="${htmlEscape(String(row.month || ""))}" onchange="updateTopPerformerAptitudinalCell('${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><select onchange="updateTopPerformerAptitudinalCell('${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("workManagement", row.workManagement)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("problemSolving", row.problemSolving)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("adaptabilityLearning", row.adaptabilityLearning)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("teamwork", row.teamwork)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("focusCommitment", row.focusCommitment)}</td><td id="tp_final_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${final.toFixed(2)}</td><td data-tp-total="${emailKey(row.analystEmail)}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${total.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><textarea style="min-height:42px" onchange="updateTopPerformerAptitudinalCell('${row.key}','observations', this.value)">${htmlEscape(String(row.observations || ""))}</textarea></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><button class="ghost" onclick="saveTopPerformerAptitudinalByAnalyst('${encodeURIComponent(row.analystEmail)}')">Guardar</button></td></tr>`
+      }).join("")
+      return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Actitudinal</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes evaluación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador (admin)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Gestión de trabajo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Resolución de problemas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Adaptabilidad y aprendizaje</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Colaboración y equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Enfoque y compromiso</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio total</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Guardar</th></tr></thead><tbody>${bodyRows}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios</h4>${details.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
+    }
+
     function renderApp(){
       const isAdmin = currentRole === "admin"
       const adminCanAccess = (tab) => canAccessAdminTab(tab)
@@ -6313,16 +7103,16 @@ Cliente B`)
       const showAdminGuidelines = isAdmin && adminPanelTab === "guidelines"
       const showAdminManuals = isAdmin && adminPanelTab === "manuals"
       const showSavedItems = mainViewTab === "saved"
-      const showConsultorPortfolio = currentRole === "consultor" && mainViewTab === "portfolio"
-      const showPortfolioOverview = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "portfolio_overview"
-      const showQualityResults = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "quality_results"
-      const showAnalystHoursLog = currentRole === "analista" && mainViewTab === "registro_horas"
-      const showSupportCasesView = (currentRole === "analista" || currentRole === "consultor") && mainViewTab === "support"
-      const showDailysView = (currentRole === "analista" || currentRole === "admin") && mainViewTab === "dailys"
-      const showConsultorGuidelines = currentRole === "consultor" && mainViewTab === "consultor_guidelines"
-      const showConsultorTodayAgenda = currentRole === "consultor" && mainViewTab === "agenda_today"
-      const showConsultorSummary = currentRole === "consultor" && mainViewTab === "summary_general"
-      const showConsultorProfile = currentRole === "consultor" && mainViewTab === "profile"
+      const showConsultorPortfolio = mainViewTab === "portfolio" && canCurrentRoleSeeMenu("main:portfolio")
+      const showPortfolioOverview = mainViewTab === "portfolio_overview" && canCurrentRoleSeeMenu("main:portfolio_overview")
+      const showQualityResults = mainViewTab === "quality_results" && canCurrentRoleSeeMenu("main:quality_results")
+      const showAnalystHoursLog = mainViewTab === "registro_horas" && canCurrentRoleSeeMenu("main:registro_horas")
+      const showSupportCasesView = mainViewTab === "support" && canCurrentRoleSeeMenu("main:support")
+      const showDailysView = mainViewTab === "dailys" && canCurrentRoleSeeMenu("main:dailys")
+      const showConsultorGuidelines = mainViewTab === "consultor_guidelines" && canCurrentRoleSeeMenu("main:consultor_guidelines")
+      const showConsultorTodayAgenda = mainViewTab === "agenda_today" && canCurrentRoleSeeMenu("main:agenda_today")
+      const showConsultorSummary = mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general")
+      const showConsultorProfile = mainViewTab === "profile" && canCurrentRoleSeeMenu("main:profile")
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
       const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer
@@ -6373,20 +7163,20 @@ Cliente B`)
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
         ]},
         { title: "Herramientas", items: [
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
-          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera", action: "setMainViewTab('portfolio')" }] : []),
+          ...(currentRole === "consultor" ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(currentRole === "consultor" ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
-          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
-          ...(currentRole === "analista" ? [{ icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }] : [])
+          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
         ].filter(Boolean)}
       ]
       const visibleSidebarSections = sidebarSections
@@ -6401,7 +7191,9 @@ Cliente B`)
             <div class="sideNavList">
               ${visibleSidebarSections.map(section => `<div class="sideSection"><div class="sideSectionTitle">${section.title}</div>${(section.items || []).map(item => `<button class="sideNavItem" onclick="${item.action}"><span class="sideNavIcon">${item.icon}</span><span class="sideNavLabel">${item.label}</span></button>`).join("")}</div>`).join("")}
             </div>
-            <div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>
+            ${canCurrentRoleSeeMenu(currentRole === 'admin' ? "admin:quality" : "main:quality_results")
+              ? `<div class="sideQualityWrap"><div id="qualityOrb" class="qualityOrb" onclick="${currentRole === 'admin' ? "setAdminTab('quality')" : "setMainViewTab('quality_results')"}" style="cursor:pointer" title="Ver resultados de satisfacción"><div id="qualityOrbValue">0.0</div><div class="smallLabel"></div></div></div>`
+              : ``}
           </aside>
           <div class="mainShell">
         <div class="card topbarCard">
@@ -6465,18 +7257,14 @@ Cliente B`)
         ` : showConsultorTodayAgenda ? `
           <div class="card"><h3 style="margin-top:0">Agenda de hoy</h3><div class="small" style="margin-bottom:8px">Tickets creados por vos y planificados para hoy en la agenda operativa del analista.</div><div id="consultorTodayAgendaList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
-          <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná cuáles clientes pertenecen a tu cartera y agregá nuevos si hace falta.</div><div class="row"><div><label>Nuevo cliente</label><input id="consultorClientName" placeholder="Nombre del cliente"></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Agregar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
+          <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná clientes del listado general para sumarlos a tu cartera y actualizá su riesgo operativo.</div><div class="row"><div><label>Nuevo cliente</label><select id="consultorClientName"><option value="">Seleccionar cliente</option></select></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div><div style="display:flex;align-items:flex-end"><button onclick="saveConsultorClient(this)">Asignar cliente</button></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
         ` : showConsultorSummary ? `
           <div class="card"><h3 style="margin-top:0">Resumen general</h3><div id="consultorGeneralSummary" class="small"></div></div>
         ` : showConsultorProfile ? `
           <div class="card"><h3 style="margin-top:0">Mi configuración (Consultor)</h3><div class="small" style="margin-bottom:8px">Conectá Google Calendar para poder agendar tickets desde su detalle.</div><div class="inline"><button class="ghost" onclick="toggleGoogleCalendarConnection()">Conectar Google Calendar</button><span class="small">Estado: <strong id="profileGoogleCalendarStatus">-</strong></span></div></div>
         ` : showTopPerformer ? `
-          <div class="card" style="min-height:56vh;display:flex;align-items:center;justify-content:center;background:transparent;border:1px dashed var(--stroke)">
-            <div style="text-align:center">
-              <div style="font-size:52px;line-height:1">🛠️</div>
-              <div style="font-size:42px;font-weight:800;letter-spacing:.04em">Próximamente</div>
-            </div>
-          </div>
+          <div class="card"><div class="inline" style="gap:8px;flex-wrap:wrap">${(currentRole === "admin" ? [{key:"summary",label:"Resumen"},{key:"aptitudinal",label:"Actitudinal"},{key:"internal_quality",label:"Calidad interna"},{key:"activity_quality",label:"Calidad de las actividades"},{key:"grupo_axo",label:"Grupo Axo"},{key:"incidencias",label:"Incidencias"}] : [{key:"summary",label:"Resumen"}]).map(tab => `<button class="${currentRole === "admin" ? (adminTopPerformerTab===tab.key?'':'ghost') : 'ghost'}" onclick="${currentRole === "admin" ? `setAdminTopPerformerTab('${tab.key}')` : ''}">${tab.label}</button>`).join("")}</div></div>
+          ${currentRole === "admin" ? renderTopPerformerAdminHtml() : `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">Top performer</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`}
         ` : (isAdmin && mainViewTab==='hoja_vida') ? `
           <div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Hoja de vida</h3><button onclick="openAnalystCvModal()">Crear hoja de vida</button></div><div id="adminAnalystCvGrid" style="margin-top:10px"></div></div>
         ` : (currentRole==='analista' && mainViewTab==='my_ticket_status') ? `
@@ -6695,6 +7483,17 @@ Cliente B`)
         loadConsultorGeneralSummary()
       }else if(showConsultorProfile){
         loadMyProfileForm()
+      }else if(showTopPerformer){
+        if(currentRole === "admin" && adminTopPerformerTab === "summary"){
+          loadTopPerformerSummaryTable()
+        }else if(currentRole === "admin" && adminTopPerformerTab === "grupo_axo"){
+          const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
+          if(topPerformerGrupoAxoLoadedKey !== month){
+            loadTopPerformerGrupoAxoFromDb().then(()=>renderApp())
+          }
+        }else if(currentRole === "admin" && adminTopPerformerTab === "incidencias"){
+          loadTopPerformerIncidenciasTable()
+        }
       }else if(showPortfolioOverview){
         loadPortfolioOverview()
       }else if(showQualityResults){
@@ -7775,7 +8574,7 @@ Cliente B`)
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de tickets con deadline vencida", ${JSON.stringify(withExpiredDeadline.map(t=>t.id))})'><div class="label">Cantidad de tickets con deadline vencida</div><div class="value">${withExpiredDeadline.length}</div></div>
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Próximos a vencerse", ${JSON.stringify(nearDeadline.map(t=>t.id))})'><div class="label">Próximos a vencerse (5 días)</div><div class="value">${nearDeadline.length}</div></div>
           <div class="kpi"><div class="label">Cantidad de comentarios sin ver</div><div class="value">${unreadComments}</div></div>
-          <div class="kpi"><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
+          <div class="kpi" style="cursor:pointer" onclick='openIncompleteTicketFieldsDetail(${JSON.stringify(incompleteTickets.map(t => ({ id: t.id, missing: getTicketMissingFields(t) })) )})'><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
         </div>
         <div style="overflow:auto;margin-top:10px">
           <table style="width:100%;border-collapse:collapse">
@@ -7827,6 +8626,20 @@ Cliente B`)
         content.innerHTML = list.length
           ? list.map(t => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${t.id}')"><div class="feedType">${htmlEscape(t.id || "-")} · ${htmlEscape(t.title || "-")}</div><div class="feedMeta">Cliente: ${htmlEscape(t.client || "-")} · Deadline: ${htmlEscape(t.deadline || "-")}</div></div>`).join("")
           : `<div class="small">No hay tickets en esta categoría.</div>`
+      }
+      if(modal) modal.classList.remove("hidden")
+    }
+
+    function openIncompleteTicketFieldsDetail(rows){
+      const modal = document.getElementById("dashboardListModal")
+      const modalTitle = document.getElementById("dashboardListModalTitle")
+      const content = document.getElementById("dashboardListModalContent")
+      const list = Array.isArray(rows) ? rows : []
+      if(modalTitle) modalTitle.textContent = "Tickets sin campos completados"
+      if(content){
+        content.innerHTML = list.length
+          ? list.map(row => `<div class="feedItem" style="cursor:pointer" onclick="openTicketDetailModal('${htmlEscape(String(row?.id || ""))}')"><div class="feedType">${htmlEscape(String(row?.id || "-"))}</div><div class="feedMeta">Campos faltantes: ${htmlEscape((Array.isArray(row?.missing) ? row.missing : []).join(" · ") || "Sin detalle")}</div></div>`).join("")
+          : `<div class="small">No hay tickets incompletos.</div>`
       }
       if(modal) modal.classList.remove("hidden")
     }
@@ -10482,7 +11295,7 @@ Cliente B`)
       if(!isAdminLevel1()) return alert("Solo admin nivel 1 puede editar permisos.")
       const roles = ["admin","analista","consultor"]
       const menuKeys = [
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile",
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio","main:agenda_today","main:support","main:quality_results","main:my_ticket_status","main:registro_horas","main:dailys","main:portfolio_overview","main:consultor_guidelines","main:summary_general","main:profile","main:hoja_vida",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines","admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center","admin:people","admin:user_management","admin:settings","admin:control_center_accesses","admin:control_center_permissions"
       ]
       const payload = { admin: {}, analista: {}, consultor: {} }
@@ -10505,6 +11318,7 @@ Cliente B`)
         { key:"main:tickets", label:"Tickets" }, { key:"main:saved", label:"Guardados" }, { key:"main:encuentro", label:"Encuentro" }, { key:"main:top_performer", label:"Top performer" },
         { key:"main:portfolio", label:"Cartera" }, { key:"main:agenda_today", label:"Agenda de hoy (consultor)" }, { key:"main:support", label:"Soporte" }, { key:"main:quality_results", label:"Calidad" }, { key:"main:my_ticket_status", label:"Estado tickets" },
         { key:"main:registro_horas", label:"Registro horas" }, { key:"main:dailys", label:"Daily's" }, { key:"main:portfolio_overview", label:"Cartera consultores" }, { key:"main:consultor_guidelines", label:"Lineamientos consultor" }, { key:"main:summary_general", label:"Resumen general (consultor)" }, { key:"main:profile", label:"Perfil/Configuración" },
+        { key:"main:hoja_vida", label:"Hoja de vida" },
         { key:"admin:dailys", label:"Admin · Daily's" }, { key:"admin:agenda", label:"Admin · Organizar agendas" }, { key:"admin:comments", label:"Admin · Comentarios" }, { key:"admin:capacity", label:"Admin · Capacidad instalada" },
         { key:"admin:announcements", label:"Admin · Comunicados" }, { key:"admin:guidelines", label:"Admin · Lineamientos" }, { key:"admin:manuals", label:"Admin · Manuales" }, { key:"admin:internal_quality", label:"Admin · Calidad interna" },
         { key:"admin:quality", label:"Admin · Encuesta calidad" }, { key:"admin:support", label:"Admin · Soporte técnico" }, { key:"admin:help", label:"Admin · Ayuda" }, { key:"admin:connections", label:"Admin · Conexiones" },
@@ -12298,6 +13112,7 @@ Cliente B`)
             persistSession()
             await processGoogleCalendarOAuthCallback()
             await loadMenuPermissions()
+            startMenuPermissionsSync()
             renderApp()
           }else{
             clearSession()
