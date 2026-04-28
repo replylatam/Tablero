@@ -1763,6 +1763,10 @@
     var topPerformerSummaryMonth = toLocalDateOnly(new Date()).slice(0, 7)
     var topPerformerAptitudinalLoaded = false
     var topPerformerIncidenceInclusionByMonth = {}
+    var topPerformerIncidenceSelectionByMonth = {}
+    var adminTopPerformerGrupoAxoTab = "ml"
+    var adminTopPerformerGrupoAxoAnalyst = ""
+    var topPerformerGrupoAxoMlRowsByAnalyst = {}
     const EMOJI_PICKER_LIST = "😀 😃 😄 😁 😆 😅 😂 🙂 😊 😉 😍 😘 😜 🤪 🤨 🥹 😎 🤖 👀 👍 👎 ❤️ 💙 💚 💛 🧡 💜 🤍 🔥 ⭐ ⚡ ✅ ❌ 🚀 💡 🛑 🚨 🙌 👏 🤝 🙏 😭 😡 🤯 🤔 🧠 📌 📎 ⏳ 🕒 📣".split(" ")
 
     const STATUS = {
@@ -6564,6 +6568,66 @@ Cliente B`)
       return `${String(month || "")}__${emailKey(String(analystEmail || ""))}`
     }
 
+    function topPerformerIncidenceActionId(action, idx){
+      return `${String(action?.date || "").slice(0,10)}__${emailKey(String(action?.sourceTicketId || action?.detail || idx || ""))}__${idx}`
+    }
+
+    function setTopPerformerGrupoAxoTab(tab){
+      adminTopPerformerGrupoAxoTab = tab === "lvp" ? "lvp" : "ml"
+      renderApp()
+    }
+
+    function setTopPerformerGrupoAxoAnalyst(email){
+      adminTopPerformerGrupoAxoAnalyst = String(email || "").toLowerCase()
+      renderApp()
+    }
+
+    function ensureGrupoAxoMlRows(analystEmail){
+      const key = String(analystEmail || "").toLowerCase()
+      if(!key) return []
+      if(!topPerformerGrupoAxoMlRowsByAnalyst[key]){
+        topPerformerGrupoAxoMlRowsByAnalyst[key] = Array.from({ length: 10 }, (_, idx) => ({
+          key: `${emailKey(key)}_${idx + 1}`,
+          month: toLocalDateOnly(new Date()).slice(0, 7),
+          evaluatorEmail: "",
+          skuModelMlmBrand: "",
+          oportunidad: 0,
+          tituloDescripcion: 0,
+          precio: 0,
+          categoria: 0,
+          imagenesSku: 0,
+          caracteristicasTecnicas: 0,
+          finalizacionCarga: 0,
+          observaciones: ""
+        }))
+      }
+      return topPerformerGrupoAxoMlRowsByAnalyst[key]
+    }
+
+    function updateGrupoAxoMlCell(analystEmail, rowKey, field, rawValue){
+      const key = String(analystEmail || "").toLowerCase()
+      const rows = ensureGrupoAxoMlRows(key)
+      const idx = rows.findIndex(r => String(r?.key || "") === String(rowKey || ""))
+      if(idx < 0) return
+      const numeric = new Set(["oportunidad","tituloDescripcion","precio","categoria","imagenesSku","caracteristicasTecnicas","finalizacionCarga"])
+      const value = numeric.has(field) ? Math.max(0, Math.min(10, Number(rawValue || 0))) : String(rawValue || "")
+      rows[idx] = { ...rows[idx], [field]: value }
+      topPerformerGrupoAxoMlRowsByAnalyst[key] = rows
+      const scoreEl = document.getElementById(`grupoAxoMlScore_${rows[idx].key}`)
+      if(scoreEl){
+        const row = rows[idx]
+        const score =
+          (Number(row.oportunidad || 0) * 0.15) +
+          (Number(row.tituloDescripcion || 0) * 0.15) +
+          (Number(row.precio || 0) * 0.03) +
+          (Number(row.categoria || 0) * 0.12) +
+          (Number(row.imagenesSku || 0) * 0.15) +
+          (Number(row.caracteristicasTecnicas || 0) * 0.20) +
+          (Number(row.finalizacionCarga || 0) * 0.20)
+        scoreEl.textContent = score.toFixed(2)
+      }
+    }
+
     async function loadTopPerformerSummaryTable(){
       const wrap = document.getElementById("topPerformerSummaryTable")
       if(!wrap || currentRole !== "admin" || adminTopPerformerTab !== "summary") return
@@ -6600,11 +6664,11 @@ Cliente B`)
         const incidenceCount = cv
           .find(item => String(item?.analystEmail || "").toLowerCase() === email)
           ?.actions?.filter(action => String(action?.date || "").slice(0,7) === month && String(action?.source || "") === "ticket_admin").length || 0
-        const includeIncidence = !!topPerformerIncidenceInclusionByMonth[topPerformerIncidenceKey(month, email)]
-        const incidenceDiscount = includeIncidence ? Number(incidenceCount || 0) : 0
+        const selectedIncidences = topPerformerIncidenceSelectionByMonth[topPerformerIncidenceKey(month, email)] || {}
+        const incidenceDiscount = Object.values(selectedIncidences).filter(Boolean).length
         const totalPoints = pointsCapacity + pointsQuality + pointsAptitude - incidenceDiscount
         const rating = totalPoints >= 91 ? "Excelente" : totalPoints >= 70 ? "Bueno" : totalPoints >= 40 ? "A mejorar" : "Insuficiente"
-        return { email, diffPct, quality, aptAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, includeIncidence, rankingScore: totalPoints }
+        return { email, diffPct, quality, aptAvg, pointsCapacity, pointsQuality, pointsAptitude, totalPoints, rating, incidenceCount, incidenceDiscount, rankingScore: totalPoints }
       }).sort((a,b)=>b.rankingScore-a.rankingScore)
       wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ranking</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tiempo de gestión</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración de calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Valoración aptitudinal</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos capacidad ajustada</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración calidad</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntos valoración actitud</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Total puntos</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calificación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Calidad Grupo Axo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Descuento por incidencias</th></tr></thead><tbody>${monthRows.map((row, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">#${idx + 1}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.diffPct >= 0 ? "+" : ""}${row.diffPct.toFixed(2)}%</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.quality.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.aptAvg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsCapacity.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsQuality.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.pointsAptitude.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.totalPoints.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(row.rating)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">-</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidenceDiscount}</td></tr>`).join("") || `<tr><td colspan="12" class="small" style="padding:8px">Sin datos para el período.</td></tr>`}</tbody></table></div>`
     }
@@ -6620,10 +6684,10 @@ Cliente B`)
         const actions = cv.find(item => String(item?.analystEmail || "").toLowerCase() === email)?.actions || []
         const monthInc = actions.filter(action => String(action?.date || "").slice(0,7) === month && String(action?.source || "") === "ticket_admin")
         const key = topPerformerIncidenceKey(month, email)
-        const included = !!topPerformerIncidenceInclusionByMonth[key]
-        return { email, count: monthInc.length, included, key }
+        const selected = topPerformerIncidenceSelectionByMonth[key] || {}
+        return { email, incidences: monthInc, key, selected }
       })
-      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Incidencias elevadas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">¿Sumar al top?</th></tr></thead><tbody>${rows.map(row => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.count}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><label class="switch"><input type="checkbox" ${row.included ? "checked" : ""} onchange="topPerformerIncidenceInclusionByMonth['${row.key}']=this.checked"><span class="slider"></span></label></td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin incidencias en este período.</td></tr>`}</tbody></table></div>`
+      wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Incidencias elevadas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Seleccionar incidencias a sumar</th></tr></thead><tbody>${rows.map(row => { const options = row.incidences.map((inc, idx) => { const id = topPerformerIncidenceActionId(inc, idx); const checked = !!row.selected[id]; return `<label style="display:block;text-transform:none;letter-spacing:0;margin-bottom:4px"><input type="checkbox" ${checked ? "checked" : ""} onchange="topPerformerIncidenceSelectionByMonth['${row.key}']=topPerformerIncidenceSelectionByMonth['${row.key}']||{};topPerformerIncidenceSelectionByMonth['${row.key}']['${id}']=this.checked"> ${htmlEscape(formatDateDMY(String(inc?.date || "").slice(0,10)) || String(inc?.date || "").slice(0,10) || "Sin fecha")} · ${htmlEscape(String(inc?.detail || "Incidencia"))}</label>` }).join(""); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${row.incidences.length}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${options || `<span class='small'>Sin incidencias en el período.</span>`}</td></tr>` }).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin incidencias en este período.</td></tr>`}</tbody></table></div>`
     }
 
     function updateTopPerformerAptitudinalCell(rowKey, field, rawValue){
@@ -6676,13 +6740,24 @@ Cliente B`)
         ["Colaboración y Trabajo en Equipo","Evalúa la capacidad del analista para trabajar de manera efectiva con otros miembros del equipo. Se observa si responde oportunamente a solicitudes, colabora activamente en la resolución de dudas planteadas por los integrantes del equipo, e innova proponiendo soluciones o enfoques que mejoren la dinámica y el desempeño grupal."],
         ["Enfoque y Compromiso en la Tarea","Mide el nivel de atención constante y sostenida del analista en cada actividad asignada. Verifica que cumple con los criterios y detalles necesarios para evitar errores y retrabajos. Se valora la dedicación para superar las expectativas de calidad en cada tarea."]
       ]
+      const analystOrder = []
+      const analystGroupByEmail = {}
+      topPerformerAptitudinalRows.forEach(row => {
+        const email = String(row?.analystEmail || "")
+        if(!(email in analystGroupByEmail)){
+          analystGroupByEmail[email] = analystOrder.length
+          analystOrder.push(email)
+        }
+      })
       const bodyRows = topPerformerAptitudinalRows.map((row, idx) => {
         const final = topPerformerScoreAverage(row)
         const total = (byAnalystTotal[row.analystEmail] || []).length ? (byAnalystTotal[row.analystEmail].reduce((a,b)=>a+b,0) / byAnalystTotal[row.analystEmail].length) : 0
         const inputScore = (id, val) => `<input type="number" min="0" max="10" step="1" value="${Number(val||0)||''}" onchange="updateTopPerformerAptitudinalCell('${row.key}','${id}', this.value)">`
         const isNewAnalyst = idx === 0 || String(topPerformerAptitudinalRows[idx - 1]?.analystEmail || "") !== String(row.analystEmail || "")
-        const borderTop = isNewAnalyst ? "border-top:2px solid var(--accent);" : ""
-        return `<tr style="${isNewAnalyst ? "background:rgba(61,110,245,.08);" : ""}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${htmlEscape(userDisplayNameByEmail(row.analystEmail) || row.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><input type="month" value="${htmlEscape(String(row.month || ""))}" onchange="updateTopPerformerAptitudinalCell('${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><select onchange="updateTopPerformerAptitudinalCell('${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("workManagement", row.workManagement)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("problemSolving", row.problemSolving)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("adaptabilityLearning", row.adaptabilityLearning)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("teamwork", row.teamwork)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("focusCommitment", row.focusCommitment)}</td><td id="tp_final_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${final.toFixed(2)}</td><td data-tp-total="${emailKey(row.analystEmail)}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${total.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><textarea style="min-height:42px" onchange="updateTopPerformerAptitudinalCell('${row.key}','observations', this.value)">${htmlEscape(String(row.observations || ""))}</textarea></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><button class="ghost" onclick="saveTopPerformerAptitudinalByAnalyst('${encodeURIComponent(row.analystEmail)}')">Guardar</button></td></tr>`
+        const borderTop = isNewAnalyst ? "border-top:2px solid rgba(255,255,255,.85);" : ""
+        const groupIndex = Number(analystGroupByEmail[String(row?.analystEmail || "")] || 0)
+        const rowBg = groupIndex % 2 === 0 ? "rgba(255,255,255,.035)" : "rgba(61,110,245,.07)"
+        return `<tr style="background:${rowBg}"><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${htmlEscape(userDisplayNameByEmail(row.analystEmail) || row.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><input type="month" value="${htmlEscape(String(row.month || ""))}" onchange="updateTopPerformerAptitudinalCell('${row.key}','month', this.value)"></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><select onchange="updateTopPerformerAptitudinalCell('${row.key}','evaluatorEmail', this.value)"><option value="">Seleccionar admin</option>${admins.map(ad => `<option value="${htmlEscape(ad.email)}" ${ad.email===row.evaluatorEmail?'selected':''}>${htmlEscape(ad.name)}</option>`).join("")}</select></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("workManagement", row.workManagement)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("problemSolving", row.problemSolving)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("adaptabilityLearning", row.adaptabilityLearning)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("teamwork", row.teamwork)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}">${inputScore("focusCommitment", row.focusCommitment)}</td><td id="tp_final_${row.key}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${final.toFixed(2)}</td><td data-tp-total="${emailKey(row.analystEmail)}" style="padding:8px;border-bottom:1px solid var(--stroke-2);font-weight:700;${borderTop}">${total.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><textarea style="min-height:42px" onchange="updateTopPerformerAptitudinalCell('${row.key}','observations', this.value)">${htmlEscape(String(row.observations || ""))}</textarea></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);${borderTop}"><button class="ghost" onclick="saveTopPerformerAptitudinalByAnalyst('${encodeURIComponent(row.analystEmail)}')">Guardar</button></td></tr>`
       }).join("")
       return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Aptitudinal</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Mes evaluación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Evaluador (admin)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Gestión de trabajo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Resolución de problemas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Adaptabilidad y aprendizaje</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Colaboración y equipo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Enfoque y compromiso</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje final</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio total</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Guardar</th></tr></thead><tbody>${bodyRows}</tbody></table></div><div class="card" style="margin-top:12px;padding:12px"><h4 style="margin:0 0 8px">Detalle de criterios</h4>${details.map(([title,text]) => `<div class="feedItem"><div class="feedType">${htmlEscape(title)}</div><div class="feedMeta">${htmlEscape(text)}</div></div>`).join("")}</div></div>`
     }
