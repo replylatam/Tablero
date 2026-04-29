@@ -1259,22 +1259,11 @@
       </div>
     </div>
   </div>
-  <div id="chatModal" class="modalBack hidden">
-    <div class="card modal">
-      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
-        <h3 style="margin:0">Chat entre usuarios</h3>
-        <button class="secondary" onclick="closeChatModal()">Cerrar</button>
-      </div>
-      <label>Conversar con</label>
-      <select id="chatTargetUser" onchange="loadDirectChatMessages()"></select>
-      <div id="chatMessages" class="chatMessages small"></div>
-      <label style="margin-top:10px">Mensaje</label>
-      <textarea id="chatMessageInput" placeholder="Escribí un mensaje"></textarea>
-      <div class="inline" style="justify-content:flex-end">
-        <button onclick="sendDirectChatMessage()">Enviar</button>
-      </div>
-    </div>
+  <div id="chatDock" class="card" style="position:fixed;left:14px;bottom:78px;z-index:220;max-width:320px;padding:10px;display:none">
+    <div class="small" style="margin-bottom:6px"><strong>Mensajes</strong></div>
+    <div id="chatUserList" style="max-height:220px;overflow-y:auto"></div>
   </div>
+  <div id="chatWindowsWrap" style="position:fixed;left:350px;bottom:20px;display:flex;gap:8px;z-index:220"></div>
 
   <div id="userEditModal" class="modalBack hidden">
     <div class="card modal">
@@ -1796,6 +1785,9 @@
     var analystNotificationsOpen = false
     var analystNotifRefreshTimer = null
     var analystBoardSettings = { autoTimerOnStatusChange: false }
+    var ticketAutomationSettings = { autoCommentMissedRecurringAgenda: true }
+    var openDirectChats = {}
+    var directChatUnread = {}
     var encuentroSelectedGif = ""
     var activeGifTarget = { mode: "encuentro", ticketId: "" }
     var encuentroReactionOptions = ["👍","👎","🔥","💀","👏","❤️","🚀"]
@@ -5248,90 +5240,28 @@ Cliente B`)
       if(adminPanelTab === "agenda") loadAdminAgenda()
       showToast("Ayudante agregado.", "ok", 1400)
     }
-    function teardownDirectChatListener(){
-      if(activeDirectChatRef){
-        activeDirectChatRef.off("value")
-        activeDirectChatRef = null
-      }
-      activeDirectChatId = ""
-    }
-    function buildDirectChatId(a, b){
-      const sorted = [String(a || "").toLowerCase(), String(b || "").toLowerCase()].sort()
-      return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g, "_")
-    }
-
+    function teardownDirectChatListener(){}
+    function buildDirectChatId(a, b){ const sorted=[String(a||""
+).toLowerCase(),String(b||"").toLowerCase()].sort(); return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g,"_") }
     async function openChatModal(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
-      const me = String(currentUser?.email || "").toLowerCase()
-      const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
-      const users = Object.values(usersByEmail)
-        .filter(u => String(u?.email || "").toLowerCase() !== me && u?.active !== false)
-        .sort((a,b)=> String(userDisplayNameByEmail(a?.email || "") || a?.email || "").localeCompare(String(userDisplayNameByEmail(b?.email || "") || b?.email || "")))
-      const select = document.getElementById("chatTargetUser")
-      if(select){
-        select.innerHTML = users.length
-          ? users.map(u => `<option value="${htmlEscape(String(u.email || "").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email || "") || u.email || "-")}</option>`).join("")
-          : `<option value="">Sin usuarios disponibles</option>`
-      }
-      document.getElementById("chatModal")?.classList.remove("hidden")
-      loadDirectChatMessages()
+      const dock=document.getElementById("chatDock"); if(!dock) return
+      dock.style.display = dock.style.display === "none" || !dock.style.display ? "block" : "none"
+      if(dock.style.display === "none") return
+      const me=String(currentUser?.email||"").toLowerCase()
+      const usersByEmail=(await db.ref("users_by_email").once("value")).val()||{}
+      const users=Object.values(usersByEmail).filter(u=>String(u?.email||"").toLowerCase()!==me && u?.active!==false).slice(0,50)
+      const list=document.getElementById("chatUserList")
+      if(list) list.innerHTML = users.map(u=>{ const email=String(u.email||"").toLowerCase(); const badge=(directChatUnread[email]||0)>0?`<span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 6px">${directChatUnread[email]}</span>`:""; return `<button class="ghost" style="width:100%;text-align:left;margin:2px 0" onclick="openDirectChatWindow('${email}')"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u,email))}" data-fallback="${htmlEscape(buildInitialAvatar(email||'U'))}" onerror="handleAvatarError(this)"> ${htmlEscape(userDisplayNameByEmail(email)||email)} ${badge}</button>` }).join("")
     }
-
-    function closeChatModal(){
-      teardownDirectChatListener()
-      document.getElementById("chatModal")?.classList.add("hidden")
-    }
-
-    function renderDirectChatMessages(list = []){
-      const wrap = document.getElementById("chatMessages")
-      if(!wrap) return
-      const shouldAutoScroll = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < 40
-      wrap.innerHTML = list.length
-        ? list.map(msg => `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from || msg?.fromName || "-"))} · ${msg?.createdAt ? formatDateTime24(msg.createdAt) : ""}</div><div>${htmlEscape(msg?.text || "")}</div></div>`).join("")
-        : `<p class="small">Todavía no hay mensajes en este chat.</p>`
-      if(shouldAutoScroll || !list.length) wrap.scrollTop = wrap.scrollHeight
-    }
-
-    function loadDirectChatMessages(){
-      const wrap = document.getElementById("chatMessages")
-      if(!wrap) return
-      const me = String(currentUser?.email || "").toLowerCase()
-      const target = String(document.getElementById("chatTargetUser")?.value || "").toLowerCase()
-      teardownDirectChatListener()
-      if(!target){
-        wrap.innerHTML = `<p class="small">Seleccioná un usuario para iniciar la conversación.</p>`
-        return
-      }
-      const chatId = buildDirectChatId(me, target)
-      activeDirectChatId = chatId
-      activeDirectChatRef = db.ref("direct_chats").child(chatId)
-      activeDirectChatRef.on("value", snap => {
-        if(activeDirectChatId !== chatId) return
-        const data = snap.val() || {}
-        const list = Object.values(data).sort((a,b)=> new Date(a?.createdAt || 0) - new Date(b?.createdAt || 0))
-        renderDirectChatMessages(list)
-      })
-    }
-
-    async function sendDirectChatMessage(){
-      const me = String(currentUser?.email || "").toLowerCase()
-      const target = String(document.getElementById("chatTargetUser")?.value || "").toLowerCase()
-      const textEl = document.getElementById("chatMessageInput")
-      const text = String(textEl?.value || "").trim()
-      if(!target) return alert("Seleccioná un usuario.")
-      if(!text) return alert("Escribí un mensaje.")
-      const chatId = buildDirectChatId(me, target)
-      await db.ref("direct_chats").child(chatId).push({
-        from: me,
-        to: target,
-        text,
-        createdAt: new Date().toISOString()
-      })
-      if(textEl) textEl.value = ""
-      loadDirectChatMessages()
-    }
-
-    async function submitSupportRequest(){
+    function closeChatModal(){ const dock=document.getElementById("chatDock"); if(dock) dock.style.display="none" }
+    function renderDirectChatMessages(target,list=[]){ const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>`<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))}</div><div>${htmlEscape(msg?.text||"")}</div></div>`).join(""); wrap.scrollTop=wrap.scrollHeight }
+    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.values(data).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && openDirectChats[target]?.minimized){ directChatUnread[target]=(directChatUnread[target]||0)+1; updateChatWindowState(target);} }) }
+    function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(!win) return; win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)" }
+    function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target].minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; updateChatWindowState(target)} }
+    function openDirectChatWindow(target){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:280px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)}</strong><div><button class="ghost" onclick="toggleChatWindow('${target}')">_</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div></div></div>`)} directChatUnread[target]=0; updateChatWindowState(target); loadDirectChatMessages(target) }
+    async function sendDirectChatMessage(target){ const me=String(currentUser?.email||"").toLowerCase(); const textEl=document.getElementById(`chatInput_${emailKey(target)}`); const text=String(textEl?.value||"").trim(); if(!text) return; const chatId=buildDirectChatId(me,target); await db.ref("direct_chats").child(chatId).push({from:me,to:target,text,createdAt:new Date().toISOString()}); if(textEl) textEl.value="" }
+async function submitSupportRequest(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       const title = (document.getElementById("supportTitle")?.value || "").trim()
       const detail = (document.getElementById("supportDetail")?.value || "").trim()
@@ -7756,6 +7686,7 @@ Cliente B`)
         setupRealtimeStreams()
         if(!showAdminPanel) loadDashboard()
         if(!showAdminPanel) loadTickets()
+        if(isAdmin) applyRecurringAutoCommentIfNeeded()
         if(isAnalyst || currentRole === "consultor" || isAdmin){
           refreshAnalystNotificationBadge()
           startAnalystNotifRefreshTimer()
@@ -9429,7 +9360,25 @@ Cliente B`)
 
 
 
-    function getVisibleTicketsForCurrentView(data, includeSearch = true){
+
+    async function applyRecurringAutoCommentIfNeeded(){
+      const cfg=(await db.ref("app_settings/ticket_automation").once("value")).val()||{}
+      ticketAutomationSettings.autoCommentMissedRecurringAgenda = cfg.autoCommentMissedRecurringAgenda !== false
+      if(!ticketAutomationSettings.autoCommentMissedRecurringAgenda) return
+      const today = ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"][new Date().getDay()]
+      for(const t of (cachedTickets||[])) {
+        const rec = recurrenceDaysFromTicket(t)
+        if(!rec.includes(today)) continue
+        if(t.agendaTomorrow) continue
+        const mark=`auto_recurring_${toLocalDateOnly(new Date())}`
+        const comments={...(t.comments||{})}
+        if(Object.values(comments).some(c=>String(c?.metaKey||"")===mark)) continue
+        comments[generateId()]={message:`Comentario automático: tarea recurrente no agendada para hoy (${today}).`,author:"sistema",createdAt:new Date().toISOString(),internal:true,maximumAttention:true,metaKey:mark}
+        const updated={...t,comments,updatedAt:new Date().toISOString(),updatedBy:String(currentUser?.email||"")}
+        await db.ref("tickets").child(t.dbKey||emailKey(t.id)).update(updated)
+      }
+    }
+function getVisibleTicketsForCurrentView(data, includeSearch = true){
       return Object.values(data || {}).filter(t => {
         const canSeeTicket = currentRole === "admin" || currentRole === "analista" || (currentRole === "consultor" && (resolveInformerEmail(t) === (currentUser.email||"").toLowerCase()))
         if(!canSeeTicket) return false
@@ -9689,7 +9638,7 @@ Cliente B`)
               </div>
             </div>
             <div><label>Detalle</label><div id="detail-description-editor-${ticketWithRead.id}" class="commentEditor" contenteditable="${canEdit ? "true" : "false"}" data-placeholder="Detalle del ticket" ${canEdit ? `oninput="syncRichEditorToTextarea('detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}')" onblur="autoSaveTicketDetail('${ticketWithRead.id}')" ondragover="handleRichEditorImageDragOver(event)" ondragleave="handleRichEditorImageDragLeave(event)" ondrop="handleRichEditorImageDrop(event,'detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"` : ""}>${ticketWithRead.descriptionHtml ? safeCommentHtml(ticketWithRead.descriptionHtml) : htmlEscape(ticketWithRead.description||"").replace(/\n/g, "<br>")}</div><textarea id="detail-description-${ticketWithRead.id}" class="hidden">${htmlEscape(ticketWithRead.description||"")}</textarea>${canEdit ? `<div class="inline" style="margin-top:6px;gap:6px;align-items:center"><label class="ghost attachBtn" for="detail-description-file-${ticketWithRead.id}" title="Insertar imagen en el detalle">🖼️</label><input id="detail-description-file-${ticketWithRead.id}" class="attachInput" type="file" accept="image/*" onchange="handleRichEditorImageFileChange('detail-description-file-${ticketWithRead.id}','detail-description-editor-${ticketWithRead.id}','detail-description-${ticketWithRead.id}','${ticketWithRead.id}')"><span class="small">Arrastrá imágenes o usá el botón</span></div>` : ""}</div>
-            
+
             <div><label>Cliente</label><select id="detail-client-${ticketWithRead.id}" ${canEdit?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEdit?"":"disabled"}>${clientOptions}</select></div>
             <div><label>Informador</label><select id="detail-informer-${ticketWithRead.id}" ${canEditInformer?`onchange="autoSaveTicketDetail('${ticketWithRead.id}')"`:""} ${canEditInformer?"":"disabled"}>${informerOptions}</select></div>
             ${customDetailHtml}
@@ -10262,7 +10211,6 @@ Cliente B`)
       const me = String(currentUser?.email || "").toLowerCase()
       const isAssignedToMe = emailKey(String(ticket?.assignedTo || "").toLowerCase()) === emailKey(me)
       const isHelper = Array.isArray(ticket?.helpers) && ticket.helpers.some(h => emailKey(String(h || "").toLowerCase()) === emailKey(me))
-      if(!isAssignedToMe && !isHelper) return
       const userKey = emailKey(me)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
       try{
