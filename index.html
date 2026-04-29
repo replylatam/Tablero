@@ -5224,14 +5224,24 @@ Cliente B`)
       })
     }
 
-    async function sendAgendaAlertToAnalyst(email){
+    
+    async function openInlineReasonModal(title, defaultValue=""){
+      return new Promise(resolve=>{
+        const modal=document.getElementById("globalInlineReasonModal") || (()=>{ const m=document.createElement("div"); m.id="globalInlineReasonModal"; m.className="modal hidden"; m.innerHTML=`<div class='modal-content card' style='max-width:520px'><h3 id='inlineReasonTitle' style='margin-top:0'></h3><textarea id='inlineReasonInput' style='min-height:100px'></textarea><div class='inline' style='justify-content:flex-end'><button class='ghost' id='inlineReasonCancel'>Cancelar</button><button id='inlineReasonOk'>Enviar</button></div></div>`; document.body.appendChild(m); return m })();
+        document.getElementById('inlineReasonTitle').textContent=title||'Motivo';
+        const input=document.getElementById('inlineReasonInput'); input.value=defaultValue||''; modal.classList.remove('hidden');
+        document.getElementById('inlineReasonCancel').onclick=()=>{ modal.classList.add('hidden'); resolve('') };
+        document.getElementById('inlineReasonOk').onclick=()=>{ const v=input.value; modal.classList.add('hidden'); resolve(v) };
+      })
+    }
+async function sendAgendaAlertToAnalyst(email){
       if(currentRole !== "admin") return
       const target = String(email || "").toLowerCase()
       if(!target) return alert("Seleccioná un analista.")
       if(target === String(currentUser?.email || "").toLowerCase()) return
       await db.ref("analyst_alerts").child(emailKey(target)).set({
         analystEmail: target,
-        message: String(prompt("Motivo de la alerta para el analista:", "Es momento de completar la agenda") || "").trim() || "Es momento de completar la agenda",
+        message: String(await openInlineReasonModal("Motivo de la alerta", "Es momento de completar la agenda") || "").trim() || "Es momento de completar la agenda",
         createdAt: new Date().toISOString(),
         createdBy: String(currentUser?.email || "").toLowerCase()
       })
@@ -5261,7 +5271,7 @@ Cliente B`)
       await logActivity("ticket_reasignado", { ticketId: ticket.id, from: String(ticket.assignedTo||"").toLowerCase(), to: target, changedAt })
       showToast("Responsable actualizado.", "ok", 1500)
       loadTickets()
-      if(adminPanelTab === "agenda") loadAdminAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
     }
 
     async function addHelperFromAgenda(ticketId){
@@ -5293,7 +5303,7 @@ Cliente B`)
     async function openChatModal(forceOpen){ ensureChatContainers(); if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return; const dock=document.getElementById("chatDock"); if(!dock) return; if(typeof forceOpen === "boolean") dock.style.display = forceOpen ? "block" : "none"; else dock.style.display = dock.style.display === "none" || !dock.style.display ? "block" : "none"; if(dock.style.display === "none") return; const me=String(currentUser?.email||"").toLowerCase(); const usersByEmail=(await db.ref("users_by_email").once("value")).val()||{}; const meUser = usersByEmail[emailKey(me)] || {}; const presenceSelect = document.getElementById("chatPresenceSelect"); if(presenceSelect) presenceSelect.value = String(meUser?.presenceStatus || "online"); const q = String(document.getElementById("chatUserSearch")?.value || "").trim().toLowerCase(); const users=Object.values(usersByEmail).filter(u=>String(u?.email||"").toLowerCase()!==me && u?.active!==false).filter(u=>!q || String(u?.email||"").toLowerCase().includes(q) || String(u?.name||u?.displayName||"").toLowerCase().includes(q)).slice(0,80); const list=document.getElementById("chatUserList"); if(list) list.innerHTML = users.map(u=>{ const email=String(u.email||"").toLowerCase(); const badge=(directChatUnread[email]||0)>0?`<span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 6px">${directChatUnread[email]}</span>`:""; const meta=directChatMeta[email]||{}; const preview=meta.text?`<div class='small' style='color:var(--muted)'>${htmlEscape(meta.text)} · ${htmlEscape(relativeTimeFromIso(meta.createdAt))}</div>`:''; return `<button class="ghost" style="width:100%;text-align:left;margin:2px 0" onclick="openDirectChatWindow('${email}')"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u,email))}" data-fallback="${htmlEscape(buildInitialAvatar(email||'U'))}" onerror="handleAvatarError(this)"> ${presenceDot(getUserPresenceState(u))}${htmlEscape(userDisplayNameByEmail(email)||email)} ${badge}${preview}</button>` }).join("") }
     function closeChatModal(){ const dock=document.getElementById("chatDock"); if(dock) dock.style.display="none" }
     function renderDirectChatMessages(target,list=[]){ const me=String(currentUser?.email||"").toLowerCase(); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>{ const mine=String(msg?.from||"").toLowerCase()===me; const seen = !!msg?.readBy?.[emailKey(target)]; const ticks = mine ? `<span style="color:${seen?'#3b82f6':'var(--muted)'}">✓✓</span>` : ''; return `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))} · ${msg?.createdAt ? htmlEscape(formatDateTime24(msg.createdAt)) : ""}${msg?.editedAt ? " · editado" : ""}</div><div>${htmlEscape(msg?.text||"")}</div><div class="inline small" style="justify-content:space-between;gap:8px">${ticks}${mine?`<span><a href="javascript:void(0)" style="color:var(--text-2)" onclick="editDirectChatMessage('${target}','${msg?.id||""}')">editar</a> · <a href="javascript:void(0)" style="color:var(--text-2)" onclick="deleteDirectChatMessage('${target}','${msg?.id||""}')">eliminar</a></span>`:""}</div></div>` }).join(""); wrap.scrollTop=wrap.scrollHeight }
-    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref){ openDirectChats[target].ref.off(); } const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; let list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const local=openDirectChats[target]?.localList||[]; if(local.length){ list=[...list,...local.filter(l=>!list.some(x=>String(x.text||"")===String(l.text||"") && String(x.createdAt||"")===String(l.createdAt||"")))].sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); } openDirectChats[target].lastCount=list.length; if(list.length) directChatMeta[target]={text:list[list.length-1].text||'',createdAt:list[list.length-1].createdAt||''}; renderDirectChatMessages(target,list); const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString())); directChatUnread[target]=0; syncDirectChatUnread(); } else { directChatUnread[target]=unreadIncoming.length; syncDirectChatUnread(); } updateChatWindowState(target) }) }
+    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref){ openDirectChats[target].ref.off(); } const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; let list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const local=openDirectChats[target]?.localList||[]; if(local.length){ list=[...list,...local.filter(l=>!list.some(x=>String(x.text||"")===String(l.text||"") && String(x.createdAt||"")===String(l.createdAt||"")))].sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); } openDirectChats[target].lastCount=list.length; if(list.length) directChatMeta[target]={text:list[list.length-1].text||'',createdAt:list[list.length-1].createdAt||''}; renderDirectChatMessages(target,list); const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString())); directChatUnread[target]=0; syncDirectChatUnread(); } else { directChatUnread[target]=unreadIncoming.length; syncDirectChatUnread(); } updateChatWindowState(target); if((unreadIncoming||[]).length && !document.getElementById(`chatWin_${emailKey(target)}`)){ openDirectChatWindow(target,{minimized:true}); } }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(win) win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:""; const fab=document.querySelector('.chatFab'); if(fab) fab.setAttribute('data-unread', String(totalUnreadCount())) }
     function setTypingState(target,isTyping){ const me=emailKey(String(currentUser?.email||'').toLowerCase()); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); db.ref('chat_typing').child(chatId).child(me).set(isTyping?new Date().toISOString():null) }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target]?.minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(wrap) wrap.scrollTop=wrap.scrollHeight } }
@@ -9352,7 +9362,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
+          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.","warn",2600,true)
           return
         }
       }
@@ -9408,7 +9418,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          return alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
+          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.","warn",2600,true)
         }
       }
 
@@ -11415,7 +11425,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       showToast("Usuario actualizado.", "ok")
       await loadUsersAdmin()
       await loadFilterOptions()
-      if(adminPanelTab === "agenda") loadAdminAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
     }
 
     async function deleteUserAccess(key,email){
@@ -12116,7 +12126,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
 
     
     var adminAgendaHistoryView = "comments"
-    function setAgendaHistoryView(mode){ adminAgendaHistoryView = mode === "agenda" ? "agenda" : "comments"; if(adminPanelTab === "agenda") loadAdminAgenda() }
+    function setAgendaHistoryView(mode){ adminAgendaHistoryView = mode === "agenda" ? "agenda" : "comments"; if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() } }
     async function assignTicketToAnalystFromAgenda(ticketId, analyst){ const ticket=(cachedTickets||[]).find(t=>String(t.id||"")===String(ticketId||"")); const to=String(analyst||"").toLowerCase(); if(!ticket||!to) return; const updated={...ticket,assignedTo:to,status:String(ticket.status||"")==='unassigned'?'todo':ticket.status,updatedAt:new Date().toISOString(),updatedBy:String(currentUser?.email||"").toLowerCase()}; await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated); const ix=cachedTickets.findIndex(t=>t.id===ticket.id); if(ix>=0) cachedTickets[ix]=updated; loadAdminAgenda(); }
 function setAdminAgendaTeam(team){
       adminAgendaTeam = team === "equipo_2" ? "equipo_2" : "equipo_1"
@@ -12288,7 +12298,7 @@ function setAdminAgendaTeam(team){
       }).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
 
       const agendaRows = scoped.flatMap(t => {
-        const owner = String(t.assignedTo || "").toLowerCase()
+        const owner = String(t._agendaAnalyst || t.assignedTo || "").toLowerCase()
         const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : []).map(h => String(h||"").toLowerCase()).filter(h => teamSet.has(h) && h !== owner)
         const rows = teamSet.has(owner) ? [{ ...t, _agendaRoleIcon: "👑", _agendaAnalyst: owner }] : []
         helpersInTeam.forEach(helper => rows.push({ ...t, _agendaRoleIcon: "🤝", _agendaAnalyst: helper }))
@@ -12358,7 +12368,7 @@ function setAdminAgendaTeam(team){
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del admin</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del analista</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Agenda de mañana?</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. modificación agenda</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
@@ -12391,7 +12401,7 @@ function setAdminAgendaTeam(team){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.adminComment||"")}" title="${htmlEscape(t.adminComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'adminComment', this.value)" oninput="this.title=this.value" placeholder="Comentario interno"></td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrow ? "✅" : "—"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
@@ -12405,13 +12415,13 @@ function setAdminAgendaTeam(team){
           </table>
           </div>
         </div>
-        <div class="agendaSection">
+        <div class="agendaSection" style="background:rgba(255,255,255,.03);padding:10px;border-radius:10px">
           <h4>Tickets sin asignar</h4>
           <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha creación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Código</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Responsable</th></tr></thead><tbody>${unassignedTickets.map(t=>`<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="assignTicketToAnalystFromAgenda('${t.id}', this.value)"><option value=''>Asignar…</option>${teamAnalysts.map(a=>`<option value='${htmlEscape(a)}'>${htmlEscape(userDisplayNameByEmail(a)||a)}</option>`).join("")}</select></td></tr>`).join("") || `<tr><td colspan='6' class='small' style='padding:8px'>No hay tickets sin asignar.</td></tr>`}</tbody></table></div>
         </div>
         <div class="agendaSection">
-          <h4>Tickets sin atención por 7 días</h4>
-          ${renderInactiveTicketsTable(teamTicketsAll, logs)}
+          <h4>Tickets sin asignar</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha creación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Código</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Responsable</th></tr></thead><tbody>${unassignedTickets.map(t=>`<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="assignTicketToAnalystFromAgenda('${t.id}', this.value)"><option value=''>Asignar…</option>${teamAnalysts.map(a=>`<option value='${htmlEscape(a)}'>${htmlEscape(userDisplayNameByEmail(a)||a)}</option>`).join("")}</select></td></tr>`).join("") || `<tr><td colspan='6' class='small' style='padding:8px'>No hay tickets sin asignar.</td></tr>`}</tbody></table></div>
         </div>
         <div class="agendaSection">
           <h4>Historial</h4>
@@ -12470,7 +12480,7 @@ function setAdminAgendaTeam(team){
       if(ix >= 0) cachedTickets[ix] = updated
       await logActivity("ticket_actualizado", { ticketId, changes: `plannedWorkDate: \"${String(ticket.plannedWorkDate || "")}\" → \"${String(updated.plannedWorkDate || "")}\"` })
       showToast("Planificación guardada.", "ok", 1200)
-      if(adminPanelTab === "agenda") loadAdminAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
       if(analystPanelTab === "agenda") loadAnalystAgenda()
     }
 
@@ -12486,7 +12496,7 @@ function setAdminAgendaTeam(team){
     }
 
     async function updateTicketAgendaField(ticketId, field, value){
-      const allowed = new Set(["recurrence", "observations", "remainingQuantity", "adminComment", "analystComment"])
+      const allowed = new Set(["recurrence", "observations", "remainingQuantity", "adminComment", "analystComment", "analystLastWorkDate"])
       if(!allowed.has(field)) return
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
@@ -12498,7 +12508,7 @@ function setAdminAgendaTeam(team){
       await logAgendaCommentHistory(updated, field, value)
       await logActivity("ticket_actualizado", { ticketId, changes: `${field}: \"${String(ticket[field] || "")}\" → \"${String(updated[field] || "")}\"` })
       showToast("Agenda actualizada.", "ok", 900)
-      if(adminPanelTab === "agenda") loadAdminAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
       if(analystPanelTab === "agenda") loadAnalystAgenda()
     }
 
@@ -12550,7 +12560,7 @@ function setAdminAgendaTeam(team){
       const ix = cachedTickets.findIndex(t => t.id === ticketId)
       if(ix >= 0) cachedTickets[ix] = updated
       openTicketDetailModal(ticketId)
-      if(adminPanelTab === "agenda") loadAdminAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
       if(analystPanelTab === "agenda") loadAnalystAgenda()
     }
 
@@ -12662,9 +12672,9 @@ function setAdminAgendaTeam(team){
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario del analista</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última fecha de trabajo</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Agenda de mañana?</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Comentario del analista</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Última fecha de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Modificado</th>
@@ -12684,9 +12694,9 @@ function setAdminAgendaTeam(team){
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")} ${(String(t.status||'')==='doing') ? '🕒' : ''}</td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="checkbox" ${t.agendaTomorrow ? "checked" : ""} onchange="updateTicketAgendaTomorrow('${t.id}', this.checked)"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${timeInfo.lastTimeAt ? htmlEscape(formatDateTime24(timeInfo.lastTimeAt)) : "-"}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)" onclick="event.stopPropagation()"><input type="checkbox" ${t.agendaTomorrow ? "checked" : ""} onchange="updateTicketAgendaTomorrow('${t.id}', this.checked)"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.analystLastWorkDate||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystLastWorkDate', this.value)"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastInfo?.author || '')}">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })) : "-"}</td>
@@ -12698,9 +12708,10 @@ function setAdminAgendaTeam(team){
             </tbody>
           </table>
         </div>
+        <div class="agendaSection"><h4>Para tener en cuenta</h4><textarea id="analystDailyNote" placeholder="Escribí algo para hoy..." style="min-height:90px"></textarea><div class="inline" style="margin-top:8px"><button class="ghost" onclick="saveAnalystDailyNote()">Guardar nota del día</button></div><div id="analystDailyNoteHistory" class="small" style="margin-top:8px"></div></div>
         <div class="small" style="margin-top:10px"><strong>Tareas con comentarios pendientes:</strong> ${withPending.length}</div>
         <div class="agendaSection"><h4>Tickets sin atención por 7 días</h4>${renderInactiveTicketsTable(scoped, logs)}</div>
-        <div class="agendaSection"><h4>Historial</h4><div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>${(adminAgendaHistoryView||'comments')==='comments' ? historyHtml : `<div class="small">El historial de agenda guardada está disponible en Organizar agenda por equipo.</div>`}</div><div class="agendaSection"><h4>Para tener en cuenta</h4><textarea id="analystDailyNote" placeholder="Escribí algo para hoy..." style="min-height:90px"></textarea><div class="inline" style="margin-top:8px"><button class="ghost" onclick="saveAnalystDailyNote()">Guardar nota del día</button></div><div id="analystDailyNoteHistory" class="small" style="margin-top:8px"></div></div>
+        <div class="agendaSection"><h4>Historial</h4><div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>${historyHtml}</div>
       `
     }
 
