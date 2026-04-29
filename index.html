@@ -6363,7 +6363,7 @@ async function submitSupportRequest(){
         const pRef = db.ref("users_by_email").child(meKey)
         pRef.onDisconnect().update({ sessionActive:false, presenceStatus:"offline", lastSeenAt:new Date().toISOString() })
         clearInterval(chatInboxInterval)
-        chatInboxInterval = setInterval(pollIncomingDirectChats, 4000)
+        chatInboxInterval = setInterval(pollIncomingDirectChats, 1200)
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
         if(mustRotatePassword(user)){
@@ -9352,7 +9352,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
+          alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
           return
         }
       }
@@ -9408,7 +9408,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
+          return alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
         }
       }
 
@@ -12114,7 +12114,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       document.getElementById("adminReassignWindowModal")?.classList.add("hidden")
     }
 
-    function setAdminAgendaTeam(team){
+    
+    var adminAgendaHistoryView = "comments"
+    function setAgendaHistoryView(mode){ adminAgendaHistoryView = mode === "agenda" ? "agenda" : "comments"; if(adminPanelTab === "agenda") loadAdminAgenda() }
+    async function assignTicketToAnalystFromAgenda(ticketId, analyst){ const ticket=(cachedTickets||[]).find(t=>String(t.id||"")===String(ticketId||"")); const to=String(analyst||"").toLowerCase(); if(!ticket||!to) return; const updated={...ticket,assignedTo:to,status:String(ticket.status||"")==='unassigned'?'todo':ticket.status,updatedAt:new Date().toISOString(),updatedBy:String(currentUser?.email||"").toLowerCase()}; await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated); const ix=cachedTickets.findIndex(t=>t.id===ticket.id); if(ix>=0) cachedTickets[ix]=updated; loadAdminAgenda(); }
+function setAdminAgendaTeam(team){
       adminAgendaTeam = team === "equipo_2" ? "equipo_2" : "equipo_1"
       loadAdminAgenda()
     }
@@ -12278,6 +12282,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         if(createdDiff !== 0) return createdDiff
         return String(a.id || "").localeCompare(String(b.id || ""))
       })
+      const unassignedTickets = (tickets || []).filter(t => {
+        const owner = String(t.assignedTo||"").toLowerCase()
+        return !owner && String(t.status||"") !== "done"
+      }).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
+
       const agendaRows = scoped.flatMap(t => {
         const owner = String(t.assignedTo || "").toLowerCase()
         const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : []).map(h => String(h||"").toLowerCase()).filter(h => teamSet.has(h) && h !== owner)
@@ -12285,7 +12294,16 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         helpersInTeam.forEach(helper => rows.push({ ...t, _agendaRoleIcon: "🤝", _agendaAnalyst: helper }))
         return rows
       })
-      adminAgendaCurrentRows = [...agendaRows]
+      const orderedAgendaRows = [...agendaRows].sort((a,b)=>{
+        const aa = String(a._agendaAnalyst || a.assignedTo || "zzzz").toLowerCase()
+        const bb = String(b._agendaAnalyst || b.assignedTo || "zzzz").toLowerCase()
+        if(aa !== bb) return aa.localeCompare(bb)
+        const ra = String(a._agendaRoleIcon||"") === "👑" ? 0 : 1
+        const rb = String(b._agendaRoleIcon||"") === "👑" ? 0 : 1
+        if(ra !== rb) return ra-rb
+        return String(a.id||"").localeCompare(String(b.id||""))
+      })
+      adminAgendaCurrentRows = [...orderedAgendaRows]
 
       const analystChecks = document.getElementById("agendaFilterAnalystChecks")
       const ticketInput = document.getElementById("agendaFilterTicketId")
@@ -12348,7 +12366,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
               </tr>
             </thead>
             <tbody>
-              ${agendaRows.map(t => {
+              ${orderedAgendaRows.map(t => {
                 const lastComment = ticketLastCommentAt(t)
                 const lastCommentInfo = ticketLastCommentInfo(t)
                 const owner = String(t.assignedTo || "").toLowerCase()
@@ -12386,16 +12404,17 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
           </div>
         </div>
         <div class="agendaSection">
+          <h4>Tickets sin asignar</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha creación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Código</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Responsable</th></tr></thead><tbody>${unassignedTickets.map(t=>`<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="assignTicketToAnalystFromAgenda('${t.id}', this.value)"><option value=''>Asignar…</option>${teamAnalysts.map(a=>`<option value='${htmlEscape(a)}'>${htmlEscape(userDisplayNameByEmail(a)||a)}</option>`).join("")}</select></td></tr>`).join("") || `<tr><td colspan='6' class='small' style='padding:8px'>No hay tickets sin asignar.</td></tr>`}</tbody></table></div>
+        </div>
+        <div class="agendaSection">
           <h4>Tickets sin atención por 7 días</h4>
           ${renderInactiveTicketsTable(teamTicketsAll, logs)}
         </div>
         <div class="agendaSection">
-          <h4>Histórico de comentarios</h4>
-          ${historyHtml}
-        </div>
-        <div class="agendaSection">
-          <h4>Historial de agenda guardada (${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"})</h4>
-          ${savedHistory.length ? savedHistory.map(item => { const byAnalyst={}; (item.rows||[]).forEach(r=>{ const a=String(r.assignedTo||"sin_asignar").toLowerCase(); if(!byAnalyst[a])byAnalyst[a]=[]; byAnalyst[a].push(r) }); return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${Object.entries(byAnalyst).map(([analyst,rows])=>`<div style='margin:8px 0'><strong>${htmlEscape(userDisplayNameByEmail(analyst)||analyst)}</strong><br>${rows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")} · Plan: ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>")}</div>`).join("") || "Sin filas"}</div></div>` }).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`}
+          <h4>Historial</h4>
+          <div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>
+          <div id="agendaHistoryDynamic">${(adminAgendaHistoryView||'comments')==='comments' ? historyHtml : (savedHistory.length ? savedHistory.map(item => { const byAnalyst={}; (item.rows||[]).forEach(r=>{ const a=String(r.assignedTo||"sin_asignar").toLowerCase(); if(!byAnalyst[a])byAnalyst[a]=[]; byAnalyst[a].push(r) }); return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${Object.entries(byAnalyst).map(([analyst,rows])=>`<div style='margin:8px 0'><strong>${htmlEscape(userDisplayNameByEmail(analyst)||analyst)}</strong><br>${rows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")} · Plan: ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>")}</div>`).join("") || "Sin filas"}</div></div>` }).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`)}</div>
         </div>
       `
     }
@@ -13505,7 +13524,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
             renderApp()
             await updateMyPresence(document.hidden ? "away" : "online")
             clearInterval(chatInboxInterval)
-            chatInboxInterval = setInterval(pollIncomingDirectChats, 4000)
+            chatInboxInterval = setInterval(pollIncomingDirectChats, 1200)
           }else{
             clearSession()
             renderLogin()
