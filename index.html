@@ -6278,6 +6278,10 @@ Cliente B`)
 
         currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
         currentRole = user.role
+        if(currentRole === "admin" && Number(currentUser?.adminLevel || 0) === 3){
+          mainViewTab = "summary_general"
+          adminPanelTab = "panel"
+        }
         persistSession()
         await loadMenuPermissions()
         startMenuPermissionsSync()
@@ -10194,7 +10198,7 @@ Cliente B`)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
       try{
         if(prevStatus !== "doing" && next === "doing"){
-          await startTicketTimerForUser(ticket.id, userKey)
+          await startTicketTimerForUser(ticket.id, userKey, { openDetail: false })
         }else if(prevStatus === "doing" && next !== "doing"){
           const users = ticket?.timeTracking?.users || {}
           if(users[userKey]?.timerStartAt){
@@ -10340,12 +10344,12 @@ Cliente B`)
       return startTicketTimerForUser(ticketId, userKey)
     }
 
-    async function startTicketTimerForUser(ticketId, userKey){
+    async function startTicketTimerForUser(ticketId, userKey, opts = {}){
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         if(!u.timerStartAt) u.timerStartAt = new Date().toISOString()
         tracking.users[userKey] = u
-      })
+      }, { openDetail: opts.openDetail !== false })
       const ticket = cachedTickets.find(t => String(t.id||"") === String(ticketId||""))
       if(ticket){
         postEncuentroMessage(`🛠️ ${userDisplayNameByEmail(currentUser?.email||"-")} comenzó a trabajar en ${ticket.id || "-"} · ${ticket.title || "-"}. ¡Que tengas un gran trabajo!`, "trabajo_inicio").catch(()=>{})
@@ -10554,7 +10558,7 @@ Cliente B`)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
-      openTicketDetailModal(id)
+      if(meta.openDetail !== false) openTicketDetailModal(id)
     }
 
     async function toggleUrgent(id, skipCapacityWarning = false){
@@ -13335,6 +13339,10 @@ Cliente B`)
           if(user && user.active !== false){
             currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
             currentRole = user.role || savedRole || "consultor"
+            if(currentRole === "admin" && Number(currentUser?.adminLevel || 0) === 3){
+              mainViewTab = "summary_general"
+              adminPanelTab = "panel"
+            }
             persistSession()
             await processGoogleCalendarOAuthCallback()
             await loadMenuPermissions()
