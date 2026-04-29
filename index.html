@@ -1039,6 +1039,7 @@
     @keyframes toastIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
     .toast.ok    { border-color: rgba(34,199,122,.55); }
     .toast.error { border-color: rgba(224,64,64,.55); }
+    .toast.centered { right: 50%; bottom: 50%; transform: translate(50%, 50%); min-width: 320px; text-align:center; }
     body.light .toast {
       background: rgba(255,255,255,.96);
       color: #0f172a;
@@ -1740,16 +1741,16 @@
     var menuPermissionsByRole = { admin: {}, analista: {}, consultor: {} }
     const DEFAULT_MENU_VISIBILITY_BY_ROLE = {
       admin: new Set([
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
+        "main:tickets","main:mensajeria","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines",
         "admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center"
       ]),
       analista: new Set([
-        "main:tickets","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
+        "main:tickets","main:mensajeria","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
         "main:registro_horas","main:dailys","main:portfolio_overview","main:support"
       ]),
       consultor: new Set([
-        "main:tickets","main:encuentro","main:saved","main:summary_general","main:portfolio",
+        "main:tickets","main:mensajeria","main:encuentro","main:saved","main:summary_general","main:portfolio",
         "main:agenda_today","main:consultor_guidelines","main:support","main:profile"
       ])
     }
@@ -1780,6 +1781,7 @@
     var capacityAlertsRealtimeCache = null
     var adminAnalystDetailSelection = ""
     var qualitySurveyForms = null
+    var qualityRulesText = "Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10)."
     var internalQualityConfig = null
     var internalQualitySelectedPeriod = "month"
     var internalQualityHistoryWindow = 6
@@ -1861,7 +1863,18 @@
         { id: "q9", label: "¿Qué tan buena fue la predisposición del analista durante la gestión del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] },
         { id: "q10", label: "¿Qué tan adecuado fue el seguimiento del analista hasta la resolución del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] }
       ],
-      consultor: []
+      consultor: [
+        { id: "q1", label: "¿Qué tan bien el trabajo entregado cumple con lo solicitado y con la calidad esperada?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q2", label: "¿Qué tan clara y oportuna fue la comunicación del analista durante la gestión?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q3", label: "¿Qué tan correcta, completa y clara fue la planilla o archivo compartido, y qué tan adecuado fue su envío en tiempo y forma?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q4", label: "En caso de inconvenientes, ¿qué tan eficaz fue el analista en resolverlos de forma autónoma?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q5", label: "¿Qué tan adecuados fueron los tiempos de resolución del ticket en relación a lo esperado?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q6", label: "¿Qué tan completa fue la resolución del ticket (sin puntos pendientes o incompletos)?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q7", label: "¿Qué tan bien se respetaron los lineamientos del cliente?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q8", label: "¿Qué tan correctamente interpretó el analista el requerimiento desde el inicio?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q9", label: "¿Qué tan buena fue la predisposición del analista durante la gestión del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q10", label: "¿Qué tan adecuado fue el seguimiento del analista hasta la resolución del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] }
+      ]
     }
 
     const SHEET_ID = "1tNNtG2Asr1ds1_-3P6PmVgsHbdlhhfrV7GhWJDiTO1Q"
@@ -2000,6 +2013,7 @@
     function canCurrentRoleSeeMenu(menuKey){
       const role = String(currentRole || "").toLowerCase()
       if(!["admin","analista","consultor"].includes(role)) return true
+      if(String(menuKey || "") === "main:mensajeria") return true
       if(role === "admin" && isAdminLevel1()) return true
       if(role === "admin" && isAdminLevel3C()){
         const admin3c = new Set(["main:tickets","main:encuentro","main:saved","main:portfolio","main:portfolio_overview","main:agenda_today","main:consultor_guidelines","main:support","main:profile","main:client_activity"])
@@ -3220,12 +3234,12 @@ Cliente B`)
     }
 
 
-    function showToast(message, type="info", keepMs=2200){
+    function showToast(message, type="info", keepMs=2200, centered=false){
       const old = document.getElementById("globalToast")
       if(old) old.remove()
       const el = document.createElement("div")
       el.id = "globalToast"
-      el.className = `toast ${type}`
+      el.className = `toast ${type}${centered ? " centered" : ""}`
       el.textContent = message
       document.body.appendChild(el)
       setTimeout(()=>{ if(el.parentNode) el.remove() }, keepMs)
@@ -5317,7 +5331,7 @@ Cliente B`)
     }
     function closeChatModal(){ const dock=document.getElementById("chatDock"); if(dock) dock.style.display="none" }
     function renderDirectChatMessages(target,list=[]){ const me=String(currentUser?.email||"").toLowerCase(); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>{ const mine=String(msg?.from||"").toLowerCase()===me; const read = mine ? (msg?.readBy?.[emailKey(target)] ? "leído" : "no leído") : ""; return `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))} · ${msg?.createdAt ? htmlEscape(formatDateTime24(msg.createdAt)) : ""}${msg?.editedAt ? " · editado" : ""}</div><div>${htmlEscape(msg?.text||"")}</div><div class="inline small" style="justify-content:space-between;gap:8px"><span style="color:var(--muted)">${read}</span>${mine?`<span><a href="javascript:void(0)" style="color:var(--text-2)" onclick="editDirectChatMessage('${target}','${msg?.id||""}')">editar</a> · <a href="javascript:void(0)" style="color:var(--text-2)" onclick="deleteDirectChatMessage('${target}','${msg?.id||""}')">eliminar</a></span>`:""}</div></div>` }).join(""); wrap.scrollTop=wrap.scrollHeight }
-    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const prevCount = Number(openDirectChats[target]?.lastCount||0); openDirectChats[target].lastCount = list.length; renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && list.length>prevCount){ try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); const g=ac.createGain(); o.type='sine'; o.frequency.value=740; g.gain.value=0.03; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.12) }catch(_){} } const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>{ db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString()) }); directChatUnread[target]=0; updateChatWindowState(target) } if(hasForeign){ const dockOpen = document.getElementById("chatDock")?.style?.display === "block"; const anyOpen = Object.keys(openDirectChats||{}).some(k => document.getElementById(`chatWin_${emailKey(k)}`)); if(!dockOpen && !anyOpen) openChatModal(); if(!document.getElementById(`chatWin_${emailKey(target)}`)) openDirectChatWindow(target); if(openDirectChats[target]?.minimized && unreadIncoming.length){ directChatUnread[target]=unreadIncoming.length; updateChatWindowState(target);} } }) }
+    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const prevCount = Number(openDirectChats[target]?.lastCount||0); openDirectChats[target].lastCount = list.length; renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && list.length>prevCount){ try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); const g=ac.createGain(); o.type='sine'; o.frequency.value=740; g.gain.value=0.03; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.12) }catch(_){} } const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>{ db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString()) }); directChatUnread[target]=0; updateChatWindowState(target) } if(hasForeign){ const dockOpen = document.getElementById("chatDock")?.style?.display === "block"; const anyOpen = Object.keys(openDirectChats||{}).some(k => document.getElementById(`chatWin_${emailKey(k)}`)); if(!dockOpen && !anyOpen) openChatModal(); if(!document.getElementById(`chatWin_${emailKey(target)}`)) openDirectChatWindow(target); if(openDirectChats[target]?.minimized && unreadIncoming.length){ directChatUnread[target]=unreadIncoming.length; updateChatWindowState(target);} if(openDirectChats[target]?.minimized && !unreadIncoming.length){ closeDirectChatWindow(target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); delete openDirectChats[target]; delete directChatUnread[target]; } } }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(!win) return; win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:"" }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target].minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; updateChatWindowState(target)} }
     function openDirectChatWindow(target, opts = {}){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px">${["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick=\"appendSpecificEmojiToChatInput('${target}','${e}')\">${e}</button>`).join("")}</div></div></div>`)} if(opts.minimized){ openDirectChats[target].minimized = false; toggleChatWindow(target); const win=document.getElementById(`chatWin_${key}`); if(win) win.style.width="230px" } directChatUnread[target]=0; updateChatWindowState(target); if(document.getElementById("chatDock")?.style?.display==="block") openChatModal(true); loadDirectChatMessages(target) }
@@ -5441,11 +5455,35 @@ async function submitSupportRequest(){
     async function ensureQualityFormsLoaded(){
       if(qualitySurveyForms) return qualitySurveyForms
       const fromDb = (await db.ref("quality_forms").once("value")).val() || {}
+      const hasLegacyConsultorQuestions = Array.isArray(fromDb.consultor) && fromDb.consultor.some(q => {
+        const label = String(q?.label || "").toLowerCase()
+        return label.includes("¿cómo recibiste el ticket?") || label.includes("comunicación") || label.includes("satisfacción general") || label.includes("prueba")
+      })
       qualitySurveyForms = {
         analista: Array.isArray(fromDb.analista) && fromDb.analista.length ? fromDb.analista : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.analista)),
-        consultor: Array.isArray(fromDb.consultor) && fromDb.consultor.length ? fromDb.consultor : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.consultor))
+        consultor: (Array.isArray(fromDb.consultor) && fromDb.consultor.length >= 10 && !hasLegacyConsultorQuestions)
+          ? fromDb.consultor
+          : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.consultor))
       }
       return qualitySurveyForms
+    }
+
+    
+    async function ensureQualityRulesTextLoaded(){
+      try{
+        const raw = (await db.ref("app_settings/quality_rules_text").once("value")).val()
+        if(String(raw||"").trim()) qualityRulesText = String(raw).trim()
+      }catch(_){}
+      return qualityRulesText
+    }
+
+    async function saveQualityRulesText(){
+      if(currentRole !== "admin") return
+      const value = String(document.getElementById("qualityRulesTextInput")?.value || "").trim()
+      if(!value) return showToast("Ingresá el texto de reglas.", "warn", 1800)
+      await db.ref("app_settings/quality_rules_text").set(value)
+      qualityRulesText = value
+      showToast("Reglas de puntuación guardadas.", "ok", 1600)
     }
 
     function renderQualityQuestions(containerId, role){
@@ -5454,12 +5492,9 @@ async function submitSupportRequest(){
       let items = Array.isArray(forms?.[role]) ? forms[role] : []
       if(!items.length) items = JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS[role] || []))
       if(!wrap) return
-      wrap.innerHTML = items.map((q, idx) => `
-        <div>
-          <label>${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</label>
-          <select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}"><option value="">Seleccionar</option>${(Array.isArray(q.options) ? q.options : []).map(opt => `<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select>
-        </div>
-      `).join("") + `<div class="small" style="margin-top:8px">Deficiente (1 a 3): no cumple, requiere rehacer gran parte del trabajo y/o calidad baja.<br>Regular (4 a 6): cumple parcialmente, tiene varios puntos de mejora y calidad media.<br>Excelente (9 a 10): cumple requisitos y lineamientos, sin errores y con calidad alta.</div>`
+      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">${htmlEscape(qualityRulesText || "Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10).")}</div></div>`
+      const tableRows = items.map((q, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);width:140px"><select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}" style="margin:0"><option value="">Puntaje</option>${(Array.isArray(q.options)?q.options:[]).map(opt=>`<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select></td></tr>`).join("")
+      wrap.innerHTML = `${rulesHtml}<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Pregunta</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje</th></tr></thead><tbody>${tableRows}</tbody></table></div>`
     }
 
     function collectQualityAnswers(containerId){
@@ -5515,6 +5550,7 @@ async function submitSupportRequest(){
 
     async function saveQualityForms(){
       await ensureQualityFormsLoaded()
+      await ensureQualityRulesTextLoaded()
       ;["analista","consultor"].forEach(role => {
         qualitySurveyForms[role] = (qualitySurveyForms[role] || []).map((q, idx) => ({
           id: q.id || `${slugifyQuestion(q.label)}_${idx+1}`,
@@ -5818,7 +5854,7 @@ async function submitSupportRequest(){
       }
       const qualityTabs = `<div class="inline" style="margin:8px 0 12px;gap:8px"><button class="${qualityAdminSection==='results'?'':'ghost'}" onclick="setAdminQualitySection('results')">Resultados</button><button class="${qualityAdminSection==='edit_analista'?'':'ghost'}" onclick="setAdminQualitySection('edit_analista')">Modificar encuesta analista</button><button class="${qualityAdminSection==='edit_consultor'?'':'ghost'}" onclick="setAdminQualitySection('edit_consultor')">Modificar encuesta consultores</button></div>`
       if(qualityAdminSection === "edit_analista"){
-        container.innerHTML = `${qualityTabs}${renderQualityBuilderAdminHtml("analista")}`
+        container.innerHTML = `${qualityTabs}<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación (visible para analista y consultor)</div><div class="inline" style="gap:8px;align-items:center"><input id="qualityRulesTextInput" value="${htmlEscape(qualityRulesText||"")}" placeholder="Definí reglas de puntuación" style="flex:1;min-width:280px"><button class="ghost" onclick="saveQualityRulesText()">Guardar reglas</button></div></div>${renderQualityBuilderAdminHtml("analista")}`
         return
       }
       if(qualityAdminSection === "edit_consultor"){
@@ -5839,17 +5875,15 @@ async function submitSupportRequest(){
       const selectedRole = qualityAdminRoleView === "consultor" ? "consultor" : "analista"
       const roleLabel = selectedRole === "analista" ? "Analista" : "Consultor"
       const roleSurveys = surveys.filter(s => String(s.ratedRole || "consultor") === selectedRole)
-      const metricConfig = [
-        { key: "reception", label: "Promedio recepción" },
-        { key: "communication", label: "Promedio comunicación" },
-        { key: "overall", label: "Promedio satisfacción" }
-      ]
+      const roleForm = Array.isArray((qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.[selectedRole]) ? (qualitySurveyForms || DEFAULT_QUALITY_FORMS)[selectedRole] : []
+      const metricConfig = roleForm.map((q, idx) => ({ key: String(q?.id || `q${idx+1}`), label: String(q?.label || `Pregunta ${idx+1}`) }))
+        .concat([{ key: "overall", label: "Promedio de satisfacción", highlight: true }])
       const metricCards = metricConfig.map(metric => {
         const values = roleSurveys
-          .map(item => normalizeQualityToTen(item?.[metric.key] || 0))
+          .map(item => normalizeQualityToTen(metric.key === "overall" ? (item?.overall || 0) : ((item?.answers||{})[metric.key] || 0)))
           .filter(v => Number.isFinite(v) && v > 0)
         const avg = values.length ? (values.reduce((acc, n) => acc + n, 0) / values.length) : 0
-        return `<div class="qualitySummaryCard"><div class="metric">${htmlEscape(metric.label)}</div><div class="value">${values.length ? `${avg.toFixed(2)} / 10` : "Sin datos"}</div><div class="meta">${roleLabel} · Encuestas: ${values.length}</div></div>`
+        return `<div class="qualitySummaryCard" style="${metric.highlight?"border-color:var(--accent-2);box-shadow:0 0 0 1px rgba(34,212,191,.25) inset;":""}"><div class="metric">${htmlEscape(metric.label)}</div><div class="value">${values.length ? `${avg.toFixed(2)} / 10` : "Sin datos"}</div><div class="meta">${roleLabel} · Encuestas: ${values.length}</div></div>`
       }).join("")
       const averages = Object.entries(byAnalyst).map(([analyst, list]) => {
         const rated = list.filter(it => String(it.ratedRole||"consultor") === "analista")
@@ -6262,12 +6296,15 @@ async function submitSupportRequest(){
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
       pendingConsultorSurveyTicket = ticket
+      if(ticket?.dbKey){
+        await db.ref("tickets").child(ticket.dbKey).update({ consultorSurveyPending: true, consultorSurveyPendingFor: String(currentUser?.email||"").toLowerCase(), consultorSurveyPendingAt: ticket.consultorSurveyPendingAt || new Date().toISOString() })
+      }
       await ensureQualityFormsLoaded()
       const info = document.getElementById("consultorSurveyTicketInfo")
       if(info){
         info.innerHTML = `<strong>${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</strong><br>Analista: ${htmlEscape(userDisplayNameByEmail(ticket.assignedTo||"-"))}`
       }
-      renderQualityQuestions("consultorSurveyFields", "analista")
+      renderQualityQuestions("consultorSurveyFields", "consultor")
       const obs = document.getElementById("consultorSurveyObservation")
       if(obs) obs.value = ""
       document.getElementById("consultorSurveyModal")?.classList.remove("hidden")
@@ -6278,6 +6315,7 @@ async function submitSupportRequest(){
       const obs = document.getElementById("consultorSurveyObservation")
       if(obs) obs.value = ""
       document.getElementById("consultorSurveyModal")?.classList.add("hidden")
+      if(currentRole === "consultor") loadDashboard()
     }
 
     async function submitConsultorPendingSurvey(){
@@ -6891,6 +6929,7 @@ async function submitSupportRequest(){
     }
 
     async function setTopPerformerGrupoAxoWeight(tab, field, rawValue){
+      await ensureQualityFormsLoaded()
       const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const weights = ensureTopPerformerGrupoAxoWeights(month)
       if(!weights[tab]) return
@@ -7232,10 +7271,12 @@ async function submitSupportRequest(){
       const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
+      const questionIds = (Array.isArray((qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.consultor) ? (qualitySurveyForms || DEFAULT_QUALITY_FORMS).consultor : []).map(q => String(q?.id || "")).filter(Boolean)
       const rows = analysts.map(analyst => {
         const email = String(analyst?.email || "").toLowerCase()
         const list = surveys.filter(s => String(s?.ratedRole || "").toLowerCase() === "analista" && String(s?.ratedEmail || "").toLowerCase() === email && String(s?.createdAt || "").slice(0,7) === month)
-        const avg = list.length ? (list.reduce((acc, s) => acc + Number(normalizeQualityToTen(s?.overall || 0) || 0), 0) / list.length) : 0
+        const qValues = list.flatMap(s => questionIds.map(id => Number(normalizeQualityToTen((s?.answers||{})[id] || 0))).filter(v => Number.isFinite(v) && v > 0))
+        const avg = qValues.length ? (qValues.reduce((acc, s) => acc + s, 0) / qValues.length) : 0
         return { email, avg, count: list.length }
       }).sort((a,b)=>b.avg-a.avg)
       wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción promedio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Encuestas</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openTopPerformerSatisfaccionDetail('${r.email}','${month}')">${htmlEscape(userDisplayNameByEmail(r.email) || r.email)}</button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.avg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.count}</td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin encuestas en este período.</td></tr>`}</tbody></table></div><div id="topPerformerSatisfaccionDetail" class="small" style="margin-top:10px"></div>`
@@ -7244,6 +7285,7 @@ async function submitSupportRequest(){
     async function openTopPerformerSatisfaccionDetail(email, month){
       const wrap = document.getElementById("topPerformerSatisfaccionDetail")
       if(!wrap) return
+      await ensureQualityFormsLoaded()
       const analystEmail = String(email || "").toLowerCase()
       const monthKey = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0,7))
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
@@ -7252,12 +7294,14 @@ async function submitSupportRequest(){
         wrap.innerHTML = `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)}</div><div class="feedMeta">Sin encuestas para el período ${htmlEscape(monthKey)}.</div></div>`
         return
       }
+      const formQuestions = Array.isArray((qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.consultor) ? (qualitySurveyForms || DEFAULT_QUALITY_FORMS).consultor : []
       const metric = (label, getter) => {
         const values = surveys.map(getter).map(v => Number(v || 0)).filter(v => Number.isFinite(v) && v > 0)
         const avg = values.length ? (values.reduce((a,b)=>a+b,0) / values.length) : 0
         return `<div class="feedItem"><div class="feedType">${htmlEscape(label)}</div><div class="feedMeta">${avg.toFixed(2)} / 10 · respuestas: ${values.length}</div></div>`
       }
-      wrap.innerHTML = `<div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Detalle de satisfacción · ${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)} (${htmlEscape(monthKey)})</h4>${metric("Recepción", s => normalizeQualityToTen(s?.reception || 0))}${metric("Comunicación", s => normalizeQualityToTen(s?.communication || 0))}${metric("Satisfacción general", s => normalizeQualityToTen(s?.overall || 0))}</div>`
+      const questionMetrics = formQuestions.map((q, idx) => metric(q?.label || `Pregunta ${idx+1}`, s => normalizeQualityToTen((s?.answers||{})[String(q?.id||"")] || 0))).join("")
+      wrap.innerHTML = `<div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Detalle de satisfacción · ${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)} (${htmlEscape(monthKey)})</h4>${questionMetrics}${metric("Promedio de satisfacción", s => normalizeQualityToTen(s?.overall || 0))}</div>`
     }
 
     function updateTopPerformerAptitudinalCell(rowKey, field, rawValue){
@@ -7440,7 +7484,7 @@ async function submitSupportRequest(){
       const showMessaging = mainViewTab === "mensajeria"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
-      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer || showClientActivity
+      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer || showClientActivity || showMessaging
       const isSidebarItemVisible = (item) => {
         const action = String(item?.action || "")
         const mainMatch = action.match(/setMainViewTab\\('([^']+)'\\)/)
@@ -7452,6 +7496,7 @@ async function submitSupportRequest(){
       const sidebarSections = (isAdmin && !isAdmin3C) ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          { icon: "💬", label: "Mensajería", action: "setMainViewTab('mensajeria')" },
           { icon: "🗂️", label: "Daily's", action: "setAdminTab('dailys')" },
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
@@ -7706,7 +7751,8 @@ async function submitSupportRequest(){
             <h3 style="margin-top:0">Manuales</h3>
             <div class="row"><div><label>Buscador</label><input oninput="updateManualsSearch(this.value)" placeholder="Buscar manual"></div></div>
             <div id="analystManualsList" class="small" style="margin-top:10px"></div>
-          </div>` : showAnalystBoardSettings ? `
+          </div>` : showMessaging ? `
+          <div class="card"><h3 style="margin-top:0">Mensajería</h3><p class="small" style="margin-bottom:10px">Abrí el panel para conversar con analistas, consultores y admins.</p><div class="inline" style="gap:8px"><button onclick="openChatModal(true)">Abrir mensajería</button><button class="ghost" onclick="closeChatModal()">Cerrar panel</button></div></div>` : showAnalystBoardSettings ? `
           <div class="card">
             <div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración del tablero</h3><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button></div>
             <div class="switchWrap">
@@ -8826,11 +8872,11 @@ async function submitSupportRequest(){
         return
       }
       const avg = (arr, fn) => arr.reduce((a,b)=>a+fn(b),0) / arr.length
-      const rows = [
-        { label: "¿Cómo recibiste la solución?", score: avg(mine, s => normalizeQualityReceptionToTen(s.reception || 0)), answer: s => s.reception || "-" },
-        { label: "Comunicación", score: avg(mine, s => normalizeQualityCommunicationToTen(s.communication || 0)), answer: s => s.communication || "-" },
-        { label: "Satisfacción general", score: avg(mine, s => normalizeQualityToTen(s.overall || 0)), answer: s => `${normalizeQualityToTen(s.overall || 0)} / 10` }
-      ]
+      const rows = ["q1","q2","q3","q4","q5","q6","q7","q8","q9","q10"].map((key, idx) => ({
+        label: `Pregunta ${idx + 1}`,
+        score: avg(mine, s => normalizeQualityToTen((s?.answers||{})[key] || 0)),
+        answer: s => `${normalizeQualityToTen((s?.answers||{})[key] || 0)} / 10`
+      })).concat([{ label: "Promedio de satisfacción", score: avg(mine, s => normalizeQualityToTen(s.overall || 0)), answer: s => `${normalizeQualityToTen(s.overall || 0)} / 10` }])
       const roleLabel = currentRole === "analista" ? "analista" : "consultor"
       const buildAdvice = (label, score) => {
         const isReception = label.includes("recibiste")
@@ -9350,7 +9396,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
+          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
           return
         }
       }
@@ -9406,7 +9452,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          return alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
+          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
         }
       }
 
@@ -12252,7 +12298,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       let scoped = tickets.filter(t => {
         const owner = String(t.assignedTo||"").toLowerCase()
         const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h||"").toLowerCase()) : []
-        return teamSet.has(owner) || helpers.some(h => teamSet.has(h))
+        return teamSet.has(owner)
       })
       const teamTicketsAll = [...scoped]
 
@@ -12276,7 +12322,14 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         if(createdDiff !== 0) return createdDiff
         return String(a.id || "").localeCompare(String(b.id || ""))
       })
-      adminAgendaCurrentRows = [...scoped]
+      const agendaRows = scoped.flatMap(t => {
+        const owner = String(t.assignedTo || "").toLowerCase()
+        const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : []).map(h => String(h||"").toLowerCase()).filter(h => teamSet.has(h) && h !== owner)
+        const rows = teamSet.has(owner) ? [{ ...t, _agendaRoleIcon: "👑", _agendaAnalyst: owner }] : []
+        helpersInTeam.forEach(helper => rows.push({ ...t, _agendaRoleIcon: "🤝", _agendaAnalyst: helper }))
+        return rows
+      })
+      adminAgendaCurrentRows = [...agendaRows]
 
       const analystChecks = document.getElementById("agendaFilterAnalystChecks")
       const ticketInput = document.getElementById("agendaFilterTicketId")
@@ -12301,7 +12354,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(s1) s1.classList.toggle("ghost", adminAgendaTeam !== "equipo_1")
       if(s2) s2.classList.toggle("ghost", adminAgendaTeam !== "equipo_2")
 
-      const analystsWithoutTasks = teamAnalysts.filter(email => !scoped.some(t => {
+      const analystsWithoutTasks = teamAnalysts.filter(email => !agendaRows.some(t => {
         const owner = String(t.assignedTo || "").toLowerCase()
         const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h || "").toLowerCase()) : []
         return owner === email || helpers.includes(email)
@@ -12339,12 +12392,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
               </tr>
             </thead>
             <tbody>
-              ${scoped.map(t => {
+              ${agendaRows.map(t => {
                 const lastComment = ticketLastCommentAt(t)
                 const lastCommentInfo = ticketLastCommentInfo(t)
                 const owner = String(t.assignedTo || "").toLowerCase()
-                const helperMatch = (Array.isArray(t.helpers) ? t.helpers : []).find(h => teamSet.has(String(h||"").toLowerCase()))
-                const roleIcon = teamSet.has(owner) ? "👑" : (helperMatch ? "🤝" : "—")
+                const roleIcon = String(t._agendaRoleIcon || "👑")
                 const daysSince = lastComment ? Math.floor((Date.now() - new Date(lastComment).getTime()) / 86400000) : null
                 const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
                 const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
@@ -12354,7 +12406,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar")}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t._agendaAnalyst ? userDisplayNameByEmail(t._agendaAnalyst) : (t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")} ${(String(t.status||'')==='doing') ? '🕒' : ''}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastCommentInfo?.author || '')}">${lastComment ? htmlEscape(formatDateTime24(lastComment)) : "-"}</td>
