@@ -1260,7 +1260,8 @@
     </div>
   </div>
   <div id="chatDock" class="card" style="position:fixed;right:14px;bottom:78px;z-index:220;max-width:320px;padding:10px;display:none">
-    <div class="small" style="margin-bottom:6px"><strong>Mensajes</strong></div>
+    <div class="inline" style="justify-content:space-between;margin-bottom:6px"><strong>Mensajes</strong><button class="ghost" onclick="closeChatModal()">Cerrar</button></div>
+    <input id="chatUserSearch" placeholder="Buscar usuario..." oninput="openChatModal()" style="margin:0 0 8px">
     <div id="chatUserList" style="max-height:220px;overflow-y:auto"></div>
   </div>
   <div id="chatWindowsWrap" style="position:fixed;right:350px;bottom:20px;display:flex;gap:8px;z-index:220"></div>
@@ -5236,9 +5237,13 @@ Cliente B`)
       const target = String(select?.value || "").trim().toLowerCase()
       if(!target) return
       if(!analysts.includes(target)) return alert("El email no corresponde a un analista activo.")
-      const updated = { ...ticket, assignedTo: target, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email||"").toLowerCase() }
+      const changedAt = new Date().toISOString()
+      const assignmentHistory = Array.isArray(ticket.assignmentHistory) ? [...ticket.assignmentHistory] : []
+      assignmentHistory.push({ from: String(ticket.assignedTo||"").toLowerCase(), to: target, changedAt, changedBy: String(currentUser?.email||"").toLowerCase() })
+      const updated = { ...ticket, assignedTo: target, assignmentHistory, reassignedAt: changedAt, updatedAt: changedAt, updatedBy: String(currentUser?.email||"").toLowerCase() }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id: ticket.id, ...updated })
+      await logActivity("ticket_reasignado", { ticketId: ticket.id, from: String(ticket.assignedTo||"").toLowerCase(), to: target, changedAt })
       showToast("Responsable actualizado.", "ok", 1500)
       loadTickets()
       if(adminPanelTab === "agenda") loadAdminAgenda()
@@ -5249,13 +5254,32 @@ Cliente B`)
       const select = document.getElementById(`agendaHelper_${emailKey(ticketId)}`)
       const email = String(select?.value || "").trim().toLowerCase()
       if(!email) return
-      await addHelperToTicket(ticketId, email)
+      await addHelperToTicket(ticketId, email, { openDetail: false })
+      await loadTickets()
       if(adminPanelTab === "agenda") loadAdminAgenda()
       showToast("Ayudante agregado.", "ok", 1400)
     }
     function teardownDirectChatListener(){}
+    var chatInboxInterval = null
+    var chatInboxLastSeen = {}
     function buildDirectChatId(a, b){ const sorted=[String(a||""
 ).toLowerCase(),String(b||"").toLowerCase()].sort(); return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g,"_") }
+    function getUserPresenceState(user){
+      const loggedIn = !!user?.sessionActive
+      if(!loggedIn) return "offline"
+      const explicit = String(user?.presenceStatus || "").toLowerCase()
+      if(explicit === "away") return "away"
+      if(explicit === "online") return "online"
+      const lastSeen = user?.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0
+      const mins = lastSeen ? (Date.now() - lastSeen) / 60000 : 999
+      if(mins <= 3) return "online"
+      if(mins <= 20) return "away"
+      return "offline"
+    }
+    function presenceDot(state){
+      const color = state === "online" ? "#22c55e" : state === "away" ? "#facc15" : "#ef4444"
+      return `<span title="${state}" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${color};margin-right:6px"></span>`
+    }
     async function openChatModal(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       const dock=document.getElementById("chatDock"); if(!dock) return
@@ -5263,17 +5287,43 @@ Cliente B`)
       if(dock.style.display === "none") return
       const me=String(currentUser?.email||"").toLowerCase()
       const usersByEmail=(await db.ref("users_by_email").once("value")).val()||{}
-      const users=Object.values(usersByEmail).filter(u=>String(u?.email||"").toLowerCase()!==me && u?.active!==false).slice(0,50)
+      const q = String(document.getElementById("chatUserSearch")?.value || "").trim().toLowerCase()
+      const users=Object.values(usersByEmail).filter(u=>String(u?.email||"").toLowerCase()!==me && u?.active!==false).filter(u=>{
+        if(!q) return true
+        const email = String(u?.email||"").toLowerCase()
+        const name = String(u?.name||u?.displayName||"").toLowerCase()
+        return email.includes(q) || name.includes(q)
+      }).slice(0,80)
       const list=document.getElementById("chatUserList")
-      if(list) list.innerHTML = users.map(u=>{ const email=String(u.email||"").toLowerCase(); const badge=(directChatUnread[email]||0)>0?`<span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 6px">${directChatUnread[email]}</span>`:""; return `<button class="ghost" style="width:100%;text-align:left;margin:2px 0" onclick="openDirectChatWindow('${email}')"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u,email))}" data-fallback="${htmlEscape(buildInitialAvatar(email||'U'))}" onerror="handleAvatarError(this)"> ${htmlEscape(userDisplayNameByEmail(email)||email)} ${badge}</button>` }).join("")
+      if(list) list.innerHTML = users.map(u=>{ const email=String(u.email||"").toLowerCase(); const badge=(directChatUnread[email]||0)>0?`<span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 6px">${directChatUnread[email]}</span>`:""; const presence=presenceDot(getUserPresenceState(u)); return `<button class="ghost" style="width:100%;text-align:left;margin:2px 0" onclick="openDirectChatWindow('${email}')"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u,email))}" data-fallback="${htmlEscape(buildInitialAvatar(email||'U'))}" onerror="handleAvatarError(this)"> ${presence}${htmlEscape(userDisplayNameByEmail(email)||email)} ${badge}</button>` }).join("")
     }
     function closeChatModal(){ const dock=document.getElementById("chatDock"); if(dock) dock.style.display="none" }
-    function renderDirectChatMessages(target,list=[]){ const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>`<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))} · ${msg?.createdAt ? htmlEscape(formatDateTime24(msg.createdAt)) : ""}</div><div>${htmlEscape(msg?.text||"")}</div></div>`).join(""); wrap.scrollTop=wrap.scrollHeight }
-    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.values(data).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const prevCount = Number(openDirectChats[target]?.lastCount||0); openDirectChats[target].lastCount = list.length; renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && list.length>prevCount){ try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); const g=ac.createGain(); o.type='sine'; o.frequency.value=740; g.gain.value=0.03; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.12) }catch(_){} } if(hasForeign && openDirectChats[target]?.minimized){ directChatUnread[target]=(directChatUnread[target]||0)+1; updateChatWindowState(target);} }) }
+    function renderDirectChatMessages(target,list=[]){ const me=String(currentUser?.email||"").toLowerCase(); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>`<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))} · ${msg?.createdAt ? htmlEscape(formatDateTime24(msg.createdAt)) : ""}</div><div>${htmlEscape(msg?.text||"")}</div><div class="inline small" style="justify-content:flex-end;gap:8px">${String(msg?.from||"").toLowerCase()===me?`<a href="javascript:void(0)" onclick="editDirectChatMessage('${target}','${msg?.id||""}')">editar</a><a href="javascript:void(0)" style="color:var(--danger)" onclick="deleteDirectChatMessage('${target}','${msg?.id||""}')">eliminar</a>`:""}</div></div>`).join(""); wrap.scrollTop=wrap.scrollHeight }
+    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const prevCount = Number(openDirectChats[target]?.lastCount||0); openDirectChats[target].lastCount = list.length; renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && list.length>prevCount){ try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); const g=ac.createGain(); o.type='sine'; o.frequency.value=740; g.gain.value=0.03; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.12) }catch(_){} } if(hasForeign){ const dockOpen = document.getElementById("chatDock")?.style?.display === "block"; const anyOpen = Object.keys(openDirectChats||{}).some(k => document.getElementById(`chatWin_${emailKey(k)}`)); if(!dockOpen && !anyOpen) openChatModal(); if(!document.getElementById(`chatWin_${emailKey(target)}`)) openDirectChatWindow(target); if(openDirectChats[target]?.minimized){ directChatUnread[target]=(directChatUnread[target]||0)+1; updateChatWindowState(target);} } }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(!win) return; win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:"" }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target].minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; updateChatWindowState(target)} }
-    function openDirectChatWindow(target){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:280px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="toggleChatWindow('${target}')">_</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="appendEmojiToChatInput('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div></div></div>`)} directChatUnread[target]=0; updateChatWindowState(target); loadDirectChatMessages(target) }
-    function appendEmojiToChatInput(target){ const i=document.getElementById(`chatInput_${emailKey(target)}`); if(i){ i.value = `${i.value || ""}😊`; i.focus() } }
+    function openDirectChatWindow(target, opts = {}){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px">${["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick=\"appendSpecificEmojiToChatInput('${target}','${e}')\">${e}</button>`).join("")}</div></div></div>`)} if(opts.minimized){ openDirectChats[target].minimized = false; toggleChatWindow(target) } directChatUnread[target]=0; updateChatWindowState(target); loadDirectChatMessages(target) }
+    async function pollIncomingDirectChats(){
+      const me=String(currentUser?.email||"").toLowerCase(); if(!me) return
+      const map=(await db.ref("direct_chats").once("value")).val()||{}
+      Object.entries(map).forEach(([chatId,val])=>{
+        if(!String(chatId||"").includes(emailKey(me))) return
+        const msgs=Object.values(val||{}).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
+        const last=msgs[msgs.length-1]; if(!last) return
+        const partner=String(last.from||"").toLowerCase()===me?String(last.to||"").toLowerCase():String(last.from||"").toLowerCase()
+        const stamp=String(last.createdAt||"")
+        if(String(last.from||"").toLowerCase()!==me && stamp && chatInboxLastSeen[chatId]!==stamp){
+          chatInboxLastSeen[chatId]=stamp
+          if(!document.getElementById(`chatWin_${emailKey(partner)}`)) openDirectChatWindow(partner,{minimized:true})
+        }
+      })
+    }
+    function closeDirectChatWindow(target){ const el=document.getElementById(`chatWin_${emailKey(target)}`); if(el) el.remove() }
+    function openChatEmojiPicker(target){ document.getElementById(`chatEmoji_${emailKey(target)}`)?.classList.toggle("hidden") }
+    function appendSpecificEmojiToChatInput(target,emoji){ const i=document.getElementById(`chatInput_${emailKey(target)}`); if(i){ i.value = `${i.value || ""}${emoji}`; i.focus() } }
+    function appendEmojiToChatInput(target){ appendSpecificEmojiToChatInput(target, "😊") }
+    async function editDirectChatMessage(target,messageId){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); const ref=db.ref("direct_chats").child(chatId).child(messageId); const msg=(await ref.once("value")).val(); if(!msg || String(msg.from||"").toLowerCase()!==me) return; const next=prompt("Editar mensaje", String(msg.text||"")); if(next===null) return; await ref.update({text:String(next).trim(), editedAt:new Date().toISOString()}) }
+    async function deleteDirectChatMessage(target,messageId){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); const ref=db.ref("direct_chats").child(chatId).child(messageId); const msg=(await ref.once("value")).val(); if(!msg || String(msg.from||"").toLowerCase()!==me) return; if(!confirm("¿Eliminar mensaje?")) return; await ref.remove() }
     async function sendDirectChatMessage(target){ const me=String(currentUser?.email||"").toLowerCase(); const textEl=document.getElementById(`chatInput_${emailKey(target)}`); const text=String(textEl?.value||"").trim(); if(!text) return; const chatId=buildDirectChatId(me,target); await db.ref("direct_chats").child(chatId).push({from:me,to:target,text,createdAt:new Date().toISOString()}); if(textEl) textEl.value="" }
 async function submitSupportRequest(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
@@ -6298,6 +6348,9 @@ async function submitSupportRequest(){
         await loadMenuPermissions()
         startMenuPermissionsSync()
         renderApp()
+        await updateMyPresence(document.hidden ? "away" : "online")
+        clearInterval(chatInboxInterval)
+        chatInboxInterval = setInterval(pollIncomingDirectChats, 4000)
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
         if(mustRotatePassword(user)){
@@ -6314,6 +6367,15 @@ async function submitSupportRequest(){
       localStorage.setItem("sessionUserEmail", String(currentUser.email||"").toLowerCase())
       localStorage.setItem("sessionUserRole", String(currentRole||""))
     }
+    async function updateMyPresence(status){
+      const email = String(currentUser?.email || "").toLowerCase()
+      if(!email) return
+      await db.ref("users_by_email").child(emailKey(email)).update({
+        sessionActive: status !== "offline",
+        presenceStatus: status,
+        lastSeenAt: new Date().toISOString()
+      }).catch(()=>{})
+    }
 
     function clearSession(){
       localStorage.removeItem("sessionUserEmail")
@@ -6321,9 +6383,11 @@ async function submitSupportRequest(){
     }
 
     function logout(){
+      updateMyPresence("offline")
       stopConsultorAutoRefresh()
       stopRealtimeStreams()
       stopMenuPermissionsSync()
+      clearInterval(chatInboxInterval); chatInboxInterval = null
       currentUser = null
       currentRole = null
       clearSession()
@@ -10328,16 +10392,24 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(!confirm(`¿Quitar ayudante ${email || userKey}?`)) return
       delete users[userKey]
       const helpers = (ticket.helpers || []).filter(h => emailKey(h) !== userKey)
+      const monthlyFolders = { ...((ticket.timeTracking||{}).monthlyFolders || {}) }
+      Object.keys(monthlyFolders).forEach(mk => {
+        const folder = monthlyFolders[mk] || {}
+        const entries = Array.isArray(folder.entries) ? folder.entries : []
+        monthlyFolders[mk] = { ...folder, entries: entries.filter(e => emailKey(String(e?.analyst || "")) !== userKey) }
+      })
       const tracking = { ...(ticket.timeTracking || {}), users }
+      tracking.monthlyFolders = monthlyFolders
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, helpers, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet('updateTicket', { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      await loadTickets()
       openTicketDetailModal(id)
     }
 
-    async function addHelperToTicket(id, helperEmail){
+    async function addHelperToTicket(id, helperEmail, opts = {}){
       const ticket = cachedTickets.find(t => t.id === id); if(!ticket) return
       const helpers = Array.from(new Set([...(ticket.helpers||[]), helperEmail]))
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
@@ -10349,7 +10421,8 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet('updateTicket', { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
-      openTicketDetailModal(id)
+      await loadTickets()
+      if(opts.openDetail !== false) openTicketDetailModal(id)
     }
 
     async function mirrorTimeEntryToSheet(entry){
@@ -12268,7 +12341,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:4px;flex-wrap:nowrap"><select id="agendaReassign_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Resp.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}" ${String(u.email||'').toLowerCase()===String(t.assignedTo||'').toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Cambiar responsable" onclick="reassignTicketFromAgenda('${t.id}')">👤</button><select id="agendaHelper_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Ayud.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Sumar ayudante" onclick="addHelperFromAgenda('${t.id}')">🤝</button><button class="ghost" title="Alertar" onclick="sendAgendaAlertToAnalyst('${String(t.assignedTo||'').toLowerCase()}')">⚠️</button></div></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><button class="ghost" title="Acciones rápidas" onclick="toggleAgendaQuickActions(event,'${t.id}')">⚙️</button><div id="agendaQuick_${emailKey(t.id)}" class="hidden card" style="position:fixed;z-index:260;padding:8px;min-width:270px"><div class="inline" style="gap:4px;flex-wrap:nowrap"><select id="agendaReassign_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Resp.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}" ${String(u.email||'').toLowerCase()===String(t.assignedTo||'').toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Cambiar responsable" onclick="reassignTicketFromAgenda('${t.id}')">👤</button><select id="agendaHelper_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Ayud.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Sumar ayudante" onclick="addHelperFromAgenda('${t.id}')">🤝</button><button class="ghost" title="Alertar" onclick="sendAgendaAlertToAnalyst('${String(t.assignedTo||'').toLowerCase()}')">⚠️</button></div></div></td>
                 </tr>`
               }).join("")}
               ${analystsWithoutTasks.map(email => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">—</td><td colspan="18" style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(userDisplayNameByEmail(email) || email)}</strong>: No tiene tareas asignadas. <button class="ghost" onclick="sendAgendaAlertToAnalyst('${email}')">Alertar agenda</button></td></tr>`).join("")}
@@ -12287,9 +12360,18 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         </div>
         <div class="agendaSection">
           <h4>Historial de agenda guardada (${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"})</h4>
-          ${savedHistory.length ? savedHistory.map(item => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${(item.rows || []).slice(0,10).map(r => `• ${htmlEscape(r.id || "-")} · ${htmlEscape(r.status || "-")} · ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>") || "Sin filas"}</div></div>`).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`}
+          ${savedHistory.length ? savedHistory.map(item => { const byAnalyst={}; (item.rows||[]).forEach(r=>{ const a=String(r.assignedTo||"sin_asignar").toLowerCase(); if(!byAnalyst[a])byAnalyst[a]=[]; byAnalyst[a].push(r) }); return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${Object.entries(byAnalyst).map(([analyst,rows])=>`<div style='margin:8px 0'><strong>${htmlEscape(userDisplayNameByEmail(analyst)||analyst)}</strong><br>${rows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")} · Plan: ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>")}</div>`).join("") || "Sin filas"}</div></div>` }).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`}
         </div>
       `
+    }
+    function toggleAgendaQuickActions(ev, ticketId){
+      document.querySelectorAll('[id^="agendaQuick_"]').forEach(el => { if(el.id !== `agendaQuick_${emailKey(ticketId)}`) el.classList.add("hidden") })
+      const panel = document.getElementById(`agendaQuick_${emailKey(ticketId)}`)
+      if(!panel) return
+      panel.classList.toggle("hidden")
+      if(panel.classList.contains("hidden")) return
+      const r = ev?.currentTarget?.getBoundingClientRect?.()
+      if(r){ panel.style.top = `${r.bottom + 6}px`; panel.style.left = `${Math.max(8, r.left - 220)}px` }
     }
 
     function renderInactiveTicketsTable(tickets, logs){
@@ -13381,6 +13463,9 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
             await loadMenuPermissions()
             startMenuPermissionsSync()
             renderApp()
+            await updateMyPresence(document.hidden ? "away" : "online")
+            clearInterval(chatInboxInterval)
+            chatInboxInterval = setInterval(pollIncomingDirectChats, 4000)
           }else{
             clearSession()
             renderLogin()
@@ -13396,6 +13481,8 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       }
     }
 
+    document.addEventListener("visibilitychange", ()=>{ if(currentUser?.email) updateMyPresence(document.hidden ? "away" : "online") })
+    window.addEventListener("beforeunload", ()=>{ if(currentUser?.email) updateMyPresence("offline") })
     init()
   </script>
 </body>
