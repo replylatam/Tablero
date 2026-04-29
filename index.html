@@ -6929,6 +6929,7 @@ async function submitSupportRequest(){
     }
 
     async function setTopPerformerGrupoAxoWeight(tab, field, rawValue){
+      await ensureQualityFormsLoaded()
       const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const weights = ensureTopPerformerGrupoAxoWeights(month)
       if(!weights[tab]) return
@@ -7270,10 +7271,12 @@ async function submitSupportRequest(){
       const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
       const analysts = Object.values(cachedUsersByEmail || {}).filter(u => String(u?.role || "").toLowerCase() === "analista" && u?.active !== false)
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
+      const questionIds = (Array.isArray((qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.consultor) ? (qualitySurveyForms || DEFAULT_QUALITY_FORMS).consultor : []).map(q => String(q?.id || "")).filter(Boolean)
       const rows = analysts.map(analyst => {
         const email = String(analyst?.email || "").toLowerCase()
         const list = surveys.filter(s => String(s?.ratedRole || "").toLowerCase() === "analista" && String(s?.ratedEmail || "").toLowerCase() === email && String(s?.createdAt || "").slice(0,7) === month)
-        const avg = list.length ? (list.reduce((acc, s) => acc + Number(normalizeQualityToTen(s?.overall || 0) || 0), 0) / list.length) : 0
+        const qValues = list.flatMap(s => questionIds.map(id => Number(normalizeQualityToTen((s?.answers||{})[id] || 0))).filter(v => Number.isFinite(v) && v > 0))
+        const avg = qValues.length ? (qValues.reduce((acc, s) => acc + s, 0) / qValues.length) : 0
         return { email, avg, count: list.length }
       }).sort((a,b)=>b.avg-a.avg)
       wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción promedio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Encuestas</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openTopPerformerSatisfaccionDetail('${r.email}','${month}')">${htmlEscape(userDisplayNameByEmail(r.email) || r.email)}</button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.avg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.count}</td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin encuestas en este período.</td></tr>`}</tbody></table></div><div id="topPerformerSatisfaccionDetail" class="small" style="margin-top:10px"></div>`
@@ -7282,6 +7285,7 @@ async function submitSupportRequest(){
     async function openTopPerformerSatisfaccionDetail(email, month){
       const wrap = document.getElementById("topPerformerSatisfaccionDetail")
       if(!wrap) return
+      await ensureQualityFormsLoaded()
       const analystEmail = String(email || "").toLowerCase()
       const monthKey = String(month || topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0,7))
       const surveys = Object.values((await db.ref("quality_surveys").once("value")).val() || {})
@@ -7290,12 +7294,14 @@ async function submitSupportRequest(){
         wrap.innerHTML = `<div class="feedItem"><div class="feedType">${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)}</div><div class="feedMeta">Sin encuestas para el período ${htmlEscape(monthKey)}.</div></div>`
         return
       }
+      const formQuestions = Array.isArray((qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.consultor) ? (qualitySurveyForms || DEFAULT_QUALITY_FORMS).consultor : []
       const metric = (label, getter) => {
         const values = surveys.map(getter).map(v => Number(v || 0)).filter(v => Number.isFinite(v) && v > 0)
         const avg = values.length ? (values.reduce((a,b)=>a+b,0) / values.length) : 0
         return `<div class="feedItem"><div class="feedType">${htmlEscape(label)}</div><div class="feedMeta">${avg.toFixed(2)} / 10 · respuestas: ${values.length}</div></div>`
       }
-      wrap.innerHTML = `<div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Detalle de satisfacción · ${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)} (${htmlEscape(monthKey)})</h4>${metric("Recepción", s => normalizeQualityToTen(s?.reception || 0))}${metric("Comunicación", s => normalizeQualityToTen(s?.communication || 0))}${metric("Satisfacción general", s => normalizeQualityToTen(s?.overall || 0))}</div>`
+      const questionMetrics = formQuestions.map((q, idx) => metric(q?.label || `Pregunta ${idx+1}`, s => normalizeQualityToTen((s?.answers||{})[String(q?.id||"")] || 0))).join("")
+      wrap.innerHTML = `<div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Detalle de satisfacción · ${htmlEscape(userDisplayNameByEmail(analystEmail) || analystEmail)} (${htmlEscape(monthKey)})</h4>${questionMetrics}${metric("Promedio de satisfacción", s => normalizeQualityToTen(s?.overall || 0))}</div>`
     }
 
     function updateTopPerformerAptitudinalCell(rowKey, field, rawValue){
