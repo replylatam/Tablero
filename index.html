@@ -5237,7 +5237,10 @@ Cliente B`)
       const target = String(select?.value || "").trim().toLowerCase()
       if(!target) return
       if(!analysts.includes(target)) return alert("El email no corresponde a un analista activo.")
-      const updated = { ...ticket, assignedTo: target, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email||"").toLowerCase() }
+      const changedAt = new Date().toISOString()
+      const assignmentHistory = Array.isArray(ticket.assignmentHistory) ? [...ticket.assignmentHistory] : []
+      assignmentHistory.push({ from: String(ticket.assignedTo||"").toLowerCase(), to: target, changedAt, changedBy: String(currentUser?.email||"").toLowerCase() })
+      const updated = { ...ticket, assignedTo: target, assignmentHistory, reassignedAt: changedAt, updatedAt: changedAt, updatedBy: String(currentUser?.email||"").toLowerCase() }
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id: ticket.id, ...updated })
       showToast("Responsable actualizado.", "ok", 1500)
@@ -5251,6 +5254,7 @@ Cliente B`)
       const email = String(select?.value || "").trim().toLowerCase()
       if(!email) return
       await addHelperToTicket(ticketId, email)
+      await loadTickets()
       if(adminPanelTab === "agenda") loadAdminAgenda()
       showToast("Ayudante agregado.", "ok", 1400)
     }
@@ -10356,12 +10360,20 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(!confirm(`¿Quitar ayudante ${email || userKey}?`)) return
       delete users[userKey]
       const helpers = (ticket.helpers || []).filter(h => emailKey(h) !== userKey)
+      const monthlyFolders = { ...((ticket.timeTracking||{}).monthlyFolders || {}) }
+      Object.keys(monthlyFolders).forEach(mk => {
+        const folder = monthlyFolders[mk] || {}
+        const entries = Array.isArray(folder.entries) ? folder.entries : []
+        monthlyFolders[mk] = { ...folder, entries: entries.filter(e => emailKey(String(e?.analyst || "")) !== userKey) }
+      })
       const tracking = { ...(ticket.timeTracking || {}), users }
+      tracking.monthlyFolders = monthlyFolders
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, helpers, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet('updateTicket', { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      await loadTickets()
       openTicketDetailModal(id)
     }
 
@@ -10377,6 +10389,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet('updateTicket', { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
+      await loadTickets()
       openTicketDetailModal(id)
     }
 
@@ -12296,7 +12309,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:4px;flex-wrap:nowrap"><select id="agendaReassign_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Resp.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}" ${String(u.email||'').toLowerCase()===String(t.assignedTo||'').toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Cambiar responsable" onclick="reassignTicketFromAgenda('${t.id}')">👤</button><select id="agendaHelper_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Ayud.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Sumar ayudante" onclick="addHelperFromAgenda('${t.id}')">🤝</button><button class="ghost" title="Alertar" onclick="sendAgendaAlertToAnalyst('${String(t.assignedTo||'').toLowerCase()}')">⚠️</button></div></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><button class="ghost" title="Acciones rápidas" onclick="toggleAgendaQuickActions('${t.id}')">⚙️</button><div id="agendaQuick_${emailKey(t.id)}" class="hidden" style="margin-top:6px"><div class="inline" style="gap:4px;flex-wrap:nowrap"><select id="agendaReassign_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Resp.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}" ${String(u.email||'').toLowerCase()===String(t.assignedTo||'').toLowerCase()?'selected':''}>${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Cambiar responsable" onclick="reassignTicketFromAgenda('${t.id}')">👤</button><select id="agendaHelper_${emailKey(t.id)}" style="margin:0;max-width:120px"><option value="">Ayud.</option>${Object.values(cachedUsersByEmail||{}).filter(u=>String(u?.role||'')==='analista' && u?.active!==false).map(u => `<option value="${htmlEscape(String(u.email||'').toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email||'')||u.email||'-')}</option>`).join("")}</select><button class="ghost" title="Sumar ayudante" onclick="addHelperFromAgenda('${t.id}')">🤝</button><button class="ghost" title="Alertar" onclick="sendAgendaAlertToAnalyst('${String(t.assignedTo||'').toLowerCase()}')">⚠️</button></div></div></td>
                 </tr>`
               }).join("")}
               ${analystsWithoutTasks.map(email => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">—</td><td colspan="18" style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(userDisplayNameByEmail(email) || email)}</strong>: No tiene tareas asignadas. <button class="ghost" onclick="sendAgendaAlertToAnalyst('${email}')">Alertar agenda</button></td></tr>`).join("")}
@@ -12315,9 +12328,12 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         </div>
         <div class="agendaSection">
           <h4>Historial de agenda guardada (${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"})</h4>
-          ${savedHistory.length ? savedHistory.map(item => `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${(item.rows || []).slice(0,10).map(r => `• ${htmlEscape(r.id || "-")} · ${htmlEscape(r.status || "-")} · ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>") || "Sin filas"}</div></div>`).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`}
+          ${savedHistory.length ? savedHistory.map(item => { const byAnalyst={}; (item.rows||[]).forEach(r=>{ const a=String(r.assignedTo||"sin_asignar").toLowerCase(); if(!byAnalyst[a])byAnalyst[a]=[]; byAnalyst[a].push(r) }); return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${Object.entries(byAnalyst).map(([analyst,rows])=>`<div style='margin:8px 0'><strong>${htmlEscape(userDisplayNameByEmail(analyst)||analyst)}</strong><br>${rows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")} · Plan: ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>")}</div>`).join("") || "Sin filas"}</div></div>` }).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`}
         </div>
       `
+    }
+    function toggleAgendaQuickActions(ticketId){
+      document.getElementById(`agendaQuick_${emailKey(ticketId)}`)?.classList.toggle("hidden")
     }
 
     function renderInactiveTicketsTable(tickets, logs){
