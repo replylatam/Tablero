@@ -2123,7 +2123,7 @@
     }
 
     function setMainViewTab(tab){
-      let nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile","client_activity"].includes(tab) ? tab : "tickets"
+      let nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile","client_activity","mensajeria"].includes(tab) ? tab : "tickets"
       if(currentRole === "consultor" && nextTab === "portfolio_overview") nextTab = "portfolio"
       if(isAdminLevel3C() && nextTab === "summary_general") nextTab = "portfolio_overview"
       if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
@@ -5294,10 +5294,11 @@ Cliente B`)
       return `<span title="${state}" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${color};margin-right:6px"></span>`
     }
     async function setMyChatPresence(status){ await updateMyPresence(status || "online") }
-    async function openChatModal(){
+    async function openChatModal(forceOpen){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       const dock=document.getElementById("chatDock"); if(!dock) return
-      dock.style.display = dock.style.display === "none" || !dock.style.display ? "block" : "none"
+      if(typeof forceOpen === "boolean") dock.style.display = forceOpen ? "block" : "none"
+      else dock.style.display = dock.style.display === "none" || !dock.style.display ? "block" : "none"
       if(dock.style.display === "none") return
       const me=String(currentUser?.email||"").toLowerCase()
       const usersByEmail=(await db.ref("users_by_email").once("value")).val()||{}
@@ -5319,7 +5320,7 @@ Cliente B`)
     function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const prevCount = Number(openDirectChats[target]?.lastCount||0); openDirectChats[target].lastCount = list.length; renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && list.length>prevCount){ try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); const g=ac.createGain(); o.type='sine'; o.frequency.value=740; g.gain.value=0.03; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.12) }catch(_){} } if(!openDirectChats[target]?.minimized){ list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]).forEach(m=>{ db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString()) }) } if(hasForeign){ const dockOpen = document.getElementById("chatDock")?.style?.display === "block"; const anyOpen = Object.keys(openDirectChats||{}).some(k => document.getElementById(`chatWin_${emailKey(k)}`)); if(!dockOpen && !anyOpen) openChatModal(); if(!document.getElementById(`chatWin_${emailKey(target)}`)) openDirectChatWindow(target); if(openDirectChats[target]?.minimized){ directChatUnread[target]=(directChatUnread[target]||0)+1; updateChatWindowState(target);} } }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(!win) return; win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:"" }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target].minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; updateChatWindowState(target)} }
-    function openDirectChatWindow(target, opts = {}){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px">${["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick=\"appendSpecificEmojiToChatInput('${target}','${e}')\">${e}</button>`).join("")}</div></div></div>`)} if(opts.minimized){ openDirectChats[target].minimized = false; toggleChatWindow(target); const win=document.getElementById(`chatWin_${key}`); if(win) win.style.width="230px" } directChatUnread[target]=0; updateChatWindowState(target); loadDirectChatMessages(target) }
+    function openDirectChatWindow(target, opts = {}){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px">${["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick=\"appendSpecificEmojiToChatInput('${target}','${e}')\">${e}</button>`).join("")}</div></div></div>`)} if(opts.minimized){ openDirectChats[target].minimized = false; toggleChatWindow(target); const win=document.getElementById(`chatWin_${key}`); if(win) win.style.width="230px" } directChatUnread[target]=0; updateChatWindowState(target); if(document.getElementById("chatDock")?.style?.display==="block") openChatModal(true); loadDirectChatMessages(target) }
     async function pollIncomingDirectChats(){
       const me=String(currentUser?.email||"").toLowerCase(); if(!me) return
       const map=(await db.ref("direct_chats").once("value")).val()||{}
@@ -7435,6 +7436,7 @@ async function submitSupportRequest(){
       const showConsultorSummary = mainViewTab === "summary_general" && canCurrentRoleSeeMenu("main:summary_general")
       const showClientActivity = mainViewTab === "client_activity" && canCurrentRoleSeeMenu("main:client_activity")
       const showConsultorProfile = mainViewTab === "profile" && canCurrentRoleSeeMenu("main:profile")
+      const showMessaging = mainViewTab === "mensajeria"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
       const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer || showClientActivity
@@ -7480,6 +7482,7 @@ async function submitSupportRequest(){
       ] : [
         { title: "General", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          { icon: "💬", label: "Mensajería", action: "setMainViewTab('mensajeria')" },
           ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
           ...((currentRole === "admin" && !isAdmin3C) || currentRole === "analista" ? [{ icon: "🛠️", label: "Top performer", action: "setMainViewTab('top_performer')" }] : []),
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
@@ -7750,7 +7753,7 @@ async function submitSupportRequest(){
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
         `}
-            ${(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin") ? `<button class="chatFab" onclick="openChatModal()" title="Chat entre usuarios">💬</button><button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
+            ${(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin") && !showMessaging ? `<button class="chatFab" onclick="openChatModal()" title="Chat entre usuarios">💬</button><button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
           </div>
         </div>
       `
