@@ -5472,16 +5472,9 @@ async function submitSupportRequest(){
       let items = Array.isArray(forms?.[role]) ? forms[role] : []
       if(!items.length) items = JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS[role] || []))
       if(!wrap) return
-      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">Deficiente (1 a 3): no cumple, requiere rehacer gran parte del trabajo y/o calidad baja.<br>Regular (4 a 6): cumple parcialmente, tiene varios puntos de mejora y calidad media.<br>Bueno (7 a 8): cumple lo esperado con mejoras menores.<br>Excelente (9 a 10): cumple requisitos y lineamientos, sin errores y con calidad alta.</div></div>`
-      const questionsHtml = items.map((q, idx) => `
-        <div class="feedItem" style="margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-            <label style="margin:0;flex:1;min-width:260px">${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</label>
-            <select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}" style="max-width:120px;margin:0"><option value="">Puntaje</option>${(Array.isArray(q.options) ? q.options : []).map(opt => `<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select>
-          </div>
-        </div>
-      `).join("")
-      wrap.innerHTML = rulesHtml + questionsHtml
+      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10).</div></div>`
+      const tableRows = items.map((q, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);width:140px"><select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}" style="margin:0"><option value="">Puntaje</option>${(Array.isArray(q.options)?q.options:[]).map(opt=>`<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select></td></tr>`).join("")
+      wrap.innerHTML = `${rulesHtml}<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Pregunta</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje</th></tr></thead><tbody>${tableRows}</tbody></table></div>`
     }
 
     function collectQualityAnswers(containerId){
@@ -5861,17 +5854,23 @@ async function submitSupportRequest(){
       const selectedRole = qualityAdminRoleView === "consultor" ? "consultor" : "analista"
       const roleLabel = selectedRole === "analista" ? "Analista" : "Consultor"
       const roleSurveys = surveys.filter(s => String(s.ratedRole || "consultor") === selectedRole)
-      const metricConfig = [
-        { key: "reception", label: "Promedio recepción" },
-        { key: "communication", label: "Promedio comunicación" },
-        { key: "overall", label: "Promedio satisfacción" }
-      ]
+      const metricConfig = selectedRole === "consultor"
+        ? [
+          { key: "q1", label: "Pregunta 1" },{ key: "q2", label: "Pregunta 2" },{ key: "q3", label: "Pregunta 3" },{ key: "q4", label: "Pregunta 4" },{ key: "q5", label: "Pregunta 5" },
+          { key: "q6", label: "Pregunta 6" },{ key: "q7", label: "Pregunta 7" },{ key: "q8", label: "Pregunta 8" },{ key: "q9", label: "Pregunta 9" },{ key: "q10", label: "Pregunta 10" },
+          { key: "overall", label: "Promedio de satisfacción", highlight: true }
+        ]
+        : [
+          { key: "q1", label: "Pregunta 1" },{ key: "q2", label: "Pregunta 2" },{ key: "q3", label: "Pregunta 3" },{ key: "q4", label: "Pregunta 4" },{ key: "q5", label: "Pregunta 5" },
+          { key: "q6", label: "Pregunta 6" },{ key: "q7", label: "Pregunta 7" },{ key: "q8", label: "Pregunta 8" },{ key: "q9", label: "Pregunta 9" },{ key: "q10", label: "Pregunta 10" },
+          { key: "overall", label: "Promedio de satisfacción", highlight: true }
+        ]
       const metricCards = metricConfig.map(metric => {
         const values = roleSurveys
-          .map(item => normalizeQualityToTen(item?.[metric.key] || 0))
+          .map(item => normalizeQualityToTen(metric.key === "overall" ? (item?.overall || 0) : ((item?.answers||{})[metric.key] || 0)))
           .filter(v => Number.isFinite(v) && v > 0)
         const avg = values.length ? (values.reduce((acc, n) => acc + n, 0) / values.length) : 0
-        return `<div class="qualitySummaryCard"><div class="metric">${htmlEscape(metric.label)}</div><div class="value">${values.length ? `${avg.toFixed(2)} / 10` : "Sin datos"}</div><div class="meta">${roleLabel} · Encuestas: ${values.length}</div></div>`
+        return `<div class="qualitySummaryCard" style="${metric.highlight?"border-color:var(--accent-2);box-shadow:0 0 0 1px rgba(34,212,191,.25) inset;":""}"><div class="metric">${htmlEscape(metric.label)}</div><div class="value">${values.length ? `${avg.toFixed(2)} / 10` : "Sin datos"}</div><div class="meta">${roleLabel} · Encuestas: ${values.length}</div></div>`
       }).join("")
       const averages = Object.entries(byAnalyst).map(([analyst, list]) => {
         const rated = list.filter(it => String(it.ratedRole||"consultor") === "analista")
@@ -7478,6 +7477,7 @@ async function submitSupportRequest(){
       const sidebarSections = (isAdmin && !isAdmin3C) ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
+          { icon: "💬", label: "Mensajería", action: "setMainViewTab('mensajeria')" },
           { icon: "🗂️", label: "Daily's", action: "setAdminTab('dailys')" },
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
@@ -8853,11 +8853,11 @@ async function submitSupportRequest(){
         return
       }
       const avg = (arr, fn) => arr.reduce((a,b)=>a+fn(b),0) / arr.length
-      const rows = [
-        { label: "¿Cómo recibiste la solución?", score: avg(mine, s => normalizeQualityReceptionToTen(s.reception || 0)), answer: s => s.reception || "-" },
-        { label: "Comunicación", score: avg(mine, s => normalizeQualityCommunicationToTen(s.communication || 0)), answer: s => s.communication || "-" },
-        { label: "Satisfacción general", score: avg(mine, s => normalizeQualityToTen(s.overall || 0)), answer: s => `${normalizeQualityToTen(s.overall || 0)} / 10` }
-      ]
+      const rows = ["q1","q2","q3","q4","q5","q6","q7","q8","q9","q10"].map((key, idx) => ({
+        label: `Pregunta ${idx + 1}`,
+        score: avg(mine, s => normalizeQualityToTen((s?.answers||{})[key] || 0)),
+        answer: s => `${normalizeQualityToTen((s?.answers||{})[key] || 0)} / 10`
+      })).concat([{ label: "Promedio de satisfacción", score: avg(mine, s => normalizeQualityToTen(s.overall || 0)), answer: s => `${normalizeQualityToTen(s.overall || 0)} / 10` }])
       const roleLabel = currentRole === "analista" ? "analista" : "consultor"
       const buildAdvice = (label, score) => {
         const isReception = label.includes("recibiste")
@@ -9377,7 +9377,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
+          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200)
           return
         }
       }
@@ -9433,7 +9433,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          return alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
+          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200)
         }
       }
 
