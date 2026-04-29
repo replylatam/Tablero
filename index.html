@@ -1850,15 +1850,18 @@
 
     const DEFAULT_QUALITY_FORMS = {
       analista: [
-        { id: "reception", label: "¿Cómo recibiste el ticket?", options: ["incompleto","a_la_mitad","completo"] },
-        { id: "communication", label: "Comunicación", options: ["muy_deficiente","deficiente","normal","excelente"] },
-        { id: "overall", label: "Satisfacción general (1-10)", options: ["1","2","3","4","5","6","7","8","9","10"] }
+        { id: "q1", label: "¿Qué tan bien el trabajo entregado cumple con lo solicitado y con la calidad esperada?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q2", label: "¿Qué tan clara y oportuna fue la comunicación del analista durante la gestión?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q3", label: "¿Qué tan correcta, completa y clara fue la planilla o archivo compartido, y qué tan adecuado fue su envío en tiempo y forma?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q4", label: "En caso de inconvenientes, ¿qué tan eficaz fue el analista en resolverlos de forma autónoma?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q5", label: "¿Qué tan adecuados fueron los tiempos de resolución del ticket en relación a lo esperado?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q6", label: "¿Qué tan completa fue la resolución del ticket (sin puntos pendientes o incompletos)?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q7", label: "¿Qué tan bien se respetaron los lineamientos del cliente?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q8", label: "¿Qué tan correctamente interpretó el analista el requerimiento desde el inicio?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q9", label: "¿Qué tan buena fue la predisposición del analista durante la gestión del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q10", label: "¿Qué tan adecuado fue el seguimiento del analista hasta la resolución del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] }
       ],
-      consultor: [
-        { id: "reception", label: "¿Cómo recibiste la solución?", options: ["incompleto","a_la_mitad","completo"] },
-        { id: "communication", label: "Comunicación del analista", options: ["muy_deficiente","deficiente","normal","excelente"] },
-        { id: "overall", label: "Satisfacción general (1-10)", options: ["1","2","3","4","5","6","7","8","9","10"] }
-      ]
+      consultor: []
     }
 
     const SHEET_ID = "1tNNtG2Asr1ds1_-3P6PmVgsHbdlhhfrV7GhWJDiTO1Q"
@@ -5454,7 +5457,7 @@ async function submitSupportRequest(){
           <label>${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</label>
           <select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}"><option value="">Seleccionar</option>${(Array.isArray(q.options) ? q.options : []).map(opt => `<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select>
         </div>
-      `).join("")
+      `).join("") + `<div class="small" style="margin-top:8px">Deficiente (1 a 3): no cumple, requiere rehacer gran parte del trabajo y/o calidad baja.<br>Regular (4 a 6): cumple parcialmente, tiene varios puntos de mejora y calidad media.<br>Excelente (9 a 10): cumple requisitos y lineamientos, sin errores y con calidad alta.</div>`
     }
 
     function collectQualityAnswers(containerId){
