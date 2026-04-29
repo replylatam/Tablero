@@ -5231,7 +5231,7 @@ Cliente B`)
       if(target === String(currentUser?.email || "").toLowerCase()) return
       await db.ref("analyst_alerts").child(emailKey(target)).set({
         analystEmail: target,
-        message: "Es momento de completar la agenda",
+        message: String(prompt("Motivo de la alerta para el analista:", "Es momento de completar la agenda") || "").trim() || "Es momento de completar la agenda",
         createdAt: new Date().toISOString(),
         createdBy: String(currentUser?.email || "").toLowerCase()
       })
@@ -12660,19 +12660,21 @@ function setAdminAgendaTeam(team){
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario del analista</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última fecha de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Modificado</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario del analista</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
             </tr></thead>
             <tbody>
               ${scoped.map(t => {
                 const lastInfo = ticketLastCommentInfo(t)
                 const roleIcon = String(t.assignedTo || "").toLowerCase() === myEmail ? "👑" : "🤝"
+                const timeInfo = ticketTimeSummary(t)
                 return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
@@ -12680,13 +12682,14 @@ function setAdminAgendaTeam(team){
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")} ${(String(t.status||'')==='doing') ? '🕒' : ''}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="checkbox" ${t.agendaTomorrow ? "checked" : ""} onchange="updateTicketAgendaTomorrow('${t.id}', this.checked)"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${timeInfo.lastTimeAt ? htmlEscape(formatDateTime24(timeInfo.lastTimeAt)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastInfo?.author || '')}">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="checkbox" ${t.agendaTomorrow ? "checked" : ""} onchange="updateTicketAgendaTomorrow('${t.id}', this.checked)"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
               </tr>`
               }).join("")}
@@ -12695,8 +12698,28 @@ function setAdminAgendaTeam(team){
         </div>
         <div class="small" style="margin-top:10px"><strong>Tareas con comentarios pendientes:</strong> ${withPending.length}</div>
         <div class="agendaSection"><h4>Tickets sin atención por 7 días</h4>${renderInactiveTicketsTable(scoped, logs)}</div>
-        <div class="agendaSection"><h4>Histórico de comentarios</h4>${historyHtml}</div>
+        <div class="agendaSection"><h4>Historial</h4><div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>${(adminAgendaHistoryView||'comments')==='comments' ? historyHtml : `<div class="small">El historial de agenda guardada está disponible en Organizar agenda por equipo.</div>`}</div><div class="agendaSection"><h4>Para tener en cuenta</h4><textarea id="analystDailyNote" placeholder="Escribí algo para hoy..." style="min-height:90px"></textarea><div class="inline" style="margin-top:8px"><button class="ghost" onclick="saveAnalystDailyNote()">Guardar nota del día</button></div><div id="analystDailyNoteHistory" class="small" style="margin-top:8px"></div></div>
       `
+    }
+
+
+    async function saveAnalystDailyNote(){
+      if(currentRole !== "analista") return
+      const text = String(document.getElementById("analystDailyNote")?.value || "").trim()
+      if(!text) return alert("Escribí una nota antes de guardar.")
+      const today = toLocalDateOnly(new Date())
+      const key = `${emailKey(String(currentUser?.email||""))}_${today.replaceAll("-","")}`
+      await db.ref("analyst_daily_notes").child(key).set({ id:key, date:today, analystEmail:String(currentUser?.email||"").toLowerCase(), note:text, createdAt:new Date().toISOString() })
+      renderAnalystDailyNoteHistory()
+      showToast("Nota guardada para hoy.","ok",1200)
+    }
+    async function renderAnalystDailyNoteHistory(){
+      const me=String(currentUser?.email||"").toLowerCase(); if(!me) return
+      const all=Object.values((await db.ref("analyst_daily_notes").once("value")).val()||{}).filter(n=>String(n?.analystEmail||"").toLowerCase()===me).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,10)
+      const today=toLocalDateOnly(new Date())
+      const todayItem=all.find(n=>String(n.date||"")===today)
+      const input=document.getElementById("analystDailyNote"); if(input) input.value=todayItem?.note || ""
+      const box=document.getElementById("analystDailyNoteHistory"); if(box) box.innerHTML = all.length ? `<strong>Historial:</strong><br>${all.map(n=>`• ${htmlEscape(formatDateDMY(n.date||""))}: ${htmlEscape(n.note||"")}`).join("<br>")}` : "Sin historial de notas."
     }
 
 
