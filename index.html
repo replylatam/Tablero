@@ -1703,6 +1703,8 @@
     var analystAgendaVisible = true
     var analystAgendaTodayOnly = false
     var dailyAdminRows = []
+    var activeDirectChatRef = null
+    var activeDirectChatId = ""
     var dailyHistoryRowsCache = []
     var dailyAnalystRows = []
     var dailyWeekStripScroll = {}
@@ -5178,6 +5180,13 @@ Cliente B`)
     function closeSupportModal(){
       document.getElementById("supportModal")?.classList.add("hidden")
     }
+    function teardownDirectChatListener(){
+      if(activeDirectChatRef){
+        activeDirectChatRef.off("value")
+        activeDirectChatRef = null
+      }
+      activeDirectChatId = ""
+    }
     function buildDirectChatId(a, b){
       const sorted = [String(a || "").toLowerCase(), String(b || "").toLowerCase()].sort()
       return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g, "_")
@@ -5197,29 +5206,43 @@ Cliente B`)
           : `<option value="">Sin usuarios disponibles</option>`
       }
       document.getElementById("chatModal")?.classList.remove("hidden")
-      await loadDirectChatMessages()
+      loadDirectChatMessages()
     }
 
     function closeChatModal(){
+      teardownDirectChatListener()
       document.getElementById("chatModal")?.classList.add("hidden")
     }
 
-    async function loadDirectChatMessages(){
+    function renderDirectChatMessages(list = []){
+      const wrap = document.getElementById("chatMessages")
+      if(!wrap) return
+      const shouldAutoScroll = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < 40
+      wrap.innerHTML = list.length
+        ? list.map(msg => `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from || msg?.fromName || "-"))} · ${msg?.createdAt ? formatDateTime24(msg.createdAt) : ""}</div><div>${htmlEscape(msg?.text || "")}</div></div>`).join("")
+        : `<p class="small">Todavía no hay mensajes en este chat.</p>`
+      if(shouldAutoScroll || !list.length) wrap.scrollTop = wrap.scrollHeight
+    }
+
+    function loadDirectChatMessages(){
       const wrap = document.getElementById("chatMessages")
       if(!wrap) return
       const me = String(currentUser?.email || "").toLowerCase()
       const target = String(document.getElementById("chatTargetUser")?.value || "").toLowerCase()
+      teardownDirectChatListener()
       if(!target){
         wrap.innerHTML = `<p class="small">Seleccioná un usuario para iniciar la conversación.</p>`
         return
       }
       const chatId = buildDirectChatId(me, target)
-      const data = (await db.ref("direct_chats").child(chatId).once("value")).val() || {}
-      const list = Object.values(data).sort((a,b)=> new Date(a?.createdAt || 0) - new Date(b?.createdAt || 0))
-      wrap.innerHTML = list.length
-        ? list.map(msg => `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from || msg?.fromName || "-"))} · ${msg?.createdAt ? formatDateTime24(msg.createdAt) : ""}</div><div>${htmlEscape(msg?.text || "")}</div></div>`).join("")
-        : `<p class="small">Todavía no hay mensajes en este chat.</p>`
-      wrap.scrollTop = wrap.scrollHeight
+      activeDirectChatId = chatId
+      activeDirectChatRef = db.ref("direct_chats").child(chatId)
+      activeDirectChatRef.on("value", snap => {
+        if(activeDirectChatId !== chatId) return
+        const data = snap.val() || {}
+        const list = Object.values(data).sort((a,b)=> new Date(a?.createdAt || 0) - new Date(b?.createdAt || 0))
+        renderDirectChatMessages(list)
+      })
     }
 
     async function sendDirectChatMessage(){
@@ -5237,7 +5260,7 @@ Cliente B`)
         createdAt: new Date().toISOString()
       })
       if(textEl) textEl.value = ""
-      await loadDirectChatMessages()
+      loadDirectChatMessages()
     }
 
     async function submitSupportRequest(){
