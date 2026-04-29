@@ -8,6 +8,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1631,6 +1632,7 @@
     })
 
     const db = firebase.database()
+    const firestoreDb = firebase.firestore()
     const DEFAULT_USERS = [
       { email: "admin@tablero.local", password: "Admin.Tablero#2026", role: "admin" }
     ]
@@ -5178,9 +5180,11 @@ Cliente B`)
     function closeSupportModal(){
       document.getElementById("supportModal")?.classList.add("hidden")
     }
+    var chatUnsubscribe = null
+
     function buildDirectChatId(a, b){
       const sorted = [String(a || "").toLowerCase(), String(b || "").toLowerCase()].sort()
-      return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g, "_")
+      return `${sorted[0]}__${sorted[1]}`
     }
 
     async function openChatModal(){
@@ -5197,29 +5201,44 @@ Cliente B`)
           : `<option value="">Sin usuarios disponibles</option>`
       }
       document.getElementById("chatModal")?.classList.remove("hidden")
-      await loadDirectChatMessages()
+      loadDirectChatMessages()
     }
 
     function closeChatModal(){
+      if(chatUnsubscribe){
+        chatUnsubscribe()
+        chatUnsubscribe = null
+      }
       document.getElementById("chatModal")?.classList.add("hidden")
     }
 
-    async function loadDirectChatMessages(){
+    function loadDirectChatMessages(){
       const wrap = document.getElementById("chatMessages")
       if(!wrap) return
       const me = String(currentUser?.email || "").toLowerCase()
       const target = String(document.getElementById("chatTargetUser")?.value || "").toLowerCase()
+      if(chatUnsubscribe){
+        chatUnsubscribe()
+        chatUnsubscribe = null
+      }
       if(!target){
         wrap.innerHTML = `<p class="small">Seleccioná un usuario para iniciar la conversación.</p>`
         return
       }
       const chatId = buildDirectChatId(me, target)
-      const data = (await db.ref("direct_chats").child(chatId).once("value")).val() || {}
-      const list = Object.values(data).sort((a,b)=> new Date(a?.createdAt || 0) - new Date(b?.createdAt || 0))
-      wrap.innerHTML = list.length
-        ? list.map(msg => `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from || msg?.fromName || "-"))} · ${msg?.createdAt ? formatDateTime24(msg.createdAt) : ""}</div><div>${htmlEscape(msg?.text || "")}</div></div>`).join("")
-        : `<p class="small">Todavía no hay mensajes en este chat.</p>`
-      wrap.scrollTop = wrap.scrollHeight
+      chatUnsubscribe = firestoreDb.collection("mensajes")
+        .where("chatId", "==", chatId)
+        .orderBy("createdAt", "asc")
+        .onSnapshot(snapshot => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          wrap.innerHTML = list.length
+            ? list.map(msg => `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from || "-"))} · ${msg?.createdAt?.toDate ? formatDateTime24(msg.createdAt.toDate().toISOString()) : ""}</div><div>${htmlEscape(msg?.text || "")}</div></div>`).join("")
+            : `<p class="small">Todavía no hay mensajes en este chat.</p>`
+          wrap.scrollTop = wrap.scrollHeight
+        }, err => {
+          console.error("Error al leer mensajes en tiempo real", err)
+          wrap.innerHTML = `<p class="small">No se pudieron cargar mensajes en tiempo real.</p>`
+        })
     }
 
     async function sendDirectChatMessage(){
@@ -5230,14 +5249,14 @@ Cliente B`)
       if(!target) return alert("Seleccioná un usuario.")
       if(!text) return alert("Escribí un mensaje.")
       const chatId = buildDirectChatId(me, target)
-      await db.ref("direct_chats").child(chatId).push({
+      await firestoreDb.collection("mensajes").add({
+        chatId,
         from: me,
         to: target,
         text,
-        createdAt: new Date().toISOString()
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
       })
       if(textEl) textEl.value = ""
-      await loadDirectChatMessages()
     }
 
     async function submitSupportRequest(){
