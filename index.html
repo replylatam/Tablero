@@ -1740,16 +1740,16 @@
     var menuPermissionsByRole = { admin: {}, analista: {}, consultor: {} }
     const DEFAULT_MENU_VISIBILITY_BY_ROLE = {
       admin: new Set([
-        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
+        "main:tickets","main:mensajeria","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines",
         "admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center"
       ]),
       analista: new Set([
-        "main:tickets","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
+        "main:tickets","main:mensajeria","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
         "main:registro_horas","main:dailys","main:portfolio_overview","main:support"
       ]),
       consultor: new Set([
-        "main:tickets","main:encuentro","main:saved","main:summary_general","main:portfolio",
+        "main:tickets","main:mensajeria","main:encuentro","main:saved","main:summary_general","main:portfolio",
         "main:agenda_today","main:consultor_guidelines","main:support","main:profile"
       ])
     }
@@ -1861,7 +1861,18 @@
         { id: "q9", label: "¿Qué tan buena fue la predisposición del analista durante la gestión del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] },
         { id: "q10", label: "¿Qué tan adecuado fue el seguimiento del analista hasta la resolución del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] }
       ],
-      consultor: []
+      consultor: [
+        { id: "q1", label: "¿Qué tan bien el trabajo entregado cumple con lo solicitado y con la calidad esperada?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q2", label: "¿Qué tan clara y oportuna fue la comunicación del analista durante la gestión?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q3", label: "¿Qué tan correcta, completa y clara fue la planilla o archivo compartido, y qué tan adecuado fue su envío en tiempo y forma?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q4", label: "En caso de inconvenientes, ¿qué tan eficaz fue el analista en resolverlos de forma autónoma?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q5", label: "¿Qué tan adecuados fueron los tiempos de resolución del ticket en relación a lo esperado?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q6", label: "¿Qué tan completa fue la resolución del ticket (sin puntos pendientes o incompletos)?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q7", label: "¿Qué tan bien se respetaron los lineamientos del cliente?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q8", label: "¿Qué tan correctamente interpretó el analista el requerimiento desde el inicio?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q9", label: "¿Qué tan buena fue la predisposición del analista durante la gestión del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] },
+        { id: "q10", label: "¿Qué tan adecuado fue el seguimiento del analista hasta la resolución del ticket?", options: ["1","2","3","4","5","6","7","8","9","10"] }
+      ]
     }
 
     const SHEET_ID = "1tNNtG2Asr1ds1_-3P6PmVgsHbdlhhfrV7GhWJDiTO1Q"
@@ -5441,9 +5452,15 @@ async function submitSupportRequest(){
     async function ensureQualityFormsLoaded(){
       if(qualitySurveyForms) return qualitySurveyForms
       const fromDb = (await db.ref("quality_forms").once("value")).val() || {}
+      const hasLegacyConsultorQuestions = Array.isArray(fromDb.consultor) && fromDb.consultor.some(q => {
+        const label = String(q?.label || "").toLowerCase()
+        return label.includes("¿cómo recibiste el ticket?") || label.includes("comunicación") || label.includes("satisfacción general") || label.includes("prueba")
+      })
       qualitySurveyForms = {
         analista: Array.isArray(fromDb.analista) && fromDb.analista.length ? fromDb.analista : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.analista)),
-        consultor: Array.isArray(fromDb.consultor) && fromDb.consultor.length ? fromDb.consultor : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.consultor))
+        consultor: (Array.isArray(fromDb.consultor) && fromDb.consultor.length >= 10 && !hasLegacyConsultorQuestions)
+          ? fromDb.consultor
+          : JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS.consultor))
       }
       return qualitySurveyForms
     }
@@ -7440,7 +7457,7 @@ async function submitSupportRequest(){
       const showMessaging = mainViewTab === "mensajeria"
       const showEncuentro = ["analista","consultor","admin"].includes(currentRole) && mainViewTab === "encuentro"
       const showTopPerformer = mainViewTab === "top_performer"
-      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer || showClientActivity
+      const showProfileView = showAnalystProfile || showAdminProfile || showConsultorProfile || showAnalystAgenda || showAnalystHelp || showAnalystGuidelines || showAnalystManuals || showAnalystBoardSettings || showAdminGuidelines || showAdminManuals || showSavedItems || showConsultorPortfolio || showPortfolioOverview || showQualityResults || showAnalystHoursLog || showSupportCasesView || showConsultorGuidelines || showConsultorTodayAgenda || showConsultorSummary || showEncuentro || showDailysView || showTopPerformer || showClientActivity || showMessaging
       const isSidebarItemVisible = (item) => {
         const action = String(item?.action || "")
         const mainMatch = action.match(/setMainViewTab\\('([^']+)'\\)/)
@@ -7706,7 +7723,8 @@ async function submitSupportRequest(){
             <h3 style="margin-top:0">Manuales</h3>
             <div class="row"><div><label>Buscador</label><input oninput="updateManualsSearch(this.value)" placeholder="Buscar manual"></div></div>
             <div id="analystManualsList" class="small" style="margin-top:10px"></div>
-          </div>` : showAnalystBoardSettings ? `
+          </div>` : showMessaging ? `
+          <div class="card"><h3 style="margin-top:0">Mensajería</h3><p class="small" style="margin-bottom:10px">Abrí el panel para conversar con analistas, consultores y admins.</p><div class="inline" style="gap:8px"><button onclick="openChatModal(true)">Abrir mensajería</button><button class="ghost" onclick="closeChatModal()">Cerrar panel</button></div></div>` : showAnalystBoardSettings ? `
           <div class="card">
             <div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración del tablero</h3><button class="ghost" onclick="setAnalystTab('profile')">Mi perfil</button></div>
             <div class="switchWrap">
@@ -12252,7 +12270,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       let scoped = tickets.filter(t => {
         const owner = String(t.assignedTo||"").toLowerCase()
         const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h||"").toLowerCase()) : []
-        return teamSet.has(owner) || helpers.some(h => teamSet.has(h))
+        return teamSet.has(owner)
       })
       const teamTicketsAll = [...scoped]
 
@@ -12343,8 +12361,9 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
                 const lastComment = ticketLastCommentAt(t)
                 const lastCommentInfo = ticketLastCommentInfo(t)
                 const owner = String(t.assignedTo || "").toLowerCase()
-                const helperMatch = (Array.isArray(t.helpers) ? t.helpers : []).find(h => teamSet.has(String(h||"").toLowerCase()))
-                const roleIcon = teamSet.has(owner) ? "👑" : (helperMatch ? "🤝" : "—")
+                const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : []).filter(h => teamSet.has(String(h||"").toLowerCase()))
+                const isOwnerInTeam = teamSet.has(owner)
+                const roleIcon = (isOwnerInTeam && helpersInTeam.length) ? "👑🤝" : (isOwnerInTeam ? "👑" : (helpersInTeam.length ? "🤝" : "—"))
                 const daysSince = lastComment ? Math.floor((Date.now() - new Date(lastComment).getTime()) / 86400000) : null
                 const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
                 const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
