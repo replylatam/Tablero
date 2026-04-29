@@ -5231,7 +5231,7 @@ Cliente B`)
       if(target === String(currentUser?.email || "").toLowerCase()) return
       await db.ref("analyst_alerts").child(emailKey(target)).set({
         analystEmail: target,
-        message: "Es momento de completar la agenda",
+        message: String(prompt("Motivo de la alerta para el analista:", "Es momento de completar la agenda") || "").trim() || "Es momento de completar la agenda",
         createdAt: new Date().toISOString(),
         createdBy: String(currentUser?.email || "").toLowerCase()
       })
@@ -5293,11 +5293,11 @@ Cliente B`)
     async function openChatModal(forceOpen){ ensureChatContainers(); if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return; const dock=document.getElementById("chatDock"); if(!dock) return; if(typeof forceOpen === "boolean") dock.style.display = forceOpen ? "block" : "none"; else dock.style.display = dock.style.display === "none" || !dock.style.display ? "block" : "none"; if(dock.style.display === "none") return; const me=String(currentUser?.email||"").toLowerCase(); const usersByEmail=(await db.ref("users_by_email").once("value")).val()||{}; const meUser = usersByEmail[emailKey(me)] || {}; const presenceSelect = document.getElementById("chatPresenceSelect"); if(presenceSelect) presenceSelect.value = String(meUser?.presenceStatus || "online"); const q = String(document.getElementById("chatUserSearch")?.value || "").trim().toLowerCase(); const users=Object.values(usersByEmail).filter(u=>String(u?.email||"").toLowerCase()!==me && u?.active!==false).filter(u=>!q || String(u?.email||"").toLowerCase().includes(q) || String(u?.name||u?.displayName||"").toLowerCase().includes(q)).slice(0,80); const list=document.getElementById("chatUserList"); if(list) list.innerHTML = users.map(u=>{ const email=String(u.email||"").toLowerCase(); const badge=(directChatUnread[email]||0)>0?`<span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 6px">${directChatUnread[email]}</span>`:""; const meta=directChatMeta[email]||{}; const preview=meta.text?`<div class='small' style='color:var(--muted)'>${htmlEscape(meta.text)} · ${htmlEscape(relativeTimeFromIso(meta.createdAt))}</div>`:''; return `<button class="ghost" style="width:100%;text-align:left;margin:2px 0" onclick="openDirectChatWindow('${email}')"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u,email))}" data-fallback="${htmlEscape(buildInitialAvatar(email||'U'))}" onerror="handleAvatarError(this)"> ${presenceDot(getUserPresenceState(u))}${htmlEscape(userDisplayNameByEmail(email)||email)} ${badge}${preview}</button>` }).join("") }
     function closeChatModal(){ const dock=document.getElementById("chatDock"); if(dock) dock.style.display="none" }
     function renderDirectChatMessages(target,list=[]){ const me=String(currentUser?.email||"").toLowerCase(); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>{ const mine=String(msg?.from||"").toLowerCase()===me; const seen = !!msg?.readBy?.[emailKey(target)]; const ticks = mine ? `<span style="color:${seen?'#3b82f6':'var(--muted)'}">✓✓</span>` : ''; return `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))} · ${msg?.createdAt ? htmlEscape(formatDateTime24(msg.createdAt)) : ""}${msg?.editedAt ? " · editado" : ""}</div><div>${htmlEscape(msg?.text||"")}</div><div class="inline small" style="justify-content:space-between;gap:8px">${ticks}${mine?`<span><a href="javascript:void(0)" style="color:var(--text-2)" onclick="editDirectChatMessage('${target}','${msg?.id||""}')">editar</a> · <a href="javascript:void(0)" style="color:var(--text-2)" onclick="deleteDirectChatMessage('${target}','${msg?.id||""}')">eliminar</a></span>`:""}</div></div>` }).join(""); wrap.scrollTop=wrap.scrollHeight }
-    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref){ openDirectChats[target].ref.off(); } const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); openDirectChats[target].lastCount=list.length; if(list.length) directChatMeta[target]={text:list[list.length-1].text||'',createdAt:list[list.length-1].createdAt||''}; renderDirectChatMessages(target,list); const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString())); directChatUnread[target]=0; syncDirectChatUnread(); } else { directChatUnread[target]=unreadIncoming.length; syncDirectChatUnread(); } updateChatWindowState(target); openChatModal(true) }) }
+    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref){ openDirectChats[target].ref.off(); } const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; let list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const local=openDirectChats[target]?.localList||[]; if(local.length){ list=[...list,...local.filter(l=>!list.some(x=>String(x.text||"")===String(l.text||"") && String(x.createdAt||"")===String(l.createdAt||"")))].sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); } openDirectChats[target].lastCount=list.length; if(list.length) directChatMeta[target]={text:list[list.length-1].text||'',createdAt:list[list.length-1].createdAt||''}; renderDirectChatMessages(target,list); const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString())); directChatUnread[target]=0; syncDirectChatUnread(); } else { directChatUnread[target]=unreadIncoming.length; syncDirectChatUnread(); } updateChatWindowState(target) }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(win) win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:""; const fab=document.querySelector('.chatFab'); if(fab) fab.setAttribute('data-unread', String(totalUnreadCount())) }
     function setTypingState(target,isTyping){ const me=emailKey(String(currentUser?.email||'').toLowerCase()); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); db.ref('chat_typing').child(chatId).child(me).set(isTyping?new Date().toISOString():null) }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target]?.minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(wrap) wrap.scrollTop=wrap.scrollHeight } }
-    function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${target}', !!this.value.trim())"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${target}','${e}')">${e}</button>`).join('') }
+    function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${target}', !!this.value.trim())" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDirectChatMessage('${target}')}"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${target}','${e}')">${e}</button>`).join('') }
       if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); const tRef=db.ref('chat_typing').child(chatId); directChatTypingRefs[target]=tRef; tRef.on('value',snap=>{ const data=snap.val()||{}; const others=Object.keys(data).filter(k=>k!==emailKey(String(currentUser?.email||'').toLowerCase())); const el=document.getElementById(`chatTyping_${key}`); if(el) el.textContent=others.length?'está escribiendo...':'' })
       if(opts.minimized){ openDirectChats[target].minimized = true; toggleChatWindow(target) }
       directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); loadDirectChatMessages(target)
@@ -5309,7 +5309,7 @@ Cliente B`)
     function appendEmojiToChatInput(target){ appendSpecificEmojiToChatInput(target, "😊") }
     async function editDirectChatMessage(target,messageId){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); const ref=db.ref("direct_chats").child(chatId).child(messageId); const msg=(await ref.once("value")).val(); if(!msg || String(msg.from||"").toLowerCase()!==me) return; const next=prompt("Editar mensaje", String(msg.text||"")); if(next===null) return; await ref.update({text:String(next).trim(), editedAt:new Date().toISOString()}) }
     async function deleteDirectChatMessage(target,messageId){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); const ref=db.ref("direct_chats").child(chatId).child(messageId); const msg=(await ref.once("value")).val(); if(!msg || String(msg.from||"").toLowerCase()!==me) return; if(!confirm("¿Eliminar mensaje?")) return; await ref.remove() }
-    async function sendDirectChatMessage(target){ const me=String(currentUser?.email||"").toLowerCase(); const textEl=document.getElementById(`chatInput_${emailKey(target)}`); const text=String(textEl?.value||"").trim(); if(!text) return; const chatId=buildDirectChatId(me,target); await db.ref("direct_chats").child(chatId).push({from:me,to:target,text,createdAt:new Date().toISOString()}); if(textEl) textEl.value=""; setTypingState(target,false) }
+    async function sendDirectChatMessage(target){ const me=String(currentUser?.email||"").toLowerCase(); const textEl=document.getElementById(`chatInput_${emailKey(target)}`); const text=String(textEl?.value||"").trim(); if(!text) return; const chatId=buildDirectChatId(me,target); const payload={from:me,to:target,text,createdAt:new Date().toISOString()}; await db.ref("direct_chats").child(chatId).push(payload); if(textEl) textEl.value=""; setTypingState(target,false); const local=(openDirectChats[target]?.localList||[]); local.push({id:`tmp_${Date.now()}`,...payload,readBy:{}}); openDirectChats[target]={...(openDirectChats[target]||{}),localList:local.slice(-80)}; renderDirectChatMessages(target, local.slice(-80)) }
 async function submitSupportRequest(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
       const title = (document.getElementById("supportTitle")?.value || "").trim()
@@ -6363,7 +6363,7 @@ async function submitSupportRequest(){
         const pRef = db.ref("users_by_email").child(meKey)
         pRef.onDisconnect().update({ sessionActive:false, presenceStatus:"offline", lastSeenAt:new Date().toISOString() })
         clearInterval(chatInboxInterval)
-        chatInboxInterval = setInterval(pollIncomingDirectChats, 4000)
+        chatInboxInterval = setInterval(pollIncomingDirectChats, 1200)
         logActivity("login", { userAgent: navigator.userAgent })
         adminWrite("upsertUser", { ...user, key: emailKey(email), lastAccessAt: new Date().toISOString() }).catch(()=>{})
         if(mustRotatePassword(user)){
@@ -9352,7 +9352,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
+          alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
           return
         }
       }
@@ -9408,7 +9408,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
+          return alert("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.")
         }
       }
 
@@ -12114,7 +12114,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       document.getElementById("adminReassignWindowModal")?.classList.add("hidden")
     }
 
-    function setAdminAgendaTeam(team){
+    
+    var adminAgendaHistoryView = "comments"
+    function setAgendaHistoryView(mode){ adminAgendaHistoryView = mode === "agenda" ? "agenda" : "comments"; if(adminPanelTab === "agenda") loadAdminAgenda() }
+    async function assignTicketToAnalystFromAgenda(ticketId, analyst){ const ticket=(cachedTickets||[]).find(t=>String(t.id||"")===String(ticketId||"")); const to=String(analyst||"").toLowerCase(); if(!ticket||!to) return; const updated={...ticket,assignedTo:to,status:String(ticket.status||"")==='unassigned'?'todo':ticket.status,updatedAt:new Date().toISOString(),updatedBy:String(currentUser?.email||"").toLowerCase()}; await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated); const ix=cachedTickets.findIndex(t=>t.id===ticket.id); if(ix>=0) cachedTickets[ix]=updated; loadAdminAgenda(); }
+function setAdminAgendaTeam(team){
       adminAgendaTeam = team === "equipo_2" ? "equipo_2" : "equipo_1"
       loadAdminAgenda()
     }
@@ -12278,6 +12282,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         if(createdDiff !== 0) return createdDiff
         return String(a.id || "").localeCompare(String(b.id || ""))
       })
+      const unassignedTickets = (tickets || []).filter(t => {
+        const owner = String(t.assignedTo||"").toLowerCase()
+        return !owner && String(t.status||"") !== "done"
+      }).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
+
       const agendaRows = scoped.flatMap(t => {
         const owner = String(t.assignedTo || "").toLowerCase()
         const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : []).map(h => String(h||"").toLowerCase()).filter(h => teamSet.has(h) && h !== owner)
@@ -12285,7 +12294,16 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         helpersInTeam.forEach(helper => rows.push({ ...t, _agendaRoleIcon: "🤝", _agendaAnalyst: helper }))
         return rows
       })
-      adminAgendaCurrentRows = [...agendaRows]
+      const orderedAgendaRows = [...agendaRows].sort((a,b)=>{
+        const aa = String(a._agendaAnalyst || a.assignedTo || "zzzz").toLowerCase()
+        const bb = String(b._agendaAnalyst || b.assignedTo || "zzzz").toLowerCase()
+        if(aa !== bb) return aa.localeCompare(bb)
+        const ra = String(a._agendaRoleIcon||"") === "👑" ? 0 : 1
+        const rb = String(b._agendaRoleIcon||"") === "👑" ? 0 : 1
+        if(ra !== rb) return ra-rb
+        return String(a.id||"").localeCompare(String(b.id||""))
+      })
+      adminAgendaCurrentRows = [...orderedAgendaRows]
 
       const analystChecks = document.getElementById("agendaFilterAnalystChecks")
       const ticketInput = document.getElementById("agendaFilterTicketId")
@@ -12348,16 +12366,18 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
               </tr>
             </thead>
             <tbody>
-              ${agendaRows.map(t => {
+              ${orderedAgendaRows.map((t, idx) => {
                 const lastComment = ticketLastCommentAt(t)
                 const lastCommentInfo = ticketLastCommentInfo(t)
                 const owner = String(t.assignedTo || "").toLowerCase()
                 const roleIcon = String(t._agendaRoleIcon || "👑")
+                const prev = orderedAgendaRows[idx-1]
+                const analystChanged = idx>0 && String(prev?._agendaAnalyst||prev?.assignedTo||"").toLowerCase() !== String(t._agendaAnalyst||t.assignedTo||"").toLowerCase()
                 const daysSince = lastComment ? Math.floor((Date.now() - new Date(lastComment).getTime()) / 86400000) : null
                 const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
                 const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
                 const rowBg = owner ? ownerColors[ownerHash % ownerColors.length] : "transparent"
-                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg}">
+                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg};border-top:${analystChanged?"2px solid rgba(255,255,255,.65)":"none"}">
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
@@ -12386,16 +12406,17 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
           </div>
         </div>
         <div class="agendaSection">
+          <h4>Tickets sin asignar</h4>
+          <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha creación</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Código</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Responsable</th></tr></thead><tbody>${unassignedTickets.map(t=>`<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt||""))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><select onchange="assignTicketToAnalystFromAgenda('${t.id}', this.value)"><option value=''>Asignar…</option>${teamAnalysts.map(a=>`<option value='${htmlEscape(a)}'>${htmlEscape(userDisplayNameByEmail(a)||a)}</option>`).join("")}</select></td></tr>`).join("") || `<tr><td colspan='6' class='small' style='padding:8px'>No hay tickets sin asignar.</td></tr>`}</tbody></table></div>
+        </div>
+        <div class="agendaSection">
           <h4>Tickets sin atención por 7 días</h4>
           ${renderInactiveTicketsTable(teamTicketsAll, logs)}
         </div>
         <div class="agendaSection">
-          <h4>Histórico de comentarios</h4>
-          ${historyHtml}
-        </div>
-        <div class="agendaSection">
-          <h4>Historial de agenda guardada (${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"})</h4>
-          ${savedHistory.length ? savedHistory.map(item => { const byAnalyst={}; (item.rows||[]).forEach(r=>{ const a=String(r.assignedTo||"sin_asignar").toLowerCase(); if(!byAnalyst[a])byAnalyst[a]=[]; byAnalyst[a].push(r) }); return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${Object.entries(byAnalyst).map(([analyst,rows])=>`<div style='margin:8px 0'><strong>${htmlEscape(userDisplayNameByEmail(analyst)||analyst)}</strong><br>${rows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")} · Plan: ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>")}</div>`).join("") || "Sin filas"}</div></div>` }).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`}
+          <h4>Historial</h4>
+          <div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>
+          <div id="agendaHistoryDynamic">${(adminAgendaHistoryView||'comments')==='comments' ? historyHtml : (savedHistory.length ? savedHistory.map(item => { const byAnalyst={}; (item.rows||[]).forEach(r=>{ const a=String(r.assignedTo||"sin_asignar").toLowerCase(); if(!byAnalyst[a])byAnalyst[a]=[]; byAnalyst[a].push(r) }); return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Guardó: ${htmlEscape(userDisplayNameByEmail(item.savedBy || "") || item.savedBy || "-")} · Tickets: ${Number(item.rows?.length || 0)}</div></div></div><div class="small">${Object.entries(byAnalyst).map(([analyst,rows])=>`<div style='margin:8px 0'><strong>${htmlEscape(userDisplayNameByEmail(analyst)||analyst)}</strong><br>${rows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")} · Plan: ${htmlEscape(r.plannedWorkDate || "Sin fecha")}`).join("<br>")}</div>`).join("") || "Sin filas"}</div></div>` }).join("") : `<div class="small">Sin agendas guardadas todavía para este equipo.</div>`)}</div>
         </div>
       `
     }
@@ -12641,19 +12662,21 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario del analista</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última fecha de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Agenda de mañana?</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Modificado</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario del analista</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
             </tr></thead>
             <tbody>
               ${scoped.map(t => {
                 const lastInfo = ticketLastCommentInfo(t)
                 const roleIcon = String(t.assignedTo || "").toLowerCase() === myEmail ? "👑" : "🤝"
+                const timeInfo = ticketTimeSummary(t)
                 return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
@@ -12661,13 +12684,14 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")} ${(String(t.status||'')==='doing') ? '🕒' : ''}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="checkbox" ${t.agendaTomorrow ? "checked" : ""} onchange="updateTicketAgendaTomorrow('${t.id}', this.checked)"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
+                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${timeInfo.lastTimeAt ? htmlEscape(formatDateTime24(timeInfo.lastTimeAt)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastInfo?.author || '')}">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="checkbox" ${t.agendaTomorrow ? "checked" : ""} onchange="updateTicketAgendaTomorrow('${t.id}', this.checked)"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
               </tr>`
               }).join("")}
@@ -12676,8 +12700,28 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         </div>
         <div class="small" style="margin-top:10px"><strong>Tareas con comentarios pendientes:</strong> ${withPending.length}</div>
         <div class="agendaSection"><h4>Tickets sin atención por 7 días</h4>${renderInactiveTicketsTable(scoped, logs)}</div>
-        <div class="agendaSection"><h4>Histórico de comentarios</h4>${historyHtml}</div>
+        <div class="agendaSection"><h4>Historial</h4><div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>${(adminAgendaHistoryView||'comments')==='comments' ? historyHtml : `<div class="small">El historial de agenda guardada está disponible en Organizar agenda por equipo.</div>`}</div><div class="agendaSection"><h4>Para tener en cuenta</h4><textarea id="analystDailyNote" placeholder="Escribí algo para hoy..." style="min-height:90px"></textarea><div class="inline" style="margin-top:8px"><button class="ghost" onclick="saveAnalystDailyNote()">Guardar nota del día</button></div><div id="analystDailyNoteHistory" class="small" style="margin-top:8px"></div></div>
       `
+    }
+
+
+    async function saveAnalystDailyNote(){
+      if(currentRole !== "analista") return
+      const text = String(document.getElementById("analystDailyNote")?.value || "").trim()
+      if(!text) return alert("Escribí una nota antes de guardar.")
+      const today = toLocalDateOnly(new Date())
+      const key = `${emailKey(String(currentUser?.email||""))}_${today.replaceAll("-","")}`
+      await db.ref("analyst_daily_notes").child(key).set({ id:key, date:today, analystEmail:String(currentUser?.email||"").toLowerCase(), note:text, createdAt:new Date().toISOString() })
+      renderAnalystDailyNoteHistory()
+      showToast("Nota guardada para hoy.","ok",1200)
+    }
+    async function renderAnalystDailyNoteHistory(){
+      const me=String(currentUser?.email||"").toLowerCase(); if(!me) return
+      const all=Object.values((await db.ref("analyst_daily_notes").once("value")).val()||{}).filter(n=>String(n?.analystEmail||"").toLowerCase()===me).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,10)
+      const today=toLocalDateOnly(new Date())
+      const todayItem=all.find(n=>String(n.date||"")===today)
+      const input=document.getElementById("analystDailyNote"); if(input) input.value=todayItem?.note || ""
+      const box=document.getElementById("analystDailyNoteHistory"); if(box) box.innerHTML = all.length ? `<strong>Historial:</strong><br>${all.map(n=>`• ${htmlEscape(formatDateDMY(n.date||""))}: ${htmlEscape(n.note||"")}`).join("<br>")}` : "Sin historial de notas."
     }
 
 
@@ -13505,7 +13549,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
             renderApp()
             await updateMyPresence(document.hidden ? "away" : "online")
             clearInterval(chatInboxInterval)
-            chatInboxInterval = setInterval(pollIncomingDirectChats, 4000)
+            chatInboxInterval = setInterval(pollIncomingDirectChats, 1200)
           }else{
             clearSession()
             renderLogin()
