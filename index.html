@@ -5472,12 +5472,16 @@ async function submitSupportRequest(){
       let items = Array.isArray(forms?.[role]) ? forms[role] : []
       if(!items.length) items = JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS[role] || []))
       if(!wrap) return
-      wrap.innerHTML = items.map((q, idx) => `
-        <div>
-          <label>${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</label>
-          <select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}"><option value="">Seleccionar</option>${(Array.isArray(q.options) ? q.options : []).map(opt => `<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select>
+      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">Deficiente (1 a 3): no cumple, requiere rehacer gran parte del trabajo y/o calidad baja.<br>Regular (4 a 6): cumple parcialmente, tiene varios puntos de mejora y calidad media.<br>Bueno (7 a 8): cumple lo esperado con mejoras menores.<br>Excelente (9 a 10): cumple requisitos y lineamientos, sin errores y con calidad alta.</div></div>`
+      const questionsHtml = items.map((q, idx) => `
+        <div class="feedItem" style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <label style="margin:0;flex:1;min-width:260px">${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</label>
+            <select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}" style="max-width:120px;margin:0"><option value="">Puntaje</option>${(Array.isArray(q.options) ? q.options : []).map(opt => `<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select>
+          </div>
         </div>
-      `).join("") + `<div class="small" style="margin-top:8px">Deficiente (1 a 3): no cumple, requiere rehacer gran parte del trabajo y/o calidad baja.<br>Regular (4 a 6): cumple parcialmente, tiene varios puntos de mejora y calidad media.<br>Excelente (9 a 10): cumple requisitos y lineamientos, sin errores y con calidad alta.</div>`
+      `).join("")
+      wrap.innerHTML = rulesHtml + questionsHtml
     }
 
     function collectQualityAnswers(containerId){
@@ -6280,6 +6284,9 @@ async function submitSupportRequest(){
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
       pendingConsultorSurveyTicket = ticket
+      if(ticket?.dbKey){
+        await db.ref("tickets").child(ticket.dbKey).update({ consultorSurveyPending: true, consultorSurveyPendingFor: String(currentUser?.email||"").toLowerCase(), consultorSurveyPendingAt: ticket.consultorSurveyPendingAt || new Date().toISOString() })
+      }
       await ensureQualityFormsLoaded()
       const info = document.getElementById("consultorSurveyTicketInfo")
       if(info){
@@ -6296,6 +6303,7 @@ async function submitSupportRequest(){
       const obs = document.getElementById("consultorSurveyObservation")
       if(obs) obs.value = ""
       document.getElementById("consultorSurveyModal")?.classList.add("hidden")
+      if(currentRole === "consultor") loadDashboard()
     }
 
     async function submitConsultorPendingSurvey(){
