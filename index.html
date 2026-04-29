@@ -677,6 +677,28 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
     }
+    .chatFab {
+      position: fixed; right: 22px; bottom: 88px; z-index: 140;
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; box-shadow: 0 10px 24px var(--accent-glow);
+    }
+    .chatMessages {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      padding: 10px;
+      max-height: 320px;
+      overflow-y: auto;
+      background: rgba(8,12,22,.22);
+      margin-top: 10px;
+    }
+    .chatMessageItem {
+      border: 1px solid var(--stroke-2);
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background: var(--surface-2);
+    }
     .qualityOrb {
       position: fixed; left: 14px; top: 14px; z-index: 180;
       width: 92px; height: 92px; border-radius: 50%;
@@ -1227,6 +1249,32 @@
       </div>
     </div>
   </div>
+  <div id="analystAlertModal" class="modalBack hidden" style="z-index:260">
+    <div class="card modal" style="max-width:520px;text-align:center;border:2px solid #f59e0b">
+      <div style="font-size:54px;line-height:1">⚠️</div>
+      <h2 style="margin:8px 0 6px">Es momento de completar la agenda</h2>
+      <p class="small" id="analystAlertDetail">Aviso enviado por administración.</p>
+      <div class="inline" style="justify-content:center">
+        <button class="ghost" onclick="closeAnalystAlertModal()">Entendido</button>
+      </div>
+    </div>
+  </div>
+  <div id="chatModal" class="modalBack hidden">
+    <div class="card modal">
+      <div class="inline" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Chat entre usuarios</h3>
+        <button class="secondary" onclick="closeChatModal()">Cerrar</button>
+      </div>
+      <label>Conversar con</label>
+      <select id="chatTargetUser" onchange="loadDirectChatMessages()"></select>
+      <div id="chatMessages" class="chatMessages small"></div>
+      <label style="margin-top:10px">Mensaje</label>
+      <textarea id="chatMessageInput" placeholder="Escribí un mensaje"></textarea>
+      <div class="inline" style="justify-content:flex-end">
+        <button onclick="sendDirectChatMessage()">Enviar</button>
+      </div>
+    </div>
+  </div>
 
   <div id="userEditModal" class="modalBack hidden">
     <div class="card modal">
@@ -1665,6 +1713,9 @@
     var analystAgendaVisible = true
     var analystAgendaTodayOnly = false
     var dailyAdminRows = []
+    var activeDirectChatRef = null
+    var activeDirectChatId = ""
+    var analystAlertSeenAt = ""
     var dailyHistoryRowsCache = []
     var dailyAnalystRows = []
     var dailyWeekStripScroll = {}
@@ -5140,6 +5191,145 @@ Cliente B`)
     function closeSupportModal(){
       document.getElementById("supportModal")?.classList.add("hidden")
     }
+    function closeAnalystAlertModal(){
+      document.getElementById("analystAlertModal")?.classList.add("hidden")
+    }
+
+    function watchAnalystAgendaAlerts(){
+      if(!(currentRole === "analista")) return
+      const me = emailKey(String(currentUser?.email || "").toLowerCase())
+      db.ref("analyst_alerts").child(me).off()
+      db.ref("analyst_alerts").child(me).on("value", snap => {
+        const payload = snap.val()
+        if(!payload?.createdAt) return
+        if(String(payload.createdAt) <= String(analystAlertSeenAt || "")) return
+        analystAlertSeenAt = String(payload.createdAt)
+        const detail = document.getElementById("analystAlertDetail")
+        if(detail) detail.textContent = payload?.message || "Aviso enviado por administración."
+        document.getElementById("analystAlertModal")?.classList.remove("hidden")
+      })
+    }
+
+    async function sendAgendaAlertToAnalyst(email){
+      if(currentRole !== "admin") return
+      const target = String(email || "").toLowerCase()
+      if(!target) return alert("Seleccioná un analista.")
+      await db.ref("analyst_alerts").child(emailKey(target)).set({
+        analystEmail: target,
+        message: "Es momento de completar la agenda",
+        createdAt: new Date().toISOString(),
+        createdBy: String(currentUser?.email || "").toLowerCase()
+      })
+      showToast("Alerta enviada al analista.", "ok", 1600)
+    }
+
+    async function reassignTicketFromAgenda(ticketId){
+      if(currentRole !== "admin") return
+      const ticket = cachedTickets.find(t => String(t.id||"") === String(ticketId||""))
+      if(!ticket) return
+      const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
+      const analysts = users.filter(u => String(u?.role||"") === "analista" && u?.active !== false).map(u => String(u.email||"").toLowerCase())
+      const target = String(prompt("Nuevo responsable (email analista):", String(ticket.assignedTo || "")) || "").trim().toLowerCase()
+      if(!target) return
+      if(!analysts.includes(target)) return alert("El email no corresponde a un analista activo.")
+      const updated = { ...ticket, assignedTo: target, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email||"").toLowerCase() }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticket.id, ...updated })
+      showToast("Responsable actualizado.", "ok", 1500)
+      loadTickets()
+      if(adminPanelTab === "agenda") loadAdminAgenda()
+    }
+
+    async function addHelperFromAgenda(ticketId){
+      if(currentRole !== "admin") return
+      const email = String(prompt("Email del analista ayudante:") || "").trim().toLowerCase()
+      if(!email) return
+      await addHelperToTicket(ticketId, email)
+      if(adminPanelTab === "agenda") loadAdminAgenda()
+      showToast("Ayudante agregado.", "ok", 1400)
+    }
+    function teardownDirectChatListener(){
+      if(activeDirectChatRef){
+        activeDirectChatRef.off("value")
+        activeDirectChatRef = null
+      }
+      activeDirectChatId = ""
+    }
+    function buildDirectChatId(a, b){
+      const sorted = [String(a || "").toLowerCase(), String(b || "").toLowerCase()].sort()
+      return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g, "_")
+    }
+
+    async function openChatModal(){
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
+      const me = String(currentUser?.email || "").toLowerCase()
+      const usersByEmail = (await db.ref("users_by_email").once("value")).val() || {}
+      const users = Object.values(usersByEmail)
+        .filter(u => String(u?.email || "").toLowerCase() !== me && u?.active !== false)
+        .sort((a,b)=> String(userDisplayNameByEmail(a?.email || "") || a?.email || "").localeCompare(String(userDisplayNameByEmail(b?.email || "") || b?.email || "")))
+      const select = document.getElementById("chatTargetUser")
+      if(select){
+        select.innerHTML = users.length
+          ? users.map(u => `<option value="${htmlEscape(String(u.email || "").toLowerCase())}">${htmlEscape(userDisplayNameByEmail(u.email || "") || u.email || "-")}</option>`).join("")
+          : `<option value="">Sin usuarios disponibles</option>`
+      }
+      document.getElementById("chatModal")?.classList.remove("hidden")
+      loadDirectChatMessages()
+    }
+
+    function closeChatModal(){
+      teardownDirectChatListener()
+      document.getElementById("chatModal")?.classList.add("hidden")
+    }
+
+    function renderDirectChatMessages(list = []){
+      const wrap = document.getElementById("chatMessages")
+      if(!wrap) return
+      const shouldAutoScroll = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < 40
+      wrap.innerHTML = list.length
+        ? list.map(msg => `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from || msg?.fromName || "-"))} · ${msg?.createdAt ? formatDateTime24(msg.createdAt) : ""}</div><div>${htmlEscape(msg?.text || "")}</div></div>`).join("")
+        : `<p class="small">Todavía no hay mensajes en este chat.</p>`
+      if(shouldAutoScroll || !list.length) wrap.scrollTop = wrap.scrollHeight
+    }
+
+    function loadDirectChatMessages(){
+      const wrap = document.getElementById("chatMessages")
+      if(!wrap) return
+      const me = String(currentUser?.email || "").toLowerCase()
+      const target = String(document.getElementById("chatTargetUser")?.value || "").toLowerCase()
+      teardownDirectChatListener()
+      if(!target){
+        wrap.innerHTML = `<p class="small">Seleccioná un usuario para iniciar la conversación.</p>`
+        return
+      }
+      const chatId = buildDirectChatId(me, target)
+      activeDirectChatId = chatId
+      activeDirectChatRef = db.ref("direct_chats").child(chatId)
+      activeDirectChatRef.on("value", snap => {
+        if(activeDirectChatId !== chatId) return
+        const data = snap.val() || {}
+        const list = Object.values(data).sort((a,b)=> new Date(a?.createdAt || 0) - new Date(b?.createdAt || 0))
+        renderDirectChatMessages(list)
+      })
+    }
+
+    async function sendDirectChatMessage(){
+      const me = String(currentUser?.email || "").toLowerCase()
+      const target = String(document.getElementById("chatTargetUser")?.value || "").toLowerCase()
+      const textEl = document.getElementById("chatMessageInput")
+      const text = String(textEl?.value || "").trim()
+      if(!target) return alert("Seleccioná un usuario.")
+      if(!text) return alert("Escribí un mensaje.")
+      const chatId = buildDirectChatId(me, target)
+      await db.ref("direct_chats").child(chatId).push({
+        from: me,
+        to: target,
+        text,
+        createdAt: new Date().toISOString()
+      })
+      if(textEl) textEl.value = ""
+      loadDirectChatMessages()
+    }
 
     async function submitSupportRequest(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
@@ -6156,6 +6346,10 @@ Cliente B`)
 
         currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
         currentRole = user.role
+        if(currentRole === "admin" && Number(currentUser?.adminLevel || 0) === 3){
+          mainViewTab = "summary_general"
+          adminPanelTab = "panel"
+        }
         persistSession()
         await loadMenuPermissions()
         startMenuPermissionsSync()
@@ -7397,7 +7591,7 @@ Cliente B`)
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('control_center')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div><h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div></div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('control_center')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div>${adminCapacityViewMode === 'cards' ? `<h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div>` : `<div class="small">Cambiaste de vista de capacidad. Los cuadros de Gestión de horas y Consumo por cliente quedan ocultos en esta vista.</div>`}</div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -7525,7 +7719,7 @@ Cliente B`)
             <div class="boardWrap" style="padding:14px"><div id="boardContainer"></div></div>
           </div>
         `}
-            ${(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin") ? `<button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
+            ${(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin") ? `<button class="chatFab" onclick="openChatModal()" title="Chat entre usuarios">💬</button><button class="supportFab" onclick="openSupportModal()" title="Soporte técnico">?</button>` : ""}
           </div>
         </div>
       `
@@ -7565,6 +7759,7 @@ Cliente B`)
         if(isAnalyst || currentRole === "consultor" || isAdmin){
           refreshAnalystNotificationBadge()
           startAnalystNotifRefreshTimer()
+          if(isAnalyst) watchAnalystAgendaAlerts()
         }else{
           stopAnalystNotifRefreshTimer()
         }
@@ -10072,7 +10267,7 @@ Cliente B`)
       const monthKey = timeMonthTabByTicket[ticket.id] || monthFolderKey()
       try{
         if(prevStatus !== "doing" && next === "doing"){
-          await startTicketTimerForUser(ticket.id, userKey)
+          await startTicketTimerForUser(ticket.id, userKey, { openDetail: false })
         }else if(prevStatus === "doing" && next !== "doing"){
           const users = ticket?.timeTracking?.users || {}
           if(users[userKey]?.timerStartAt){
@@ -10218,12 +10413,12 @@ Cliente B`)
       return startTicketTimerForUser(ticketId, userKey)
     }
 
-    async function startTicketTimerForUser(ticketId, userKey){
+    async function startTicketTimerForUser(ticketId, userKey, opts = {}){
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         if(!u.timerStartAt) u.timerStartAt = new Date().toISOString()
         tracking.users[userKey] = u
-      })
+      }, { openDetail: opts.openDetail !== false })
       const ticket = cachedTickets.find(t => String(t.id||"") === String(ticketId||""))
       if(ticket){
         postEncuentroMessage(`🛠️ ${userDisplayNameByEmail(currentUser?.email||"-")} comenzó a trabajar en ${ticket.id || "-"} · ${ticket.title || "-"}. ¡Que tengas un gran trabajo!`, "trabajo_inicio").catch(()=>{})
@@ -10432,7 +10627,7 @@ Cliente B`)
       await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id); if(ix>=0) cachedTickets[ix]=updated
-      openTicketDetailModal(id)
+      if(meta.openDetail !== false) openTicketDetailModal(id)
     }
 
     async function toggleUrgent(id, skipCapacityWarning = false){
@@ -12078,6 +12273,7 @@ Cliente B`)
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. modificación agenda</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Acciones rápidas</th>
               </tr>
             </thead>
             <tbody>
@@ -12110,10 +12306,11 @@ Cliente B`)
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:6px"><button class="ghost" onclick="reassignTicketFromAgenda('${t.id}')">Cambiar responsable</button><button class="ghost" onclick="addHelperFromAgenda('${t.id}')">+ Ayudante</button><button class="ghost" onclick="sendAgendaAlertToAnalyst('${String(t.assignedTo||'').toLowerCase()}')">Alertar</button></div></td>
                 </tr>`
               }).join("")}
-              ${analystsWithoutTasks.map(email => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">—</td><td colspan="17" style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(userDisplayNameByEmail(email) || email)}</strong>: No tiene tareas asignadas.</td></tr>`).join("")}
-              ${(!scoped.length && !analystsWithoutTasks.length) ? `<tr><td colspan="18" class="small" style="padding:8px">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</td></tr>` : ""}
+              ${analystsWithoutTasks.map(email => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">—</td><td colspan="18" style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(userDisplayNameByEmail(email) || email)}</strong>: No tiene tareas asignadas. <button class="ghost" onclick="sendAgendaAlertToAnalyst('${email}')">Alertar agenda</button></td></tr>`).join("")}
+              ${(!scoped.length && !analystsWithoutTasks.length) ? `<tr><td colspan="19" class="small" style="padding:8px">Sin tickets para ${adminAgendaTeam === "equipo_1" ? "Equipo 1" : "Equipo 2"} con los filtros actuales.</td></tr>` : ""}
             </tbody>
           </table>
           </div>
@@ -13213,6 +13410,10 @@ Cliente B`)
           if(user && user.active !== false){
             currentUser = { email: user.email, adminLevel: Number(user.adminLevel) || null }
             currentRole = user.role || savedRole || "consultor"
+            if(currentRole === "admin" && Number(currentUser?.adminLevel || 0) === 3){
+              mainViewTab = "summary_general"
+              adminPanelTab = "panel"
+            }
             persistSession()
             await processGoogleCalendarOAuthCallback()
             await loadMenuPermissions()
