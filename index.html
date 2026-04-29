@@ -5261,6 +5261,8 @@ Cliente B`)
       const select = document.getElementById(`agendaHelper_${emailKey(ticketId)}`)
       const email = String(select?.value || "").trim().toLowerCase()
       if(!email) return
+      const targetUser = (cachedUsersByEmail||{})[emailKey(email)] || {}
+      if(String(targetUser?.analystTeam||"").toLowerCase() !== String(adminAgendaTeam||"").toLowerCase()) return alert("Solo podés sumar ayudantes del equipo actual.")
       await addHelperToTicket(ticketId, email, { openDetail: false })
       await loadTickets()
       if(adminPanelTab === "agenda") await loadAdminAgenda()
@@ -5276,6 +5278,7 @@ Cliente B`)
       if(!loggedIn) return "offline"
       const explicit = String(user?.presenceStatus || "").toLowerCase()
       if(explicit === "away") return "away"
+      if(explicit === "lunch") return "lunch"
       if(explicit === "online") return "online"
       const lastSeen = user?.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0
       const mins = lastSeen ? (Date.now() - lastSeen) / 60000 : 999
@@ -5313,7 +5316,7 @@ Cliente B`)
     function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off("value"); const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; const list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const prevCount = Number(openDirectChats[target]?.lastCount||0); openDirectChats[target].lastCount = list.length; renderDirectChatMessages(target,list); const hasForeign=list.length && String(list[list.length-1].from||"").toLowerCase()!==me; if(hasForeign && list.length>prevCount){ try{ const ac = new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); const g=ac.createGain(); o.type='sine'; o.frequency.value=740; g.gain.value=0.03; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.12) }catch(_){} } if(!openDirectChats[target]?.minimized){ list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]).forEach(m=>{ db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString()) }) } if(hasForeign){ const dockOpen = document.getElementById("chatDock")?.style?.display === "block"; const anyOpen = Object.keys(openDirectChats||{}).some(k => document.getElementById(`chatWin_${emailKey(k)}`)); if(!dockOpen && !anyOpen) openChatModal(); if(!document.getElementById(`chatWin_${emailKey(target)}`)) openDirectChatWindow(target); if(openDirectChats[target]?.minimized){ directChatUnread[target]=(directChatUnread[target]||0)+1; updateChatWindowState(target);} } }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(!win) return; win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:"" }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target].minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; updateChatWindowState(target)} }
-    function openDirectChatWindow(target, opts = {}){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px">${["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick=\"appendSpecificEmojiToChatInput('${target}','${e}')\">${e}</button>`).join("")}</div></div></div>`)} if(opts.minimized){ openDirectChats[target].minimized = false; toggleChatWindow(target); const win=document.getElementById(`chatWin_${key}`); if(win) win.style.width="230px" } directChatUnread[target]=0; updateChatWindowState(target); loadDirectChatMessages(target) }
+    function openDirectChatWindow(target, opts = {}){ const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px">${["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick=\"appendSpecificEmojiToChatInput('${target}','${e}')\">${e}</button>`).join("")}</div></div></div>`)} if(opts.minimized){ openDirectChats[target].minimized = false; toggleChatWindow(target); const win=document.getElementById(`chatWin_${key}`); if(win) win.style.width="230px" } directChatUnread[target]=0; updateChatWindowState(target); loadDirectChatMessages(target) }
     async function pollIncomingDirectChats(){
       const me=String(currentUser?.email||"").toLowerCase(); if(!me) return
       const map=(await db.ref("direct_chats").once("value")).val()||{}
@@ -5322,10 +5325,11 @@ Cliente B`)
         const msgs=Object.values(val||{}).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
         const last=msgs[msgs.length-1]; if(!last) return
         const partner=String(last.from||"").toLowerCase()===me?String(last.to||"").toLowerCase():String(last.from||"").toLowerCase()
+        if(!partner) return
         const stamp=String(last.createdAt||"")
         if(String(last.from||"").toLowerCase()!==me && stamp && chatInboxLastSeen[chatId]!==stamp){
           chatInboxLastSeen[chatId]=stamp
-          if(!document.getElementById(`chatWin_${emailKey(partner)}`)) openDirectChatWindow(partner,{minimized:true})
+          if(!document.getElementById(`chatWin_${emailKey(partner)}`) && !openDirectChats[partner]) openDirectChatWindow(partner,{minimized:true})
         }
       })
     }
@@ -12390,7 +12394,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(r){
         panel.style.top = `${Math.max(8, Math.min(window.innerHeight - 140, r.bottom + 6))}px`
         const width = 280
-        const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.left - 120))
+        const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.left - width + 24))
         panel.style.left = `${left}px`
       }
     }
