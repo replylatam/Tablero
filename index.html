@@ -1039,6 +1039,7 @@
     @keyframes toastIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
     .toast.ok    { border-color: rgba(34,199,122,.55); }
     .toast.error { border-color: rgba(224,64,64,.55); }
+    .toast.centered { right: 50%; bottom: 50%; transform: translate(50%, 50%); min-width: 320px; text-align:center; }
     body.light .toast {
       background: rgba(255,255,255,.96);
       color: #0f172a;
@@ -1780,6 +1781,7 @@
     var capacityAlertsRealtimeCache = null
     var adminAnalystDetailSelection = ""
     var qualitySurveyForms = null
+    var qualityRulesText = "Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10)."
     var internalQualityConfig = null
     var internalQualitySelectedPeriod = "month"
     var internalQualityHistoryWindow = 6
@@ -3232,12 +3234,12 @@ Cliente B`)
     }
 
 
-    function showToast(message, type="info", keepMs=2200){
+    function showToast(message, type="info", keepMs=2200, centered=false){
       const old = document.getElementById("globalToast")
       if(old) old.remove()
       const el = document.createElement("div")
       el.id = "globalToast"
-      el.className = `toast ${type}`
+      el.className = `toast ${type}${centered ? " centered" : ""}`
       el.textContent = message
       document.body.appendChild(el)
       setTimeout(()=>{ if(el.parentNode) el.remove() }, keepMs)
@@ -5466,13 +5468,31 @@ async function submitSupportRequest(){
       return qualitySurveyForms
     }
 
+    
+    async function ensureQualityRulesTextLoaded(){
+      try{
+        const raw = (await db.ref("app_settings/quality_rules_text").once("value")).val()
+        if(String(raw||"").trim()) qualityRulesText = String(raw).trim()
+      }catch(_){}
+      return qualityRulesText
+    }
+
+    async function saveQualityRulesText(){
+      if(currentRole !== "admin") return
+      const value = String(document.getElementById("qualityRulesTextInput")?.value || "").trim()
+      if(!value) return showToast("Ingresá el texto de reglas.", "warn", 1800)
+      await db.ref("app_settings/quality_rules_text").set(value)
+      qualityRulesText = value
+      showToast("Reglas de puntuación guardadas.", "ok", 1600)
+    }
+
     function renderQualityQuestions(containerId, role){
       const wrap = document.getElementById(containerId)
       const forms = qualitySurveyForms || DEFAULT_QUALITY_FORMS
       let items = Array.isArray(forms?.[role]) ? forms[role] : []
       if(!items.length) items = JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS[role] || []))
       if(!wrap) return
-      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10).</div></div>`
+      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">${htmlEscape(qualityRulesText || "Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10).")}</div></div>`
       const tableRows = items.map((q, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);width:140px"><select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}" style="margin:0"><option value="">Puntaje</option>${(Array.isArray(q.options)?q.options:[]).map(opt=>`<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select></td></tr>`).join("")
       wrap.innerHTML = `${rulesHtml}<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Pregunta</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje</th></tr></thead><tbody>${tableRows}</tbody></table></div>`
     }
@@ -5530,6 +5550,7 @@ async function submitSupportRequest(){
 
     async function saveQualityForms(){
       await ensureQualityFormsLoaded()
+      await ensureQualityRulesTextLoaded()
       ;["analista","consultor"].forEach(role => {
         qualitySurveyForms[role] = (qualitySurveyForms[role] || []).map((q, idx) => ({
           id: q.id || `${slugifyQuestion(q.label)}_${idx+1}`,
@@ -5833,7 +5854,7 @@ async function submitSupportRequest(){
       }
       const qualityTabs = `<div class="inline" style="margin:8px 0 12px;gap:8px"><button class="${qualityAdminSection==='results'?'':'ghost'}" onclick="setAdminQualitySection('results')">Resultados</button><button class="${qualityAdminSection==='edit_analista'?'':'ghost'}" onclick="setAdminQualitySection('edit_analista')">Modificar encuesta analista</button><button class="${qualityAdminSection==='edit_consultor'?'':'ghost'}" onclick="setAdminQualitySection('edit_consultor')">Modificar encuesta consultores</button></div>`
       if(qualityAdminSection === "edit_analista"){
-        container.innerHTML = `${qualityTabs}${renderQualityBuilderAdminHtml("analista")}`
+        container.innerHTML = `${qualityTabs}<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación (visible para analista y consultor)</div><div class="inline" style="gap:8px;align-items:center"><input id="qualityRulesTextInput" value="${htmlEscape(qualityRulesText||"")}" placeholder="Definí reglas de puntuación" style="flex:1;min-width:280px"><button class="ghost" onclick="saveQualityRulesText()">Guardar reglas</button></div></div>${renderQualityBuilderAdminHtml("analista")}`
         return
       }
       if(qualityAdminSection === "edit_consultor"){
@@ -5854,17 +5875,9 @@ async function submitSupportRequest(){
       const selectedRole = qualityAdminRoleView === "consultor" ? "consultor" : "analista"
       const roleLabel = selectedRole === "analista" ? "Analista" : "Consultor"
       const roleSurveys = surveys.filter(s => String(s.ratedRole || "consultor") === selectedRole)
-      const metricConfig = selectedRole === "consultor"
-        ? [
-          { key: "q1", label: "Pregunta 1" },{ key: "q2", label: "Pregunta 2" },{ key: "q3", label: "Pregunta 3" },{ key: "q4", label: "Pregunta 4" },{ key: "q5", label: "Pregunta 5" },
-          { key: "q6", label: "Pregunta 6" },{ key: "q7", label: "Pregunta 7" },{ key: "q8", label: "Pregunta 8" },{ key: "q9", label: "Pregunta 9" },{ key: "q10", label: "Pregunta 10" },
-          { key: "overall", label: "Promedio de satisfacción", highlight: true }
-        ]
-        : [
-          { key: "q1", label: "Pregunta 1" },{ key: "q2", label: "Pregunta 2" },{ key: "q3", label: "Pregunta 3" },{ key: "q4", label: "Pregunta 4" },{ key: "q5", label: "Pregunta 5" },
-          { key: "q6", label: "Pregunta 6" },{ key: "q7", label: "Pregunta 7" },{ key: "q8", label: "Pregunta 8" },{ key: "q9", label: "Pregunta 9" },{ key: "q10", label: "Pregunta 10" },
-          { key: "overall", label: "Promedio de satisfacción", highlight: true }
-        ]
+      const roleForm = Array.isArray((qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.[selectedRole]) ? (qualitySurveyForms || DEFAULT_QUALITY_FORMS)[selectedRole] : []
+      const metricConfig = roleForm.map((q, idx) => ({ key: String(q?.id || `q${idx+1}`), label: String(q?.label || `Pregunta ${idx+1}`) }))
+        .concat([{ key: "overall", label: "Promedio de satisfacción", highlight: true }])
       const metricCards = metricConfig.map(metric => {
         const values = roleSurveys
           .map(item => normalizeQualityToTen(metric.key === "overall" ? (item?.overall || 0) : ((item?.answers||{})[metric.key] || 0)))
@@ -9377,7 +9390,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200)
+          showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
           return
         }
       }
@@ -9433,7 +9446,7 @@ async function submitSupportRequest(){
         if(pendingSurveys.length){
           setConsultorActivityTab("surveys")
           await loadDashboard()
-          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200)
+          return showToast("Antes de crear un nuevo ticket tenés que completar todas las encuestas de satisfacción pendientes.", "warn", 3200, true)
         }
       }
 
