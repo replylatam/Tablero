@@ -12693,7 +12693,7 @@ function setAdminAgendaTeam(team){
         try{ tickets = await fetchTicketsFromDb() }catch(_){ tickets = [] }
       }
       const myEmail = String(currentUser?.email || "").toLowerCase()
-      let scoped = tickets.filter(t => String(t.assignedTo || "").toLowerCase() === myEmail || (Array.isArray(t.helpers) && t.helpers.some(h => String(h||"").toLowerCase() === myEmail)))
+      let scoped = tickets.filter(t => String(t.assignedTo || "").toLowerCase() === myEmail)
       const today = toLocalDateOnly(new Date())
       const withPending = scoped.filter(t => analystPendingCommentsForTicket(t).length > 0)
       const plannedToday = scoped.filter(t => String(t.plannedWorkDate||"") === today)
