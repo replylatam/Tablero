@@ -12343,7 +12343,8 @@ function setAdminAgendaTeam(team){
       const teamSet = new Set(teamAnalysts)
       let scoped = tickets.filter(t => {
         const owner = String(t.assignedTo||"").toLowerCase()
-        return teamSet.has(owner)
+        const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h||"").toLowerCase()) : []
+        return teamSet.has(owner) || helpers.some(h => teamSet.has(h))
       })
       const teamTicketsAll = [...scoped]
 
@@ -12372,9 +12373,14 @@ function setAdminAgendaTeam(team){
         return !owner && String(t.status||"") !== "done"
       }).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
 
-      const agendaRows = scoped.map(t => {
+      const agendaRows = scoped.flatMap(t => {
         const owner = String(t.assignedTo || "").toLowerCase()
-        return { ...t, _agendaRoleIcon: "👑", _agendaAnalyst: owner }
+        const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : [])
+          .map(h => String(h || "").toLowerCase())
+          .filter(h => teamSet.has(h) && h !== owner)
+        const rows = teamSet.has(owner) ? [{ ...t, _agendaRoleIcon: "👑", _agendaAnalyst: owner }] : []
+        helpersInTeam.forEach(helper => rows.push({ ...t, _agendaRoleIcon: "🤝", _agendaAnalyst: helper }))
+        return rows
       })
       const orderedAgendaRows = [...agendaRows].sort((a,b)=>{
         const aa = String(a._agendaAnalyst || a.assignedTo || "zzzz").toLowerCase()
@@ -12410,7 +12416,11 @@ function setAdminAgendaTeam(team){
       if(s1) s1.classList.toggle("ghost", adminAgendaTeam !== "equipo_1")
       if(s2) s2.classList.toggle("ghost", adminAgendaTeam !== "equipo_2")
 
-      const analystsWithoutTasks = teamAnalysts.filter(email => !agendaRows.some(t => String(t.assignedTo || "").toLowerCase() === email))
+      const analystsWithoutTasks = teamAnalysts.filter(email => !agendaRows.some(t => {
+        const owner = String(t.assignedTo || "").toLowerCase()
+        const helper = String(t._agendaAnalyst || "").toLowerCase()
+        return owner === email || helper === email
+      }))
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
       const savedHistory = await getAdminAgendaHistory(adminAgendaTeam)
       const historyHtml = await renderAgendaCommentHistoryTable()
