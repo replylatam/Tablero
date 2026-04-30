@@ -1694,7 +1694,7 @@
     var adminAgendaCurrentRows = []
     var adminAgendaFiltersModalVisible = false
     var adminAgendaFilterSwitchesVisible = false
-    var analystAgendaFilters = { ticketId: "", title: "", status: [], client: "", consultor: "" }
+    var analystAgendaFilters = { ticketId: "", title: "", status: ["done"], client: "", consultor: "" }
     var analystAgendaVisible = true
     var analystAgendaTodayOnly = false
     var dailyAdminRows = []
@@ -9759,9 +9759,10 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const headerControls = document.getElementById("ticketDetailHeaderControls")
       if(headerControls){
         const saveBtn = `<button class="ghost saveToggle ${isTicketSaved(ticketWithRead.id) ? "active" : ""}" data-save-ticket="${htmlEscape(ticketWithRead.id)}" title="Guardar ticket" onclick="toggleSaveTicket('${ticketWithRead.id}', event)">${isTicketSaved(ticketWithRead.id) ? "🔖" : "📑"}</button>`
+        const deleteBtn = currentRole === "admin" ? `<button class="danger" title="Eliminar ticket" onclick="deleteTicketFromDetailAdmin('${ticketWithRead.id}')">🗑️</button>` : ""
         headerControls.innerHTML = canManageStatus
-          ? `<div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">${saveBtn}<select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
-          : `<div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">${saveBtn}<span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span></div>`
+          ? `<div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">${saveBtn}${deleteBtn}<select id="detail-status-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;min-width:170px">${statusOptions}</select></div>`
+          : `<div class="inline" style="gap:8px;align-items:center;flex-wrap:nowrap">${saveBtn}${deleteBtn}<span class="small">Estado: <strong>${htmlEscape(STATUS[ticketWithRead.status] || "-")}</strong></span></div>`
       }
 
       document.getElementById("ticketDetailContent").innerHTML = `
@@ -10707,6 +10708,14 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       await deleteTicket(id)
       const input = document.getElementById('deleteTicketId')
       if(input) input.value = ''
+    }
+
+    async function deleteTicketFromDetailAdmin(id){
+      if(currentRole !== "admin") return
+      const ticketId = String(id || "").trim().toUpperCase()
+      if(!ticketId) return
+      await deleteTicket(ticketId)
+      closeTicketDetailModal()
     }
 
     async function joinAsHelper(id){
@@ -12427,8 +12436,8 @@ function setAdminAgendaTeam(team){
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del admin</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del analista</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Agenda de mañana?</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. modificación agenda</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Agenda de mañana?</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Últ. modificación agenda</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Cantidad restante</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Alerta</th>
@@ -12462,9 +12471,9 @@ function setAdminAgendaTeam(team){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.adminComment||"")}" title="${htmlEscape(t.adminComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'adminComment', this.value)" oninput="this.title=this.value" placeholder="Comentario interno"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.analystComment||"")}" title="${htmlEscape(t.analystComment||"")}" onchange="updateTicketAgendaField('${t.id}', 'analystComment', this.value)" oninput="this.title=this.value" placeholder="Comentario del analista"></td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrow ? "✅" : "—"}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)">${t.agendaTomorrow ? "✅" : "—"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)">${t.agendaTomorrowUpdatedAt ? htmlEscape(new Date(t.agendaTomorrowUpdatedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2);background:rgba(255,255,255,.05)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><button class="ghost" title="Enviar alerta" onclick="sendAgendaAlertToAnalyst('${String(t._agendaAnalyst || t.assignedTo || '').toLowerCase()}')">⚠️ Alertar</button></td>
                 </tr>`
