@@ -5305,20 +5305,20 @@ async function sendAgendaAlertToAnalyst(email){
     async function openChatModal(forceOpen){ ensureChatContainers(); if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return; const dock=document.getElementById("chatDock"); if(!dock) return; if(typeof forceOpen === "boolean") dock.style.display = forceOpen ? "block" : "none"; else dock.style.display = dock.style.display === "none" || !dock.style.display ? "block" : "none"; if(dock.style.display === "none") return; const me=String(currentUser?.email||"").toLowerCase(); const usersByEmail=(await db.ref("users_by_email").once("value")).val()||{}; const meUser = usersByEmail[emailKey(me)] || {}; const presenceSelect = document.getElementById("chatPresenceSelect"); if(presenceSelect) presenceSelect.value = String(meUser?.presenceStatus || "online"); const q = String(document.getElementById("chatUserSearch")?.value || "").trim().toLowerCase(); const users=Object.values(usersByEmail).filter(u=>String(u?.email||"").toLowerCase()!==me && u?.active!==false).filter(u=>!q || String(u?.email||"").toLowerCase().includes(q) || String(u?.name||u?.displayName||"").toLowerCase().includes(q)).slice(0,80); const list=document.getElementById("chatUserList"); if(list) list.innerHTML = users.map(u=>{ const email=String(u.email||"").toLowerCase(); const badge=(directChatUnread[email]||0)>0?`<span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 6px">${directChatUnread[email]}</span>`:""; const meta=directChatMeta[email]||{}; const preview=meta.text?`<div class='small' style='color:var(--muted)'>${htmlEscape(meta.text)} · ${htmlEscape(relativeTimeFromIso(meta.createdAt))}</div>`:''; return `<button class="ghost" style="width:100%;text-align:left;margin:2px 0" onclick="openDirectChatWindow('${email}')"><img class="commentAvatar" src="${htmlEscape(buildAvatarUrl(u,email))}" data-fallback="${htmlEscape(buildInitialAvatar(email||'U'))}" onerror="handleAvatarError(this)"> ${presenceDot(getUserPresenceState(u))}${htmlEscape(userDisplayNameByEmail(email)||email)} ${badge}${preview}</button>` }).join("") }
     function closeChatModal(){ const dock=document.getElementById("chatDock"); if(dock) dock.style.display="none" }
     function renderDirectChatMessages(target,list=[]){ const me=String(currentUser?.email||"").toLowerCase(); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(!wrap)return; wrap.innerHTML=list.map(msg=>{ const mine=String(msg?.from||"").toLowerCase()===me; const seen = !!msg?.readBy?.[emailKey(target)]; const ticks = mine ? `<span style="color:${seen?'#3b82f6':'var(--muted)'}">✓✓</span>` : ''; return `<div class="chatMessageItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(msg?.from||"-"))} · ${msg?.createdAt ? htmlEscape(formatDateTime24(msg.createdAt)) : ""}${msg?.editedAt ? " · editado" : ""}</div><div>${htmlEscape(msg?.text||"")}</div><div class="inline small" style="justify-content:space-between;gap:8px">${ticks}${mine?`<span><a href="javascript:void(0)" style="color:var(--text-2)" onclick="editDirectChatMessage('${target}','${msg?.id||""}')">editar</a> · <a href="javascript:void(0)" style="color:var(--text-2)" onclick="deleteDirectChatMessage('${target}','${msg?.id||""}')">eliminar</a></span>`:""}</div></div>` }).join(""); wrap.scrollTop=wrap.scrollHeight }
-    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const chatId=buildDirectChatId(me,target); if(openDirectChats[target]?.ref){ openDirectChats[target].ref.off(); } const ref=db.ref("direct_chats").child(chatId); openDirectChats[target]={...(openDirectChats[target]||{}),ref,lastCount:(openDirectChats[target]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; let list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const local=openDirectChats[target]?.localList||[]; if(local.length){ list=[...list,...local.filter(l=>!list.some(x=>String(x.text||"")===String(l.text||"") && String(x.createdAt||"")===String(l.createdAt||"")))].sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); } openDirectChats[target].lastCount=list.length; if(list.length) directChatMeta[target]={text:list[list.length-1].text||'',createdAt:list[list.length-1].createdAt||''}; renderDirectChatMessages(target,list); const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[target]?.minimized){ unreadIncoming.forEach(m=>db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString())); directChatUnread[target]=0; syncDirectChatUnread(); } else { directChatUnread[target]=unreadIncoming.length; syncDirectChatUnread(); } updateChatWindowState(target); if((unreadIncoming||[]).length && !document.getElementById(`chatWin_${emailKey(target)}`)){ openDirectChatWindow(target,{minimized:true}); } }) }
+    function loadDirectChatMessages(target){ const me=String(currentUser?.email||"").toLowerCase(); const normalizedTarget=String(target||"").toLowerCase(); const chatId=buildDirectChatId(me,normalizedTarget); if(openDirectChats[normalizedTarget]?.ref){ openDirectChats[normalizedTarget].ref.off(); } const ref=db.ref("direct_chats").child(chatId); openDirectChats[normalizedTarget]={...(openDirectChats[normalizedTarget]||{}),ref,lastCount:(openDirectChats[normalizedTarget]?.lastCount||0)}; ref.on("value",snap=>{ const data=snap.val()||{}; let list=Object.entries(data).map(([id,val])=>({id,...(val||{})})).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); const local=openDirectChats[normalizedTarget]?.localList||[]; if(local.length){ list=[...list,...local.filter(l=>!list.some(x=>String(x.text||"")===String(l.text||"") && String(x.createdAt||"")===String(l.createdAt||"")))].sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0)); } openDirectChats[normalizedTarget].lastCount=list.length; if(list.length) directChatMeta[normalizedTarget]={text:list[list.length-1].text||'',createdAt:list[list.length-1].createdAt||''}; renderDirectChatMessages(normalizedTarget,list); const unreadIncoming=list.filter(m=>String(m.from||"").toLowerCase()!==me && !m?.readBy?.[emailKey(me)]); if(!openDirectChats[normalizedTarget]?.minimized){ unreadIncoming.forEach(m=>db.ref("direct_chats").child(chatId).child(m.id).child("readBy").child(emailKey(me)).set(new Date().toISOString())); directChatUnread[normalizedTarget]=0; syncDirectChatUnread(); } else { directChatUnread[normalizedTarget]=unreadIncoming.length; syncDirectChatUnread(); } updateChatWindowState(normalizedTarget); }) }
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(win) win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:""; const fab=document.querySelector('.chatFab'); if(fab) fab.setAttribute('data-unread', String(totalUnreadCount())) }
     function setTypingState(target,isTyping){ const me=emailKey(String(currentUser?.email||'').toLowerCase()); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); db.ref('chat_typing').child(chatId).child(me).set(isTyping?new Date().toISOString():null) }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target]?.minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(wrap) wrap.scrollTop=wrap.scrollHeight } }
-    function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ const minStyle = opts.minimized ? "background:rgba(249,115,22,.18);border-color:#f97316;" : ""; wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke);${minStyle}"><div class="inline" style="justify-content:space-between"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${target}', !!this.value.trim())" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDirectChatMessage('${target}')}"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${target}','${e}')">${e}</button>`).join('') }
-      if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); const tRef=db.ref('chat_typing').child(chatId); directChatTypingRefs[target]=tRef; tRef.on('value',snap=>{ const data=snap.val()||{}; const others=Object.keys(data).filter(k=>k!==emailKey(String(currentUser?.email||'').toLowerCase())); const el=document.getElementById(`chatTyping_${key}`); if(el) el.textContent=others.length?'está escribiendo...':'' })
+    function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const normalizedTarget=String(target||"").toLowerCase(); const key=emailKey(normalizedTarget); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !normalizedTarget)return; if(!openDirectChats[normalizedTarget]) openDirectChats[normalizedTarget]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ const minStyle = opts.minimized ? "background:rgba(249,115,22,.18);border-color:#f97316;" : ""; wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke);${minStyle}"><div class="inline" style="justify-content:space-between"><strong>${htmlEscape(userDisplayNameByEmail(normalizedTarget)||normalizedTarget)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="toggleChatWindow('${normalizedTarget}')">_</button><button class="ghost danger" onclick="closeDirectChatWindow('${normalizedTarget}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${normalizedTarget}', !!this.value.trim())" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDirectChatMessage('${normalizedTarget}')}"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${normalizedTarget}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${normalizedTarget}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${normalizedTarget}','${e}')">${e}</button>`).join('') }
+      if(directChatTypingRefs[normalizedTarget]) directChatTypingRefs[normalizedTarget].off(); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),normalizedTarget); const tRef=db.ref('chat_typing').child(chatId); directChatTypingRefs[normalizedTarget]=tRef; tRef.on('value',snap=>{ const data=snap.val()||{}; const others=Object.keys(data).filter(k=>k!==emailKey(String(currentUser?.email||'').toLowerCase())); const el=document.getElementById(`chatTyping_${key}`); if(el) el.textContent=others.length?'está escribiendo...':'' })
       if(opts.minimized){
-        openDirectChats[target].minimized = true
+        openDirectChats[normalizedTarget].minimized = true
         const body=document.getElementById(`chatBody_${key}`)
         if(body) body.style.display = "none"
       }else{
-        directChatDismissedAt[target] = ""
+        directChatDismissedAt[normalizedTarget] = ""
       }
-      directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); loadDirectChatMessages(target)
+      directChatUnread[normalizedTarget]=0; syncDirectChatUnread(); updateChatWindowState(normalizedTarget); loadDirectChatMessages(normalizedTarget)
     }
     async function pollIncomingDirectChats(){
       if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
@@ -9855,6 +9855,9 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(!owner) return alert("Seleccioná un responsable")
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
+      const ticketRef = db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id))
+      const persistedTicket = (await ticketRef.once("value")).val() || {}
+      const baseTicket = { ...ticket, ...persistedTicket }
       const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       if(!tracking.users) tracking.users = {}
       const ownerKey = emailKey(owner)
@@ -9875,19 +9878,22 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(currentRole === "consultor" && !canCurrentRoleEditTickets()) return alert("La edición de tickets para tu rol está desactivada por administración.")
       const ticket = cachedTickets.find(t => t.id === id)
       if(!ticket) return
+      const ticketRef = db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id))
+      const persistedTicket = (await ticketRef.once("value")).val() || {}
+      const baseTicket = { ...ticket, ...persistedTicket }
       const canEditFields = canCurrentRoleEditTickets()
       const canEditDeadline = canCurrentRoleEditTickets()
       const canEditInformer = canCurrentRoleEditTickets()
       const canEditAnalystFields = currentRole === "admin" || currentRole === "analista"
-      const nextCustomFields = { ...(ticket.customFields || {}) }
+      const nextCustomFields = { ...(baseTicket.customFields || {}) }
       if(canEditFields){
         for(const def of (cachedTicketCustomFieldsDefs || [])){
           const input = document.getElementById(`detail-custom-${id}-${def.key}`)
           if(input) nextCustomFields[def.key] = String(input.value ?? "").trim()
         }
       }
-      const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || ticket.assignedTo || "").trim().toLowerCase()
-      const tracking = JSON.parse(JSON.stringify(ticket.timeTracking || { users:{}, consolidatedMinutes:0 }))
+      const nextAssignedTo = (document.getElementById(`detail-owner-${id}`)?.value || baseTicket.assignedTo || "").trim().toLowerCase()
+      const tracking = JSON.parse(JSON.stringify(baseTicket.timeTracking || { users:{}, consolidatedMinutes:0 }))
       if(!tracking.users) tracking.users = {}
       if(nextAssignedTo){
         const ownerKey = emailKey(nextAssignedTo)
@@ -9896,14 +9902,14 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       }
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = {
-        ...ticket,
-        title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || ticket.title) : ticket.title,
-        description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || ticket.description) : ticket.description,
-        descriptionHtml: canEditFields ? String(document.getElementById(`detail-description-editor-${id}`)?.innerHTML || ticket.descriptionHtml || "").trim() : (ticket.descriptionHtml || ""),
-        priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || ticket.priority) : ticket.priority,
-        client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || ticket.client) : ticket.client,
-        informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || ticket.informer || ticket.createdBy).trim().toLowerCase()) : (ticket.informer || ticket.createdBy),
-        customFields: canEditFields ? nextCustomFields : (ticket.customFields || {}),
+        ...baseTicket,
+        title: canEditFields ? ((document.getElementById(`detail-title-${id}`)?.value || "").trim() || baseTicket.title) : baseTicket.title,
+        description: canEditFields ? ((document.getElementById(`detail-description-${id}`)?.value || "").trim() || baseTicket.description) : baseTicket.description,
+        descriptionHtml: canEditFields ? String(document.getElementById(`detail-description-editor-${id}`)?.innerHTML || baseTicket.descriptionHtml || "").trim() : (baseTicket.descriptionHtml || ""),
+        priority: canEditFields ? (document.getElementById(`detail-priority-${id}`)?.value || baseTicket.priority) : baseTicket.priority,
+        client: canEditFields ? ((document.getElementById(`detail-client-${id}`)?.value || "").trim() || baseTicket.client) : baseTicket.client,
+        informer: canEditInformer ? ((document.getElementById(`detail-informer-${id}`)?.value || baseTicket.informer || baseTicket.createdBy).trim().toLowerCase()) : (baseTicket.informer || baseTicket.createdBy),
+        customFields: canEditFields ? nextCustomFields : (baseTicket.customFields || {}),
         publicationCountConsultor: (currentRole === "admin" || currentRole === "consultor")
           ? Math.max(0, Number(document.getElementById(`detail-publication-count-consultor-${id}`)?.value || 0) || 0)
           : Number(ticket.publicationCountConsultor ?? ticket.publicationCount ?? 0),
@@ -9914,11 +9920,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
           ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0)
           : (currentRole === "consultor"
             ? Math.max(0, Number(document.getElementById(`detail-publication-count-consultor-${id}`)?.value || 0) || 0)
-            : Number(ticket.publicationCount ?? ticket.publicationCountAnalyst ?? ticket.publicationCountConsultor ?? 0)),
-        workSheet: canEditAnalystFields ? normalizeUrlLike(document.getElementById(`detail-work-sheet-${id}`)?.value || "") : String(ticket.workSheet || ""),
+            : Number(baseTicket.publicationCount ?? baseTicket.publicationCountAnalyst ?? baseTicket.publicationCountConsultor ?? 0)),
+        workSheet: canEditAnalystFields ? normalizeUrlLike(document.getElementById(`detail-work-sheet-${id}`)?.value || "") : String(baseTicket.workSheet || ""),
         assignedTo: nextAssignedTo,
-        deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : ticket.deadline,
-        status: (document.getElementById(`detail-status-${id}`)?.value || ticket.status),
+        deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : baseTicket.deadline,
+        status: (document.getElementById(`detail-status-${id}`)?.value || baseTicket.status),
         timeTracking: tracking,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser.email
@@ -9943,7 +9949,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(String(ticket.status || "") !== String(updated.status || "")){
         await handleAnalystAutoTimerByStatus(ticket, updated.status)
       }
-      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      await ticketRef.update(updated)
       mirrorToSheet("updateTicket", { id, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === id)
       if(ix >= 0) cachedTickets[ix] = updated
@@ -12428,9 +12434,10 @@ function setAdminAgendaTeam(team){
                 const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
                 const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
                 const rowBg = owner ? ownerColors[ownerHash % ownerColors.length] : "transparent"
-                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg};border-top:${analystChanged?"2px solid rgba(255,255,255,.85)":"none"}">
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
+                const splitStyle = analystChanged ? "border-top:2px solid rgba(255,255,255,.92);" : ""
+                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg}">
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2);${splitStyle}">${roleIcon}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2);${splitStyle}">${htmlEscape(t.id||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t._agendaAnalyst ? userDisplayNameByEmail(t._agendaAnalyst) : (t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar"))}</td>
@@ -12705,7 +12712,11 @@ function setAdminAgendaTeam(team){
       const myTeam = String((cachedUsersByEmail?.[emailKey(myEmail)]?.analystTeam || "")).toLowerCase() || "equipo_1"
       const savedHistory = await getAdminAgendaHistory(myTeam)
       const analystAgendaHistoryHtml = savedHistory.length ? savedHistory.map(item => {
-        const mineRows = (item.rows || []).filter(r => String(r.assignedTo || "").toLowerCase() === myEmail)
+        const mineRows = (item.rows || []).filter(r => {
+          const owner = String(r._agendaAnalyst || r.assignedTo || "").toLowerCase()
+          const helpers = Array.isArray(r.helpers) ? r.helpers.map(h => String(h||"").toLowerCase()) : []
+          return owner === myEmail || helpers.includes(myEmail)
+        })
         return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Tickets propios: ${mineRows.length}</div></div></div>${mineRows.length ? `<div class="small">${mineRows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")}`).join("<br>")}</div>` : `<div class="small">Sin tickets propios en este snapshot.</div>`}</div>`
       }).join("") : `<div class="small">Sin agendas guardadas todavía para tu equipo.</div>`
       wrap.innerHTML = `
