@@ -5290,6 +5290,7 @@ async function sendAgendaAlertToAnalyst(email){
     function teardownDirectChatListener(){}
     var chatInboxInterval = null
     var chatInboxLastSeen = {}
+    var directChatDismissedAt = {}
     var directChatMeta = {}
     var directChatTypingRefs = {}
     var unreadSyncRef = null
@@ -5310,7 +5311,13 @@ async function sendAgendaAlertToAnalyst(email){
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target]?.minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(wrap) wrap.scrollTop=wrap.scrollHeight } }
     function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ const minStyle = opts.minimized ? "background:rgba(249,115,22,.18);border-color:#f97316;" : ""; wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke);${minStyle}"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${target}', !!this.value.trim())" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDirectChatMessage('${target}')}"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${target}','${e}')">${e}</button>`).join('') }
       if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); const tRef=db.ref('chat_typing').child(chatId); directChatTypingRefs[target]=tRef; tRef.on('value',snap=>{ const data=snap.val()||{}; const others=Object.keys(data).filter(k=>k!==emailKey(String(currentUser?.email||'').toLowerCase())); const el=document.getElementById(`chatTyping_${key}`); if(el) el.textContent=others.length?'está escribiendo...':'' })
-      if(opts.minimized){ openDirectChats[target].minimized = true; toggleChatWindow(target) }
+      if(opts.minimized){
+        openDirectChats[target].minimized = true
+        const body=document.getElementById(`chatBody_${key}`)
+        if(body) body.style.display = "none"
+      }else{
+        directChatDismissedAt[target] = ""
+      }
       directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); loadDirectChatMessages(target)
     }
     async function pollIncomingDirectChats(){
@@ -5331,7 +5338,9 @@ async function sendAgendaAlertToAnalyst(email){
         if(!otherEmail || otherEmail === me) return
         directChatMeta[otherEmail] = { text: latest.text || "", createdAt: latest.createdAt || "" }
         const unread = list.filter(m => String(m.from || "").toLowerCase() !== me && !m?.readBy?.[emailKey(me)]).length
-        if(unread > 0 && !openDirectChats[otherEmail]){
+        const latestAt = new Date(latest?.createdAt || 0).getTime()
+        const dismissedAt = new Date(directChatDismissedAt[otherEmail] || 0).getTime()
+        if(unread > 0 && !openDirectChats[otherEmail] && latestAt > dismissedAt){
           openDirectChatWindow(otherEmail, { minimized: true })
         }
         directChatUnread[otherEmail] = unread
@@ -5339,7 +5348,7 @@ async function sendAgendaAlertToAnalyst(email){
       })
       await syncDirectChatUnread()
     }
-    function closeDirectChatWindow(target){ const el=document.getElementById(`chatWin_${emailKey(target)}`); if(el) el.remove(); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off(); if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); delete openDirectChats[target] }
+    function closeDirectChatWindow(target){ const el=document.getElementById(`chatWin_${emailKey(target)}`); if(el) el.remove(); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off(); if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); directChatDismissedAt[target] = String(directChatMeta[target]?.createdAt || new Date().toISOString()); delete openDirectChats[target] }
     function openChatEmojiPicker(target){ document.getElementById(`chatEmoji_${emailKey(target)}`)?.classList.toggle("hidden") }
     function appendSpecificEmojiToChatInput(target,emoji){ const i=document.getElementById(`chatInput_${emailKey(target)}`); if(i){ i.value = `${i.value || ""}${emoji}`; i.focus(); setTypingState(target,true) } }
     function appendEmojiToChatInput(target){ appendSpecificEmojiToChatInput(target, "😊") }
