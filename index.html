@@ -1706,7 +1706,7 @@
     var dailyWeekStripScroll = {}
     var dailyWeekOffsetByScope = { admin: 0, analyst: 0 }
     var dailyAdminSelectedDate = ""
-    var dailyAdminViewMode = "assign"
+    var dailyAdminViewMode = "details"
     var dailyAdminEscalationDetailId = ""
     var dailyReferenteSelectedDate = toLocalDateOnly(new Date())
     var dailyReferenteSelectedAnalyst = ""
@@ -11492,7 +11492,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
     }
 
     function setDailyAdminViewMode(mode){
-      dailyAdminViewMode = ["assign","details","history"].includes(String(mode||"")) ? String(mode) : "assign"
+      dailyAdminViewMode = ["assign","details","history"].includes(String(mode||"")) ? String(mode) : "details"
       loadDailysAdmin()
     }
 
