@@ -12334,7 +12334,6 @@ function setAdminAgendaTeam(team){
       const teamSet = new Set(teamAnalysts)
       let scoped = tickets.filter(t => {
         const owner = String(t.assignedTo||"").toLowerCase()
-        const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h||"").toLowerCase()) : []
         return teamSet.has(owner)
       })
       const teamTicketsAll = [...scoped]
@@ -12364,12 +12363,9 @@ function setAdminAgendaTeam(team){
         return !owner && String(t.status||"") !== "done"
       }).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
 
-      const agendaRows = scoped.flatMap(t => {
-        const owner = String(t._agendaAnalyst || t.assignedTo || "").toLowerCase()
-        const helpersInTeam = (Array.isArray(t.helpers) ? t.helpers : []).map(h => String(h||"").toLowerCase()).filter(h => teamSet.has(h) && h !== owner)
-        const rows = teamSet.has(owner) ? [{ ...t, _agendaRoleIcon: "👑", _agendaAnalyst: owner }] : []
-        helpersInTeam.forEach(helper => rows.push({ ...t, _agendaRoleIcon: "🤝", _agendaAnalyst: helper }))
-        return rows
+      const agendaRows = scoped.map(t => {
+        const owner = String(t.assignedTo || "").toLowerCase()
+        return { ...t, _agendaRoleIcon: "👑", _agendaAnalyst: owner }
       })
       const orderedAgendaRows = [...agendaRows].sort((a,b)=>{
         const aa = String(a._agendaAnalyst || a.assignedTo || "zzzz").toLowerCase()
@@ -12405,11 +12401,7 @@ function setAdminAgendaTeam(team){
       if(s1) s1.classList.toggle("ghost", adminAgendaTeam !== "equipo_1")
       if(s2) s2.classList.toggle("ghost", adminAgendaTeam !== "equipo_2")
 
-      const analystsWithoutTasks = teamAnalysts.filter(email => !agendaRows.some(t => {
-        const owner = String(t.assignedTo || "").toLowerCase()
-        const helpers = Array.isArray(t.helpers) ? t.helpers.map(h => String(h || "").toLowerCase()) : []
-        return owner === email || helpers.includes(email)
-      }))
+      const analystsWithoutTasks = teamAnalysts.filter(email => !agendaRows.some(t => String(t.assignedTo || "").toLowerCase() === email))
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
       const savedHistory = await getAdminAgendaHistory(adminAgendaTeam)
       const historyHtml = await renderAgendaCommentHistoryTable()
@@ -12682,7 +12674,7 @@ function setAdminAgendaTeam(team){
         try{ tickets = await fetchTicketsFromDb() }catch(_){ tickets = [] }
       }
       const myEmail = String(currentUser?.email || "").toLowerCase()
-      let scoped = tickets.filter(t => String(t.assignedTo || "").toLowerCase() === myEmail || (Array.isArray(t.helpers) && t.helpers.some(h => String(h||"").toLowerCase() === myEmail)))
+      let scoped = tickets.filter(t => String(t.assignedTo || "").toLowerCase() === myEmail)
       const today = toLocalDateOnly(new Date())
       const withPending = scoped.filter(t => analystPendingCommentsForTicket(t).length > 0)
       const plannedToday = scoped.filter(t => String(t.plannedWorkDate||"") === today)
@@ -12752,12 +12744,12 @@ function setAdminAgendaTeam(team){
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Agenda de mañana?</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Comentario del analista</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)" style="background:rgba(255,255,255,.08)">Última fecha de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. atención</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cantidad restante</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones</th>
             </tr></thead>
             <tbody>
@@ -12780,7 +12772,6 @@ function setAdminAgendaTeam(team){
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastInfo?.author || '')}">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(recurrenceDaysLabel(recurrenceDaysFromTicket(t)))}</td>
-                <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.remainingQuantity||"")}" onchange="updateTicketAgendaField('${t.id}', 'remainingQuantity', this.value)" placeholder="Cantidad restante"></td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(t.observations||"")}" title="${htmlEscape(t.observations||"")}" onchange="updateTicketAgendaField('${t.id}', 'observations', this.value)" oninput="this.title=this.value" placeholder="Agregar observación"></td>
               </tr>`
               }).join("")}
