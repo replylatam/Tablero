@@ -5227,10 +5227,11 @@ Cliente B`)
     
     async function openInlineReasonModal(title, defaultValue=""){
       return new Promise(resolve=>{
-        const modal=document.getElementById("globalInlineReasonModal") || (()=>{ const m=document.createElement("div"); m.id="globalInlineReasonModal"; m.className="modal hidden"; m.innerHTML=`<div class='modal-content card' style='max-width:520px'><h3 id='inlineReasonTitle' style='margin-top:0'></h3><textarea id='inlineReasonInput' style='min-height:100px'></textarea><div class='inline' style='justify-content:flex-end'><button class='ghost' id='inlineReasonCancel'>Cancelar</button><button id='inlineReasonOk'>Enviar</button></div></div>`; document.body.appendChild(m); return m })();
+        const modal=document.getElementById("globalInlineReasonModal") || (()=>{ const m=document.createElement("div"); m.id="globalInlineReasonModal"; m.className="modalBack hidden"; m.style.zIndex = "320"; m.innerHTML=`<div class='card modal' style='max-width:560px' onclick='event.stopPropagation()'><div class='inline' style='justify-content:space-between;align-items:center;margin-bottom:8px'><h3 id='inlineReasonTitle' style='margin:0'></h3><button class='secondary' id='inlineReasonCancelTop'>Cerrar</button></div><textarea id='inlineReasonInput' style='min-height:120px' placeholder='Escribí el motivo de la alerta'></textarea><div class='inline' style='justify-content:flex-end;gap:8px;margin-top:8px'><button class='ghost' id='inlineReasonCancel'>Cancelar</button><button id='inlineReasonOk'>Enviar</button></div></div>`; m.onclick=(ev)=>{ if(ev.target===m){ m.classList.add('hidden'); resolve('') } }; document.body.appendChild(m); return m })();
         document.getElementById('inlineReasonTitle').textContent=title||'Motivo';
         const input=document.getElementById('inlineReasonInput'); input.value=defaultValue||''; modal.classList.remove('hidden');
         document.getElementById('inlineReasonCancel').onclick=()=>{ modal.classList.add('hidden'); resolve('') };
+        document.getElementById('inlineReasonCancelTop').onclick=()=>{ modal.classList.add('hidden'); resolve('') };
         document.getElementById('inlineReasonOk').onclick=()=>{ const v=input.value; modal.classList.add('hidden'); resolve(v) };
       })
     }
@@ -9943,6 +9944,8 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       if(currentRole === "analista" && String(ticket.status||"") !== String(updated.status||"")) warnAnalystMovementWithoutTime(updated)
       renderTicketsFromData(cachedTickets)
       await loadDashboard()
+      if(adminPanelTab === "agenda"){ await loadTickets(); await loadAdminAgenda() }
+      if(analystPanelTab === "agenda") await loadAnalystAgenda()
       showToast("Ticket actualizado", "ok")
     }
 
