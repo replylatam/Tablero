@@ -5318,15 +5318,17 @@ async function sendAgendaAlertToAnalyst(email){
       const me = String(currentUser?.email || "").toLowerCase()
       if(!me) return
       const chats = (await db.ref("direct_chats").once("value")).val() || {}
+      const meKey = emailKey(me)
       Object.entries(chats).forEach(([chatId, rows]) => {
-        const users = String(chatId || "").split("__")
-        if(!users.includes(emailKey(me))) return
-        const otherKey = users.find(k => k !== emailKey(me))
-        const otherEmail = String(otherKey || "").replaceAll("_", ".")
-        if(!otherEmail) return
         const list = Object.entries(rows || {}).map(([id,val]) => ({ id, ...(val || {}) })).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
         if(!list.length) return
+        const users = String(chatId || "").split("__")
+        if(!users.includes(meKey)) return
         const latest = list[list.length - 1]
+        const from = String(latest?.from || "").toLowerCase()
+        const to = String(latest?.to || "").toLowerCase()
+        const otherEmail = from === me ? to : from
+        if(!otherEmail || otherEmail === me) return
         directChatMeta[otherEmail] = { text: latest.text || "", createdAt: latest.createdAt || "" }
         const unread = list.filter(m => String(m.from || "").toLowerCase() !== me && !m?.readBy?.[emailKey(me)]).length
         if(unread > 0 && !openDirectChats[otherEmail]){
@@ -9941,6 +9943,14 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const ix = cachedTickets.findIndex(t => t.id === id)
       if(ix >= 0) cachedTickets[ix] = updated
       await logTicketFieldChanges(ticket, updated)
+      if(String(ticket.assignedTo || "").toLowerCase() !== String(updated.assignedTo || "").toLowerCase()){
+        await logActivity("ticket_reasignado", {
+          ticketId: id,
+          from: String(ticket.assignedTo || "").toLowerCase(),
+          to: String(updated.assignedTo || "").toLowerCase(),
+          source: "ticket_detail_modal"
+        })
+      }
       if(currentRole === "analista" && String(ticket.status||"") !== String(updated.status||"")) warnAnalystMovementWithoutTime(updated)
       renderTicketsFromData(cachedTickets)
       await loadDashboard()
