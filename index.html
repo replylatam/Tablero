@@ -12445,7 +12445,7 @@ function setAdminAgendaTeam(team){
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Recurrencia</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del admin</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentarios del analista</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Comentarios del analista</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Agenda de mañana?</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Últ. modificación agenda</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.08)">Cantidad restante</th>
@@ -12550,6 +12550,7 @@ function setAdminAgendaTeam(team){
     }
 
     async function updateTicketPlanningDate(ticketId, value){
+      const prevScrollY = window.scrollY || window.pageYOffset || 0
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
       const updated = { ...ticket, plannedWorkDate: String(value || ""), updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -12559,11 +12560,12 @@ function setAdminAgendaTeam(team){
       if(ix >= 0) cachedTickets[ix] = updated
       await logActivity("ticket_actualizado", { ticketId, changes: `plannedWorkDate: \"${String(ticket.plannedWorkDate || "")}\" → \"${String(updated.plannedWorkDate || "")}\"` })
       showToast("Planificación guardada.", "ok", 1200)
-      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
-      if(analystPanelTab === "agenda") loadAnalystAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); await loadAdminAgenda(); window.scrollTo(0, prevScrollY) }
+      if(analystPanelTab === "agenda"){ await loadAnalystAgenda(); window.scrollTo(0, prevScrollY) }
     }
 
     async function updateTicketAgendaTomorrow(ticketId, checked){
+      const prevScrollY = window.scrollY || window.pageYOffset || 0
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
       const updated = { ...ticket, agendaTomorrow: !!checked, agendaTomorrowUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
@@ -12571,10 +12573,12 @@ function setAdminAgendaTeam(team){
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === ticketId)
       if(ix >= 0) cachedTickets[ix] = updated
-      if(analystPanelTab === "agenda") loadAnalystAgenda()
+      if(adminPanelTab === "agenda"){ await loadAdminAgenda(); window.scrollTo(0, prevScrollY) }
+      if(analystPanelTab === "agenda"){ await loadAnalystAgenda(); window.scrollTo(0, prevScrollY) }
     }
 
     async function updateTicketAgendaField(ticketId, field, value){
+      const prevScrollY = window.scrollY || window.pageYOffset || 0
       const allowed = new Set(["recurrence", "observations", "remainingQuantity", "adminComment", "analystComment", "analystLastWorkDate"])
       if(!allowed.has(field)) return
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
@@ -12587,8 +12591,8 @@ function setAdminAgendaTeam(team){
       await logAgendaCommentHistory(updated, field, value)
       await logActivity("ticket_actualizado", { ticketId, changes: `${field}: \"${String(ticket[field] || "")}\" → \"${String(updated[field] || "")}\"` })
       showToast("Agenda actualizada.", "ok", 900)
-      if(adminPanelTab === "agenda"){ await loadTickets(); loadAdminAgenda() }
-      if(analystPanelTab === "agenda") loadAnalystAgenda()
+      if(adminPanelTab === "agenda"){ await loadTickets(); await loadAdminAgenda(); window.scrollTo(0, prevScrollY) }
+      if(analystPanelTab === "agenda"){ await loadAnalystAgenda(); window.scrollTo(0, prevScrollY) }
     }
 
     async function logAgendaCommentHistory(ticket, field, value){
