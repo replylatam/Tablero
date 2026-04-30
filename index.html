@@ -1732,16 +1732,16 @@
     var menuPermissionsByRole = { admin: {}, analista: {}, consultor: {} }
     const DEFAULT_MENU_VISIBILITY_BY_ROLE = {
       admin: new Set([
-        "main:tickets","main:mensajeria","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
+        "main:tickets","main:saved","main:encuentro","main:top_performer","main:portfolio_overview","main:hoja_vida",
         "admin:dailys","admin:agenda","admin:comments","admin:capacity","admin:announcements","admin:guidelines",
         "admin:manuals","admin:internal_quality","admin:quality","admin:support","admin:help","admin:connections","admin:control_center"
       ]),
       analista: new Set([
-        "main:tickets","main:mensajeria","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
+        "main:tickets","main:encuentro","main:top_performer","main:saved","main:quality_results","main:my_ticket_status",
         "main:registro_horas","main:dailys","main:portfolio_overview","main:support"
       ]),
       consultor: new Set([
-        "main:tickets","main:mensajeria","main:encuentro","main:saved","main:summary_general","main:portfolio",
+        "main:tickets","main:encuentro","main:saved","main:summary_general","main:portfolio",
         "main:agenda_today","main:consultor_guidelines","main:support","main:profile"
       ])
     }
@@ -2004,7 +2004,6 @@
     function canCurrentRoleSeeMenu(menuKey){
       const role = String(currentRole || "").toLowerCase()
       if(!["admin","analista","consultor"].includes(role)) return true
-      if(String(menuKey || "") === "main:mensajeria") return true
       if(role === "admin" && isAdminLevel1()) return true
       if(role === "admin" && isAdminLevel3C()){
         const admin3c = new Set(["main:tickets","main:encuentro","main:saved","main:portfolio","main:portfolio_overview","main:agenda_today","main:consultor_guidelines","main:support","main:profile","main:client_activity"])
@@ -2128,7 +2127,7 @@
     }
 
     function setMainViewTab(tab){
-      let nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile","client_activity","mensajeria"].includes(tab) ? tab : "tickets"
+      let nextTab = ["saved","portfolio","portfolio_overview","quality_results","my_ticket_status","registro_horas","support","consultor_guidelines","agenda_today","hoja_vida","encuentro","dailys","top_performer","summary_general","profile","client_activity"].includes(tab) ? tab : "tickets"
       if(currentRole === "consultor" && nextTab === "portfolio_overview") nextTab = "portfolio"
       if(isAdminLevel3C() && nextTab === "summary_general") nextTab = "portfolio_overview"
       if(nextTab !== "tickets" && !canCurrentRoleSeeMenu(`main:${nextTab}`)){
@@ -7496,7 +7495,6 @@ async function submitSupportRequest(){
       const sidebarSections = (isAdmin && !isAdmin3C) ? [
         { title: "Tablero", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
-          { icon: "💬", label: "Mensajería", action: "setMainViewTab('mensajeria')" },
           { icon: "🗂️", label: "Daily's", action: "setAdminTab('dailys')" },
           { icon: "🗓️", label: "Organizar agendas", action: "setAdminTab('agenda')" },
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" },
@@ -7528,7 +7526,6 @@ async function submitSupportRequest(){
       ] : [
         { title: "General", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
-          { icon: "💬", label: "Mensajería", action: "setMainViewTab('mensajeria')" },
           ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
           ...((currentRole === "admin" && !isAdmin3C) || currentRole === "analista" ? [{ icon: "🛠️", label: "Top performer", action: "setMainViewTab('top_performer')" }] : []),
           { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
@@ -12721,7 +12718,11 @@ function setAdminAgendaTeam(team){
       if(clientQ) scoped = scoped.filter(t => String(t.client||"").toLowerCase().includes(clientQ))
       if(consultorQ) scoped = scoped.filter(t => userDisplayNameByEmail(resolveInformerEmail(t)||"").toLowerCase().includes(consultorQ) || resolveInformerEmail(t).includes(consultorQ))
       if(statusQ.length) scoped = scoped.filter(t => !statusQ.includes(String(t.status||"").toLowerCase()))
-      scoped.sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))
+      scoped.sort((a,b)=>{
+        const createdDiff = new Date(a.createdAt||0).getTime() - new Date(b.createdAt||0).getTime()
+        if(createdDiff !== 0) return createdDiff
+        return String(a.id || "").localeCompare(String(b.id || ""))
+      })
 
       const ticketInput = document.getElementById("analystAgendaFilterTicketId")
       const titleInput = document.getElementById("analystAgendaFilterTitle")
