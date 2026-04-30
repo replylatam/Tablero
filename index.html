@@ -5227,10 +5227,11 @@ Cliente B`)
     
     async function openInlineReasonModal(title, defaultValue=""){
       return new Promise(resolve=>{
-        const modal=document.getElementById("globalInlineReasonModal") || (()=>{ const m=document.createElement("div"); m.id="globalInlineReasonModal"; m.className="modal hidden"; m.innerHTML=`<div class='modal-content card' style='max-width:520px'><h3 id='inlineReasonTitle' style='margin-top:0'></h3><textarea id='inlineReasonInput' style='min-height:100px'></textarea><div class='inline' style='justify-content:flex-end'><button class='ghost' id='inlineReasonCancel'>Cancelar</button><button id='inlineReasonOk'>Enviar</button></div></div>`; document.body.appendChild(m); return m })();
+        const modal=document.getElementById("globalInlineReasonModal") || (()=>{ const m=document.createElement("div"); m.id="globalInlineReasonModal"; m.className="modalBack hidden"; m.style.zIndex = "320"; m.innerHTML=`<div class='card modal' style='max-width:560px' onclick='event.stopPropagation()'><div class='inline' style='justify-content:space-between;align-items:center;margin-bottom:8px'><h3 id='inlineReasonTitle' style='margin:0'></h3><button class='secondary' id='inlineReasonCancelTop'>Cerrar</button></div><textarea id='inlineReasonInput' style='min-height:120px' placeholder='Escribí el motivo de la alerta'></textarea><div class='inline' style='justify-content:flex-end;gap:8px;margin-top:8px'><button class='ghost' id='inlineReasonCancel'>Cancelar</button><button id='inlineReasonOk'>Enviar</button></div></div>`; m.onclick=(ev)=>{ if(ev.target===m){ m.classList.add('hidden'); resolve('') } }; document.body.appendChild(m); return m })();
         document.getElementById('inlineReasonTitle').textContent=title||'Motivo';
         const input=document.getElementById('inlineReasonInput'); input.value=defaultValue||''; modal.classList.remove('hidden');
         document.getElementById('inlineReasonCancel').onclick=()=>{ modal.classList.add('hidden'); resolve('') };
+        document.getElementById('inlineReasonCancelTop').onclick=()=>{ modal.classList.add('hidden'); resolve('') };
         document.getElementById('inlineReasonOk').onclick=()=>{ const v=input.value; modal.classList.add('hidden'); resolve(v) };
       })
     }
@@ -5307,12 +5308,37 @@ async function sendAgendaAlertToAnalyst(email){
     function updateChatWindowState(target){ const win=document.getElementById(`chatWin_${emailKey(target)}`); if(win) win.style.borderColor=(directChatUnread[target]||0)>0?"#f97316":"var(--stroke)"; const badge=document.getElementById(`chatUnread_${emailKey(target)}`); if(badge) badge.textContent=(directChatUnread[target]||0)>0?`(${directChatUnread[target]})`:""; const fab=document.querySelector('.chatFab'); if(fab) fab.setAttribute('data-unread', String(totalUnreadCount())) }
     function setTypingState(target,isTyping){ const me=emailKey(String(currentUser?.email||'').toLowerCase()); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); db.ref('chat_typing').child(chatId).child(me).set(isTyping?new Date().toISOString():null) }
     function toggleChatWindow(target){ if(!openDirectChats[target]) return; openDirectChats[target].minimized=!openDirectChats[target].minimized; const body=document.getElementById(`chatBody_${emailKey(target)}`); if(body) body.style.display=openDirectChats[target]?.minimized?"none":"block"; if(!openDirectChats[target].minimized){ directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); const wrap=document.getElementById(`chatMessages_${emailKey(target)}`); if(wrap) wrap.scrollTop=wrap.scrollHeight } }
-    function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke)"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${target}', !!this.value.trim())" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDirectChatMessage('${target}')}"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${target}','${e}')">${e}</button>`).join('') }
+    function openDirectChatWindow(target, opts = {}){ ensureChatContainers(); const key=emailKey(target); const wrap=document.getElementById("chatWindowsWrap"); if(!wrap || !target)return; if(!openDirectChats[target]) openDirectChats[target]={minimized:false}; if(!document.getElementById(`chatWin_${key}`)){ const minStyle = opts.minimized ? "background:rgba(249,115,22,.18);border-color:#f97316;" : ""; wrap.insertAdjacentHTML("beforeend",`<div id="chatWin_${key}" class="card" style="width:320px;padding:8px;border:1px solid var(--stroke);${minStyle}"><div class="inline" style="justify-content:space-between;cursor:pointer" onclick="toggleChatWindow('${target}')"><strong>${htmlEscape(userDisplayNameByEmail(target)||target)} <span id="chatUnread_${key}" style="color:#f97316"></span></strong><div><button class="ghost" onclick="event.stopPropagation();toggleChatWindow('${target}')">_</button><button class="ghost danger" onclick="event.stopPropagation();closeDirectChatWindow('${target}')">✕</button></div></div><div id="chatBody_${key}"><div id="chatTyping_${key}" class="small" style="color:var(--muted);min-height:16px"></div><div id="chatMessages_${key}" class="chatMessages small" style="height:180px"></div><div class="inline"><input id="chatInput_${key}" placeholder="Mensaje" style="margin:0" oninput="setTypingState('${target}', !!this.value.trim())" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDirectChatMessage('${target}')}"><button class="ghost" title="Emoji" onclick="openChatEmojiPicker('${target}')">😊</button><button class="ghost" onclick="sendDirectChatMessage('${target}')">Enviar</button></div><div id="chatEmoji_${key}" class="hidden" style="margin-top:6px"></div></div></div>`); document.getElementById(`chatEmoji_${key}`).innerHTML=["😀","😂","😍","👍","🎉","🙏","🔥","✅","💡","😅","😎","🤝"].map(e=>`<button class='ghost' style='padding:4px 8px' onclick="appendSpecificEmojiToChatInput('${target}','${e}')">${e}</button>`).join('') }
       if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); const chatId=buildDirectChatId(String(currentUser?.email||'').toLowerCase(),target); const tRef=db.ref('chat_typing').child(chatId); directChatTypingRefs[target]=tRef; tRef.on('value',snap=>{ const data=snap.val()||{}; const others=Object.keys(data).filter(k=>k!==emailKey(String(currentUser?.email||'').toLowerCase())); const el=document.getElementById(`chatTyping_${key}`); if(el) el.textContent=others.length?'está escribiendo...':'' })
       if(opts.minimized){ openDirectChats[target].minimized = true; toggleChatWindow(target) }
       directChatUnread[target]=0; syncDirectChatUnread(); updateChatWindowState(target); loadDirectChatMessages(target)
     }
-    async function pollIncomingDirectChats(){ return }
+    async function pollIncomingDirectChats(){
+      if(!(currentRole === "analista" || currentRole === "consultor" || currentRole === "admin")) return
+      const me = String(currentUser?.email || "").toLowerCase()
+      if(!me) return
+      const chats = (await db.ref("direct_chats").once("value")).val() || {}
+      const meKey = emailKey(me)
+      Object.entries(chats).forEach(([chatId, rows]) => {
+        const list = Object.entries(rows || {}).map(([id,val]) => ({ id, ...(val || {}) })).sort((a,b)=>new Date(a?.createdAt||0)-new Date(b?.createdAt||0))
+        if(!list.length) return
+        const users = String(chatId || "").split("__")
+        if(!users.includes(meKey)) return
+        const latest = list[list.length - 1]
+        const from = String(latest?.from || "").toLowerCase()
+        const to = String(latest?.to || "").toLowerCase()
+        const otherEmail = from === me ? to : from
+        if(!otherEmail || otherEmail === me) return
+        directChatMeta[otherEmail] = { text: latest.text || "", createdAt: latest.createdAt || "" }
+        const unread = list.filter(m => String(m.from || "").toLowerCase() !== me && !m?.readBy?.[emailKey(me)]).length
+        if(unread > 0 && !openDirectChats[otherEmail]){
+          openDirectChatWindow(otherEmail, { minimized: true })
+        }
+        directChatUnread[otherEmail] = unread
+        updateChatWindowState(otherEmail)
+      })
+      await syncDirectChatUnread()
+    }
     function closeDirectChatWindow(target){ const el=document.getElementById(`chatWin_${emailKey(target)}`); if(el) el.remove(); if(openDirectChats[target]?.ref) openDirectChats[target].ref.off(); if(directChatTypingRefs[target]) directChatTypingRefs[target].off(); delete openDirectChats[target] }
     function openChatEmojiPicker(target){ document.getElementById(`chatEmoji_${emailKey(target)}`)?.classList.toggle("hidden") }
     function appendSpecificEmojiToChatInput(target,emoji){ const i=document.getElementById(`chatInput_${emailKey(target)}`); if(i){ i.value = `${i.value || ""}${emoji}`; i.focus(); setTypingState(target,true) } }
@@ -9917,9 +9943,19 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const ix = cachedTickets.findIndex(t => t.id === id)
       if(ix >= 0) cachedTickets[ix] = updated
       await logTicketFieldChanges(ticket, updated)
+      if(String(ticket.assignedTo || "").toLowerCase() !== String(updated.assignedTo || "").toLowerCase()){
+        await logActivity("ticket_reasignado", {
+          ticketId: id,
+          from: String(ticket.assignedTo || "").toLowerCase(),
+          to: String(updated.assignedTo || "").toLowerCase(),
+          source: "ticket_detail_modal"
+        })
+      }
       if(currentRole === "analista" && String(ticket.status||"") !== String(updated.status||"")) warnAnalystMovementWithoutTime(updated)
       renderTicketsFromData(cachedTickets)
       await loadDashboard()
+      if(adminPanelTab === "agenda"){ await loadTickets(); await loadAdminAgenda() }
+      if(analystPanelTab === "agenda") await loadAnalystAgenda()
       showToast("Ticket actualizado", "ok")
     }
 
@@ -12379,7 +12415,7 @@ function setAdminAgendaTeam(team){
               ${orderedAgendaRows.map((t, idx) => {
                 const lastComment = ticketLastCommentAt(t)
                 const lastCommentInfo = ticketLastCommentInfo(t)
-                const owner = String(t.assignedTo || "").toLowerCase()
+                const owner = String(t._agendaAnalyst || t.assignedTo || "").toLowerCase()
                 const roleIcon = String(t._agendaRoleIcon || "👑")
                 const prev = orderedAgendaRows[idx-1]
                 const analystChanged = idx>0 && String(prev?._agendaAnalyst||prev?.assignedTo||"").toLowerCase() !== String(t._agendaAnalyst||t.assignedTo||"").toLowerCase()
@@ -12387,7 +12423,7 @@ function setAdminAgendaTeam(team){
                 const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
                 const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
                 const rowBg = owner ? ownerColors[ownerHash % ownerColors.length] : "transparent"
-                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg};border-top:${analystChanged?"2px solid rgba(255,255,255,.65)":"none"}">
+                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer;background:${rowBg};border-top:${analystChanged?"2px solid rgba(255,255,255,.85)":"none"}">
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
@@ -12661,6 +12697,12 @@ function setAdminAgendaTeam(team){
       }
       const logs = Object.values((await db.ref("activity_logs").once("value")).val() || {})
       const historyHtml = await renderAgendaCommentHistoryTable()
+      const myTeam = String((cachedUsersByEmail?.[emailKey(myEmail)]?.analystTeam || "")).toLowerCase() || "equipo_1"
+      const savedHistory = await getAdminAgendaHistory(myTeam)
+      const analystAgendaHistoryHtml = (savedHistory.length ? savedHistory.map(item => {
+        const mineRows = (item.rows || []).filter(r => String(r.assignedTo || "").toLowerCase() === myEmail)
+        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Tickets propios: ${mineRows.length}</div></div></div>${mineRows.length ? `<div class="small">${mineRows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")}`).join("<br>")}</div>` : `<div class="small">Sin tickets propios en este snapshot.</div>`}</div>`
+      }).join("")) || `<div class="small">Sin agendas guardadas todavía para tu equipo.</div>`
       wrap.innerHTML = `
         <div class="small" style="margin-bottom:6px">Leyenda rol: 👑 Responsable · 🤝 Ayudante</div>
         <div style="overflow:auto">
@@ -12711,7 +12753,7 @@ function setAdminAgendaTeam(team){
         <div class="agendaSection"><h4>Para tener en cuenta</h4><textarea id="analystDailyNote" placeholder="Escribí algo para hoy..." style="min-height:90px"></textarea><div class="inline" style="margin-top:8px"><button class="ghost" onclick="saveAnalystDailyNote()">Guardar nota del día</button></div><div id="analystDailyNoteHistory" class="small" style="margin-top:8px"></div></div>
         <div class="small" style="margin-top:10px"><strong>Tareas con comentarios pendientes:</strong> ${withPending.length}</div>
         <div class="agendaSection"><h4>Tickets sin atención por 7 días</h4>${renderInactiveTicketsTable(scoped, logs)}</div>
-        <div class="agendaSection"><h4>Historial</h4><div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>${historyHtml}</div>
+        <div class="agendaSection"><h4>Historial</h4><div class="inline" style="margin-bottom:8px"><button class="ghost" onclick="setAgendaHistoryView('comments')">Comentarios</button><button class="ghost" onclick="setAgendaHistoryView('agenda')">Agenda</button></div>${(adminAgendaHistoryView||'comments')==='comments' ? historyHtml : analystAgendaHistoryHtml}</div>
       `
     }
 
