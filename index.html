@@ -12699,10 +12699,10 @@ function setAdminAgendaTeam(team){
       const historyHtml = await renderAgendaCommentHistoryTable()
       const myTeam = String((cachedUsersByEmail?.[emailKey(myEmail)]?.analystTeam || "")).toLowerCase() || "equipo_1"
       const savedHistory = await getAdminAgendaHistory(myTeam)
-      const analystAgendaHistoryHtml = (savedHistory.length ? savedHistory.map(item => {
+      const analystAgendaHistoryHtml = savedHistory.length ? savedHistory.map(item => {
         const mineRows = (item.rows || []).filter(r => String(r.assignedTo || "").toLowerCase() === myEmail)
         return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(formatDateTime24(item.savedAt || ""))}</div><div class="feedMeta">Tickets propios: ${mineRows.length}</div></div></div>${mineRows.length ? `<div class="small">${mineRows.slice(0,8).map(r=>`• ${htmlEscape(r.id||"-")} · ${htmlEscape(r.client||"-")} · ${htmlEscape(r.status||"-")} · Agenda: ${htmlEscape(r.agendaTomorrow ? "Sí":"No")}`).join("<br>")}</div>` : `<div class="small">Sin tickets propios en este snapshot.</div>`}</div>`
-      }).join("")) || `<div class="small">Sin agendas guardadas todavía para tu equipo.</div>`
+      }).join("") : `<div class="small">Sin agendas guardadas todavía para tu equipo.</div>`
       wrap.innerHTML = `
         <div class="small" style="margin-bottom:6px">Leyenda rol: 👑 Responsable · 🤝 Ayudante</div>
         <div style="overflow:auto">
