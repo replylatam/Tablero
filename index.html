@@ -1209,7 +1209,7 @@
       </div>
       <div class="row">
         <div><label>Cantidad de publicaciones</label><input id="tPublicationCount" type="number" min="0" placeholder="Ej: 4"></div>
-        <div><label>Planilla de trabajo</label><input id="tWorkSheet" placeholder="URL o referencia"></div>
+        <div class="small" style="margin-top:6px">Cantidad de publicaciones total (actividad): <strong>${ticketPublicationCountTotal(ticketWithRead)}</strong></div><div><label>Planilla de trabajo</label><input id="tWorkSheet" placeholder="URL o referencia"></div>
       </div>
       <div id="ticketCustomFieldsWrap"></div>
 
@@ -1406,7 +1406,7 @@
 
   <div id="closeSurveyModal" class="modalBack hidden">
     <div class="card modal">
-      <h3 style="margin-top:0">Cerrar ticket y encuesta de calidad</h3>
+      <h3 style="margin-top:0">Cerrar ticket y encuesta de satisfacción</h3>
       <p class="small">Al cerrar el ticket, el analista califica al consultor en base a cómo llegó la solicitud y cómo fue la comunicación.</p>
       <div id="closeSurveyFields" class="row"></div>
       <div><label>Observaciones (opcional)</label><textarea id="closeSurveyObservation" placeholder="Comentarios adicionales"></textarea></div>
@@ -1421,7 +1421,7 @@
     <div class="card modal">
       <h3 style="margin-top:0">Encuesta pendiente del consultor</h3>
       <p class="small">Completá la evaluación del analista para este ticket cerrado. Esta calificación alimenta el puntaje que verá el analista al iniciar sesión.</p>
-      <div class="small" id="consultorSurveyTicketInfo" style="margin-bottom:10px"></div>
+      <div class="small" id="consultorSurveyTicketInfo" style="margin-bottom:10px"></div><div id="consultorSurveyTicketDetail" class="small" style="margin-bottom:10px"></div>
       <div id="consultorSurveyFields" class="row"></div>
       <div><label>Observaciones (opcional)</label><textarea id="consultorSurveyObservation" placeholder="Comentarios adicionales"></textarea></div>
       <div class="inline" style="justify-content:flex-end">
@@ -1577,7 +1577,7 @@
       </div>
       <div class="row">
         <div><label>Horas</label><input id="timeEntryEditHours" type="number" min="0" step="0.25"></div>
-        <div><label>Detalle</label><input id="timeEntryEditNote" type="text" placeholder="Detalle del tiempo"></div>
+        <div><label>Detalle</label><input id="timeEntryEditNote" type="text" placeholder="Detalle del tiempo"></div><div><label>Publicaciones</label><input id="timeEntryEditPubs" type="number" min="0" step="1"></div>
       </div>
       <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:8px">
         <button class="secondary" onclick="closeTimeEntryEditModal()">Cancelar</button>
@@ -1651,7 +1651,7 @@
     var analystPanelTab = "panel"
     var sidebarExpanded = false
     var analystActivityTab = "comments"
-    var analystSummaryTab = "comments"
+    var analystSummaryTab = "dashboard"
     var analystMoodToday = ""
     var analystMoodDateLoaded = ""
     var consultorActivityTab = "comments"
@@ -2144,7 +2144,7 @@
       }
       mainViewTab = nextTab
       if(currentRole === "analista" && mainViewTab === "quality_results"){
-        qualityResultsMode = "internal"
+        qualityResultsMode = "satisfaction"
       }
       if(mainViewTab === "tickets"){
         if(currentRole === "analista") analystPanelTab = "panel"
@@ -5299,7 +5299,7 @@ async function sendAgendaAlertToAnalyst(email){
     function buildDirectChatId(a, b){ const sorted=[String(a||"").toLowerCase(),String(b||"").toLowerCase()].sort(); return `${sorted[0]}__${sorted[1]}`.replace(/[.#$/\[\]]/g,"_") }
     function relativeTimeFromIso(iso){ const t=new Date(iso||0).getTime(); if(!t) return ''; const d=Math.max(1,Math.floor((Date.now()-t)/60000)); if(d<60) return `hace ${d} min`; const h=Math.floor(d/60); if(h<24) return `hace ${h} h`; return `hace ${Math.floor(h/24)} d` }
     function totalUnreadCount(){ return Object.values(directChatUnread||{}).reduce((a,b)=>a+Number(b||0),0) }
-    function syncDirectChatUnread(){ const me=emailKey(String(currentUser?.email||'').toLowerCase()); if(!me) return Promise.resolve(); return db.ref('chat_unread').child(me).set(directChatUnread||{}) }
+    function syncDirectChatUnread(){ const me=emailKey(String(currentUser?.email||'').toLowerCase()); if(!me) return Promise.resolve(); const safe={}; Object.entries(directChatUnread||{}).forEach(([k,v])=>{ const kk=emailKey(String(k||'').toLowerCase()); if(kk) safe[kk]=Number(v||0) }); return db.ref('chat_unread').child(me).set(safe) }
     function ensureChatContainers(){ if(document.getElementById('chatGlobalRoot')) return; const root=document.createElement('div'); root.id='chatGlobalRoot'; root.innerHTML=`<div id="chatDock" class="card" style="position:fixed;right:14px;bottom:78px;z-index:220;max-width:320px;padding:10px;display:none"><div class="inline" style="justify-content:space-between;margin-bottom:6px"><strong>Mensajes</strong><button class="ghost" onclick="closeChatModal()">Cerrar</button></div><select id="chatPresenceSelect" onchange="setMyChatPresence(this.value)" style="margin:0 0 8px"><option value="online">🟢 Activo</option><option value="away">🟡 Stand by</option><option value="lunch">🍴 Almorzando</option><option value="offline">🔴 Ausente</option></select><input id="chatUserSearch" placeholder="Buscar usuario..." oninput="openChatModal()" style="margin:0 0 8px"><div id="chatUserList" style="max-height:220px;overflow-y:auto"></div></div><div id="chatWindowsWrap" style="position:fixed;right:350px;bottom:20px;display:flex;gap:8px;z-index:220"></div>`; document.body.appendChild(root) }
     function getUserPresenceState(user){ const loggedIn = !!user?.sessionActive; if(!loggedIn) return "offline"; const explicit = String(user?.presenceStatus || "").toLowerCase(); if(["away","lunch","online"].includes(explicit)) return explicit; const lastSeen = user?.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0; const mins = lastSeen ? (Date.now() - lastSeen) / 60000 : 999; if(mins <= 3) return "online"; if(mins <= 20) return "away"; return "offline" }
     function presenceDot(state){ const color = state === "online" ? "#22c55e" : state === "away" ? "#facc15" : state === "lunch" ? "#f59e0b" : "#ef4444"; return `<span title="${state}" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${color};margin-right:6px"></span>` }
@@ -5894,7 +5894,7 @@ async function submitSupportRequest(){
         ${qualityTabs}
         <div class="inline" style="margin:10px 0;gap:8px;flex-wrap:wrap"><div><label>Mes</label><input type="month" value="${htmlEscape(qualityAdminMonthFilter)}" onchange="setAdminQualityMonthFilter(this.value)"></div><div><label>Analista</label><select onchange="setAdminQualityAnalystFilter(this.value)"><option value="">Todos</option>${analystOptions.map(email => `<option value=\"${htmlEscape(email)}\" ${email===qualityAdminAnalystFilter?'selected':''}>${htmlEscape(userDisplayNameByEmail(email)||email)}</option>`).join("")}</select></div></div>
         <div class="feedItem">
-          <div class="feedType">Cómo funciona la encuesta de calidad</div>
+          <div class="feedType">Cómo funciona la encuesta de satisfacción</div>
           <div class="feedMeta">
             1) Cuando el analista cierra un ticket, completa una encuesta para calificar al consultor.<br>
             2) Luego, el consultor recibe una encuesta pendiente para calificar al analista desde “Comentarios recientes → Encuestas pendientes”.<br>
@@ -6181,7 +6181,7 @@ async function submitSupportRequest(){
       const wb = XLSX.utils.book_new()
       const ws = XLSX.utils.json_to_sheet(rows)
       XLSX.utils.book_append_sheet(wb, ws, "Encuestas")
-      XLSX.writeFile(wb, `encuestas_calidad_${toLocalDateOnly(new Date()).replaceAll("-","")}.xlsx`)
+      XLSX.writeFile(wb, `encuestas_satisfaccion_${toLocalDateOnly(new Date()).replaceAll("-","")}.xlsx`)
     }
 
     function setAdminQualityMonthFilter(value){
@@ -6278,12 +6278,53 @@ async function submitSupportRequest(){
       }
       await db.ref("tickets").child(updated.dbKey || emailKey(updated.id)).update(updated)
       await db.ref("quality_surveys").child(generateId()).set(survey)
+      localStorage.removeItem(consultorSurveyDraftKey(ticketId))
       mirrorToSheet("updateTicket", { id: ticketId, ...updated })
       const ix = cachedTickets.findIndex(t => t.id === ticketId)
       if(ix >= 0) cachedTickets[ix] = updated
       closeCloseSurveyModal()
       showToast("Ticket cerrado y encuesta enviada.", "ok")
-      loadDashboard()
+      try{ await loadDashboard() }catch(err){ console.error(err); showToast("Ticket cerrado, pero hubo un error al refrescar vista.", "warn") }
+    }
+
+    
+    function consultorSurveyDraftKey(ticketId){
+      return `consultor_survey_draft_${emailKey(String(currentUser?.email || ""))}_${emailKey(String(ticketId || ""))}`
+    }
+
+    function saveConsultorSurveyDraft(ticketId){
+      const id = String(ticketId || pendingConsultorSurveyTicket?.id || "")
+      if(!id) return
+      const container = document.getElementById("consultorSurveyFields")
+      const obs = String(document.getElementById("consultorSurveyObservation")?.value || "")
+      if(!container) return
+      const values = {}
+      container.querySelectorAll('input,select,textarea').forEach(el => {
+        if(!el?.id) return
+        if(el.type === 'radio'){ if(el.checked) values[el.id] = el.value }
+        else if(el.type === 'checkbox') values[el.id] = !!el.checked
+        else values[el.id] = el.value
+      })
+      localStorage.setItem(consultorSurveyDraftKey(id), JSON.stringify({ values, observation: obs, updatedAt: new Date().toISOString() }))
+    }
+
+    function restoreConsultorSurveyDraft(ticketId){
+      const key = consultorSurveyDraftKey(ticketId)
+      const raw = localStorage.getItem(key)
+      if(!raw) return
+      try{
+        const draft = JSON.parse(raw)
+        const values = draft?.values || {}
+        Object.entries(values).forEach(([id, value]) => {
+          const el = document.getElementById(id)
+          if(!el) return
+          if(el.type === 'radio') el.checked = String(el.value) === String(value)
+          else if(el.type === 'checkbox') el.checked = !!value
+          else el.value = value ?? ''
+        })
+        const obs = document.getElementById("consultorSurveyObservation")
+        if(obs) obs.value = String(draft?.observation || "")
+      }catch(_){ }
     }
 
     async function openConsultorSurveyModal(ticketId){
@@ -6298,16 +6339,21 @@ async function submitSupportRequest(){
       if(info){
         info.innerHTML = `<strong>${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</strong><br>Analista: ${htmlEscape(userDisplayNameByEmail(ticket.assignedTo||"-"))}`
       }
+      const detail = document.getElementById("consultorSurveyTicketDetail")
+      if(detail){ detail.innerHTML = `<div class="feedItem"><div class="feedMeta">Cliente: <strong>${htmlEscape(ticket.client||"-")}</strong> · Estado: <strong>${htmlEscape(STATUS[ticket.status] || ticket.status || "-")}</strong> · Prioridad: <strong>${htmlEscape(ticket.priority||"-")}</strong><br>Descripción: ${htmlEscape(ticket.description||"Sin descripción")}</div></div>` }
       renderQualityQuestions("consultorSurveyFields", "consultor")
       const obs = document.getElementById("consultorSurveyObservation")
-      if(obs) obs.value = ""
-      document.getElementById("consultorSurveyModal")?.classList.remove("hidden")
+      restoreConsultorSurveyDraft(ticket.id)
+      const modal = document.getElementById("consultorSurveyModal")
+      modal?.classList.remove("hidden")
+      const body = modal?.querySelector(".card.modal")
+      body?.querySelectorAll("input,select,textarea").forEach(el => { el.oninput = () => saveConsultorSurveyDraft(ticket.id); el.onchange = () => saveConsultorSurveyDraft(ticket.id) })
     }
 
     function closeConsultorSurveyModal(){
+      const ticketId = String(pendingConsultorSurveyTicket?.id || "")
+      if(ticketId) saveConsultorSurveyDraft(ticketId)
       pendingConsultorSurveyTicket = null
-      const obs = document.getElementById("consultorSurveyObservation")
-      if(obs) obs.value = ""
       document.getElementById("consultorSurveyModal")?.classList.add("hidden")
       if(currentRole === "consultor") loadDashboard()
     }
@@ -6337,6 +6383,7 @@ async function submitSupportRequest(){
       }
       if(!survey.analystEmail) return alert("Este ticket no tiene analista asignado para evaluar.")
       await db.ref("quality_surveys").child(generateId()).set(survey)
+      localStorage.removeItem(consultorSurveyDraftKey(ticketId))
       const updatedTicket = {
         ...ticket,
         consultorSurveyPending: false,
@@ -6745,13 +6792,13 @@ async function submitSupportRequest(){
           <li>Gestioná estados con criterio operativo: <strong>Por hacer → En curso → Finalizada</strong>.</li>
           <li>Registrá comentarios claros y accionables para sostener trazabilidad del flujo.</li>
           <li>Cargá tiempos con consistencia (timer o manual) para reporting y gestión de capacidad.</li>
-          <li>Cerrá con encuesta de calidad cuando corresponda.</li>
+          <li>Cerrá con encuesta de satisfacción cuando corresponda.</li>
         </ol>
         <h4 style="margin:10px 0 6px">¿Por qué hay elementos en rojo?</h4>
         <p>El rojo marca señales críticas: urgencias, bloqueos o atención máxima. Son alertas operativas para priorizar y evitar desvíos de SLA.</p>
         ${viewerRole === "admin" ? `<h4 style="margin:10px 0 6px">Niveles de usuarios (admin)</h4><p><strong>Admin - Nivel 1:</strong> acceso total, configuración global y permisos.<br><strong>Admin - Nivel 2:</strong> operación administrativa sin módulos restringidos de control avanzado.<br><strong>Admin - Nivel 3C:</strong> foco consultoría (sin Resumen general), con acceso a cartera de consultores y actividad de clientes por mes.<br><strong>Consultor:</strong> gestión de cartera propia y seguimiento operativo.<br><strong>Analista:</strong> ejecución y trazabilidad de tickets.</p>` : ""}
         <h4 style="margin:10px 0 6px">Preguntas frecuentes (FAQ)</h4>
-        <p><strong>¿Por qué no puedo cerrar un ticket?</strong><br>Porque falta completar la encuesta obligatoria de calidad al finalizar.</p>
+        <p><strong>¿Por qué no puedo cerrar un ticket?</strong><br>Porque falta completar la encuesta obligatoria de satisfacción al finalizar.</p>
         <p><strong>¿Por qué no puedo crear un ticket nuevo (consultor)?</strong><br>Porque tenés encuestas pendientes por responder.</p>
         <p><strong>¿Por qué me aparece un recordatorio de tiempo?</strong><br>Porque hubo actividad/cambio de estado sin registro de tiempo asociado.</p>
         <p><strong>¿Cómo sé quién es responsable y quién ayudante?</strong><br>La agenda y tablas muestran rol por ticket (responsable/ayudante).</p>
@@ -7274,8 +7321,8 @@ async function submitSupportRequest(){
       const rows = analysts.map(analyst => {
         const email = String(analyst?.email || "").toLowerCase()
         const list = surveys.filter(s => String(s?.ratedRole || "").toLowerCase() === "analista" && String(s?.ratedEmail || "").toLowerCase() === email && String(s?.createdAt || "").slice(0,7) === month)
-        const qValues = list.flatMap(s => questionIds.map(id => Number(normalizeQualityToTen((s?.answers||{})[id] || 0))).filter(v => Number.isFinite(v) && v > 0))
-        const avg = qValues.length ? (qValues.reduce((acc, s) => acc + s, 0) / qValues.length) : 0
+        const overallValues = list.map(s => Number(normalizeQualityToTen(s?.overall || 0))).filter(v => Number.isFinite(v) && v > 0)
+        const avg = overallValues.length ? (overallValues.reduce((acc, s) => acc + s, 0) / overallValues.length) : 0
         return { email, avg, count: list.length }
       }).sort((a,b)=>b.avg-a.avg)
       wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción promedio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Encuestas</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openTopPerformerSatisfaccionDetail('${r.email}','${month}')">${htmlEscape(userDisplayNameByEmail(r.email) || r.email)}</button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.avg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.count}</td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin encuestas en este período.</td></tr>`}</tbody></table></div><div id="topPerformerSatisfaccionDetail" class="small" style="margin-top:10px"></div>`
@@ -7511,14 +7558,14 @@ async function submitSupportRequest(){
           { icon: "📚", label: "Lineamientos", action: "setAdminTab('guidelines')" },
           { icon: "🗂️", label: "Manuales", action: "setAdminTab('manuals')" },
           { icon: "🎯", label: "Calidad interna", action: "setAdminTab('internal_quality')" },
-          { icon: "📈", label: "Encuesta de calidad", action: "setAdminTab('quality')" },
+          { icon: "📈", label: "Encuesta de satisfacción", action: "setAdminTab('quality')" },
           ...(isAdminLevel1() ? [{ icon: "🛠️", label: "Top performer", action: "setMainViewTab('top_performer')" }] : [])
         ]},
         { title: "Técnico", items: [
           ...(adminCanAccess("support") ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
+          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" },
           { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
-          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : []),
-          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
+          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : [])
         ].filter(Boolean)},
         { title: "Centro de control", items: [
           ...(adminCanAccess("control_center") ? [{ icon: "🎛️", label: "Centro de control", action: "setAdminTab('control_center')" }] : [])
@@ -7534,10 +7581,10 @@ async function submitSupportRequest(){
           ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...((currentRole === "consultor") ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
-          ...(isAdmin3C ? [{ icon: "📈", label: "Actividad clientes", action: "setMainViewTab('client_activity')" }, { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(isAdmin3C ? [{ icon: "📈", label: "Actividad clientes", action: "setMainViewTab('client_activity')" }, { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }, { icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...((currentRole === "consultor") ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
@@ -7616,7 +7663,7 @@ async function submitSupportRequest(){
             <div id="savedItemsContainer" class="small"></div>
           </div>
         ` : showQualityResults ? `
-          <div class="card"><h3 style="margin-top:0">Resultados encuesta de calidad</h3>${currentRole === "analista" ? `<div class="inline" style="gap:8px;margin-bottom:10px"><button class="${qualityResultsMode==='satisfaction'?'':'ghost'}" onclick="setQualityResultsMode('satisfaction')">Encuesta de satisfacción</button><button class="${qualityResultsMode==='internal'?'':'ghost'}" onclick="setQualityResultsMode('internal')">Calidad interna</button></div>` : ""}<div id="qualityResultsContainer" class="small"></div></div>
+          <div class="card"><h3 style="margin-top:0">Resultados encuesta de satisfacción</h3>${currentRole === "analista" ? `<div class="inline" style="gap:8px;margin-bottom:10px"><button class="${qualityResultsMode==='satisfaction'?'':'ghost'}" onclick="setQualityResultsMode('satisfaction')">Encuesta de satisfacción</button><button class="${qualityResultsMode==='internal'?'':'ghost'}" onclick="setQualityResultsMode('internal')">Calidad interna</button></div>` : ""}<div id="qualityResultsContainer" class="small"></div></div>
         ` : showSupportCasesView ? `
           <div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="mySupportList" class="small"></div></div>
         ` : showDailysView ? `
@@ -7668,7 +7715,7 @@ async function submitSupportRequest(){
             <hr style="border-color:rgba(148,163,184,.2);margin:12px 0">
             <h4 style="margin:0 0 8px">Usuarios creados</h4>
             <div id="usersList" class="small"></div>
-          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('control_center')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgAutoRecurringComment"><span class="slider"></span></label><span>Comentarios automáticos en recurrentes no agendadas</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div>${adminCapacityViewMode === 'cards' ? `<h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div>` : `<div class="small">Cambiaste de vista de capacidad. Los cuadros de Gestión de horas y Consumo por cliente quedan ocultos en esta vista.</div>`}</div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de calidad (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="gap:8px"><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button><button class="danger" onclick="clearAdminAgendaData()">Limpiar datos</button></div></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
+          </div>` : adminPanelTab==='dailys' ? `<div class="card"><h3 style="margin-top:0">Daily's</h3><div id="dailysAdminWrap" class="small"></div></div>` : adminPanelTab==='support' ? `<div class="card"><h3 style="margin-top:0">Soporte técnico</h3><div id="adminSupportList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='settings' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Configuración de tickets</h3><button class="ghost" onclick="setAdminTab('control_center')">← Atrás</button></div><div class="small" style="margin-bottom:8px">Edición de tickets por rol</div><div class="settingsGrid" style="grid-template-columns:repeat(2,minmax(220px,1fr));margin-bottom:12px"><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditAnalyst"><span class="slider"></span></label><span>Analista puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgEditConsultor"><span class="slider"></span></label><span>Consultor puede editar tickets existentes</span></div><div class="switchWrap"><label class="switch"><input type="checkbox" id="cfgAutoRecurringComment"><span class="slider"></span></label><span>Comentarios automáticos en recurrentes no agendadas</span></div></div><div class="inline" style="margin-bottom:12px"><button class="ghost" onclick="saveRoleTicketEditSettings()">Guardar permisos de edición</button></div><div class="small" style="margin-bottom:8px">Campos personalizados de tickets</div><div class="settingsGrid"><div><label>Nombre del campo</label><input id="cfgFieldLabel" type="text" placeholder="Ej: Sucursal"></div><div><label>Tipo</label><select id="cfgFieldType"><option value="text">Texto</option><option value="number">Número</option><option value="date">Fecha</option><option value="select">Desplegable</option></select></div><div><label>Opciones (coma)</label><input id="cfgFieldOptions" placeholder="Opción 1, Opción 2"></div><div><label>Obligatorio</label><select id="cfgFieldRequired"><option value="false">No</option><option value="true">Sí</option></select></div><div><label>Visible como filtro (tablero)</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="analista"><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldFilterVisibleFor" value="consultor"><span>Consultor</span></label></div></div><div><label>Mostrar en ticket para</label><div class="agendaChecks"><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="admin" checked><span>Admin</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="analista" checked><span>Analista</span></label><label class="checkOption"><input type="checkbox" name="cfgFieldVisibleFor" value="consultor" checked><span>Consultor</span></label></div></div><div><label>Campo padre (opcional)</label><select id="cfgFieldParent"><option value="">Sin dependencia</option></select></div><div><label>Mostrar si valor padre es</label><input id="cfgFieldParentValue" placeholder="Ej: Publicaciones"></div><div style="display:flex;align-items:flex-end"><button onclick="addTicketCustomField()">Agregar campo</button></div></div><div id="ticketFieldsConfigList" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Campos base de tickets</h4><div id="coreTicketFieldsConfig" class="small"></div></div>` : adminPanelTab==='capacity' ? `<div class="card"><h3 style="margin-top:0">Capacidad Instalada del área</h3><div id="adminCapacityMiniDash" class="kpiGrid" style="margin-bottom:10px"></div>${adminCapacityViewMode === 'cards' ? `<h4 style="margin:0 0 8px">Gestión de horas</h4><div class="inline" style="margin-bottom:8px"><label style="margin:0">Período</label><input id="adminHoursMonth" type="month" value="${htmlEscape(adminHoursMonth)}" onchange="setAdminHoursMonth(this.value)"><button class="ghost" onclick="toggleAdminHiddenAnalystPicker()">+ Analista</button><span id="adminHiddenAnalystPicker" class="${adminAnalystPickerVisible?'':'hidden'}"><select id="adminHiddenAnalystSelect" style="margin:0;max-width:240px"></select><button class="ghost" onclick="addAnalystToHoursTable()">Agregar</button></span></div><div id="adminHoursTable" class="small"></div><hr style="border-color:rgba(148,163,184,.2);margin:12px 0"><h4 style="margin:0 0 8px">Consumo por cliente</h4><div id="adminCapacityClientTable" class="small"></div>` : `<div class="small">Cambiaste de vista de capacidad. Los cuadros de Gestión de horas y Consumo por cliente quedan ocultos en esta vista.</div>`}</div>` : adminPanelTab==='guidelines' ? `<div class="card"><h3 style="margin-top:0">Lineamientos</h3><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='manuals' ? `<div class="card"><h3 style="margin:0">Manuales</h3><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='continuous_improvement' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Mejora Continua</h3><span class="small">Todo en un solo lugar</span></div><p class="small" style="margin:8px 0 10px">Seleccioná una sección para ver y gestionar su información sin salir de esta pantalla.</p><div class="inline" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="${adminContinuousTab==='guidelines'?'':'ghost'}" onclick="setAdminContinuousTab('guidelines')">📚 Lineamientos</button><button class="${adminContinuousTab==='manuals'?'':'ghost'}" onclick="setAdminContinuousTab('manuals')">🗂️ Manuales</button><button class="${adminContinuousTab==='internal_quality'?'':'ghost'}" onclick="setAdminContinuousTab('internal_quality')">🎯 Calidad interna</button></div>${adminContinuousTab==='guidelines' ? `<div><h4 style="margin:0 0 8px">Lineamientos</h4><div class="small" style="margin-bottom:8px">Gestioná lineamientos igual que en la sección original.</div><div class="settingsGrid"><div><label>Cliente</label><select id="guidelineClient"></select></div><div><label>Título</label><input id="guidelineTitle" placeholder="Título del lineamiento"></div><div><label>Importante</label><div class="inline" style="margin-top:10px"><input id="guidelineImportant" type="checkbox" style="width:auto;margin:0"><span class="small">Marcar como importante</span></div></div><div><label>General</label><div class="inline" style="margin-top:10px"><input id="guidelineGeneral" type="checkbox" style="width:auto;margin:0"><span class="small">Lineamientos generales</span></div></div><div style="grid-column:1/-1"><label>Resumen</label><textarea id="guidelineSummary" placeholder="Escribí el resumen"></textarea></div></div><div id="guidelinesAdminSummary" class="small" style="margin-top:10px"></div><div class="inline" style="justify-content:flex-start;margin-top:10px"><button onclick="saveGuideline()">Crear lineamiento</button></div><div id="guidelinesAdminList" class="small" style="margin-top:10px"></div></div>` : adminContinuousTab==='manuals' ? `<div><h4 style="margin:0 0 8px">Manuales</h4><div class="small" style="margin-bottom:8px">Accedé y gestioná manuales igual que en la sección original.</div><div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:2px"><button class="ghost" onclick="toggleCreateManualFolderPanel()">Crear carpeta</button><button onclick="openManualModal()">Agregar manual</button></div><div id="manualFolderCreatePanel" class="inline ${adminManualCreateFolderVisible?"":"hidden"}" style="gap:8px;margin-top:8px"><input id="manualFolderName" placeholder="Nombre de carpeta" style="margin:0;min-width:220px"><button class="ghost" onclick="createManualFolder()">Guardar carpeta</button><button class="ghost" onclick="toggleCreateManualFolderPanel(false)">Cancelar</button></div><div id="adminManualsList" class="small" style="margin-top:10px"></div></div>` : `<div><p class="small" style="margin:0 0 10px">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`}</div>` : adminPanelTab==='quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Encuesta de satisfacción (cierre de ticket)</h3><button class="ghost" onclick="exportQualitySurveysXlsx()">Exportar XLSX</button></div><p class="small">Esta sección es solo para la encuesta de cierre de ticket (analista ↔ consultor).</p><div id="adminQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='internal_quality' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Calidad interna del analista</h3></div><p class="small">Métrica separada de la encuesta de cierre: evalúa gestión operativa del analista con configuración editable por admin.</p><div id="adminInternalQualityList" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='connections' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Conexiones y diagnóstico</h3></div><p class="small" style="margin:8px 0 10px">Verifica estado de conexión de red, acceso a rutas Firebase y errores capturados en esta sesión del navegador.</p><div id="adminConnectionsPanel" class="small"></div></div>` : adminPanelTab==='help' ? `<div class="card"><h3 style="margin-top:0">Ayuda completa del tablero</h3>${renderHelpGuideHtml("admin")}</div>` : adminPanelTab==='announcements' ? `<div class="card"><h3 style="margin-top:0">Comunicados</h3><div class="row"><div><label>Título</label><input id="announcementTitle"></div><div><label>Mensaje</label><input id="announcementBody"></div><div><label>Programar para</label><input id="announcementScheduleAt" type="datetime-local"></div><div><label>Activo</label><div class="switchWrap" style="margin-top:8px"><label class="switch"><input id="announcementEnabled" type="checkbox" checked><span class="slider"></span></label><span>Encendido</span></div></div><div style="display:flex;align-items:flex-end"><button onclick="publishAnnouncement()">Publicar</button></div></div><div class="small" style="margin-top:6px">Podés programar fecha/hora y apagar/encender comunicados publicados.</div><div id="announcementsList" class="small" style="margin-top:10px"></div></div>` : adminPanelTab==='agenda' ? `<div class="card"><div class="inline" style="justify-content:space-between;align-items:center"><h3 style="margin-top:0">Organizar agenda</h3><div class="inline" style="gap:8px"><button class="ghost" onclick="saveAdminAgendaSnapshot()">Guardar agenda</button><button class="danger" onclick="clearAdminAgendaData()">Limpiar datos</button></div></div><div class="inline" style="margin-bottom:10px"><button id="agenda-team-1" class="${adminAgendaTeam==='equipo_1'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_1')">Equipo 1</button><button id="agenda-team-2" class="${adminAgendaTeam==='equipo_2'?'':'ghost'}" onclick="setAdminAgendaTeam('equipo_2')">Equipo 2</button></div><div class="row"><div class="agendaFilterField"><label>Número de ticket</label><input id="agendaFilterTicketId" oninput="updateAdminAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div><div class="agendaFilterField"><label>Título</label><input id="agendaFilterTitle" oninput="updateAdminAgendaFilter('title', this.value)" placeholder="Título"></div><div class="agendaFilterField"><label>Cliente</label><input id="agendaFilterClient" oninput="updateAdminAgendaFilter('client', this.value)" placeholder="Cliente"></div><div class="agendaFilterField"><label>Consultor</label><input id="agendaFilterConsultor" oninput="updateAdminAgendaFilter('consultor', this.value)" placeholder="Consultor"></div><div class="agendaFilterField"><label>Filtros de usuarios y estados</label><button class="ghost" onclick="openAdminAgendaFiltersModal()">Configurar filtros</button></div></div><div id="adminAgendaTableWrap" style="margin-top:10px"></div></div>` : adminPanelTab==='calendar' ? `<div class="card"><h3 style="margin-top:0">Calendario de deadlines</h3><p class="small" style="margin:0 0 8px">Vista mensual de tickets con deadline. Hacé click en cualquier ticket para abrir su detalle.</p>${renderAdminCalendarHtml()}</div>` : adminPanelTab==='comments' ? `<div class="card"><h3 style="margin-top:0">Comentarios</h3><div id="adminCommentsAll" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div><h4 style="margin:12px 0 8px">Comentarios donde se mencionó al admin</h4><div id="adminCommentsMentions" class="small" style="max-height:300px;overflow-y:auto;padding-right:4px"></div></div>` : adminPanelTab==='profile' ? `
           <div class="card">
             <h3 style="margin-top:0">Mi perfil (Admin)</h3>
             <div class="row"><div><label>Nombre del perfil</label><input id="profileName" type="text"></div><div><label>Apodo</label><input id="profileNickname" type="text"></div><div><label>Sexo</label><select id="profileSex"><option value="">Seleccionar</option><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></div></div>
@@ -7724,7 +7771,7 @@ async function submitSupportRequest(){
               <h3 style="margin:0">Mi agenda</h3>
               <button class="${analystAgendaTodayOnly ? '' : 'ghost'}" onclick="toggleAnalystAgendaTodayOnly()">${analystAgendaTodayOnly ? "Mostrando agenda de hoy" : "Ver mi agenda de hoy"}</button>
             </div>
-            <div id="analystAgendaDashboard" class="agendaMiniDash"></div>
+            <div class="small" style="margin-bottom:8px">Los tickets visibles son únicamente tuyos.</div><div id="analystAgendaDashboard" class="agendaMiniDash"></div>
             <div class="row">
               <div class="agendaFilterField"><label>Número de ticket</label><input id="analystAgendaFilterTicketId" oninput="updateAnalystAgendaFilter('ticketId', this.value)" placeholder="TAO-01"></div>
               <div class="agendaFilterField"><label>Título</label><input id="analystAgendaFilterTitle" oninput="updateAnalystAgendaFilter('title', this.value)" placeholder="Título"></div>
@@ -7777,7 +7824,7 @@ async function submitSupportRequest(){
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>` : ""}
-              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><div class="small" style="margin-top:10px">Abrí “Recomendación de reasignación” para ver el detalle en ventana.</div>` : ""}
+              ${(currentRole === "admin" && !isAdminLevel3C()) ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><div class="small" style="margin-top:10px">Abrí “Recomendación de reasignación” para ver el detalle en ventana.</div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
@@ -8043,8 +8090,8 @@ async function submitSupportRequest(){
           return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${linkifyEscapedText(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar encuentroAuthorAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${linkifyEscapedText(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
-      const users = Object.values(cachedUsersByEmail || {})
-        .filter(u => u && u.active !== false && ["analista","consultor","admin","admin_lvl2","admin_lvl3c"].includes(String(u.role||"")))
+      const rawUsers = Object.entries(cachedUsersByEmail || {}).length ? Object.entries(cachedUsersByEmail || {}).map(([k,v]) => ({ ...(v||{}), email: String(v?.email || k.replaceAll("_",".")) })) : (Array.isArray(window.users) ? window.users : [])
+      const users = rawUsers.filter(u => u && u.active !== false && !!String(u.email||"").trim())
       const profileEmail = String(encuentroProfileUserEmail || "").toLowerCase()
       const profileCongrats = rows.filter(r => String(r?.type || "") === "felicitacion" && String(r?.message || "").toLowerCase().includes(userDisplayNameByEmail(profileEmail || "").toLowerCase())).length
       const profileComments = Object.values((await db.ref("encuentro_member_comments").child(emailKey(profileEmail)).once("value")).val() || {})
@@ -8862,18 +8909,20 @@ async function submitSupportRequest(){
       const mine = surveys.filter(s => String(s?.ratedEmail || "").toLowerCase() === myEmail)
       if(!mine.length){
         if(currentRole === "analista"){
-          qualityResultsMode = "internal"
-          return loadQualityResultsView()
+          wrap.innerHTML = "<p class='small'>Sin resultados de encuesta de satisfacción todavía.</p>"
+          return
         }
         wrap.innerHTML = "<p class='small'>Sin resultados todavía.</p>"
         return
       }
       const avg = (arr, fn) => arr.reduce((a,b)=>a+fn(b),0) / arr.length
-      const rows = ["q1","q2","q3","q4","q5","q6","q7","q8","q9","q10"].map((key, idx) => ({
-        label: `Pregunta ${idx + 1}`,
-        score: avg(mine, s => normalizeQualityToTen((s?.answers||{})[key] || 0)),
-        answer: s => `${normalizeQualityToTen((s?.answers||{})[key] || 0)} / 10`
-      })).concat([{ label: "Promedio de satisfacción", score: avg(mine, s => normalizeQualityToTen(s.overall || 0)), answer: s => `${normalizeQualityToTen(s.overall || 0)} / 10` }])
+      const formByRole = (qualitySurveyForms || DEFAULT_QUALITY_FORMS)?.consultor || []
+      const questionDefs = Array.isArray(formByRole) ? formByRole : []
+      const rows = questionDefs.map((q, idx) => ({
+        label: String(q?.label || `Pregunta ${idx + 1}`),
+        score: avg(mine, sv => normalizeQualityToTen((sv?.answers||{})[String(q?.id||"")] || 0)),
+        answer: sv => `${normalizeQualityToTen((sv?.answers||{})[String(q?.id||"")] || 0)} / 10`
+      })).concat([{ label: "Promedio de satisfacción", score: avg(mine, sv => normalizeQualityToTen(sv.overall || 0)), answer: sv => `${normalizeQualityToTen(sv.overall || 0)} / 10` }])
       const roleLabel = currentRole === "analista" ? "analista" : "consultor"
       const buildAdvice = (label, score) => {
         const isReception = label.includes("recibiste")
@@ -8942,6 +8991,13 @@ async function submitSupportRequest(){
         const readBy = lastConsultorComment.readBy || {}
         return !readBy[myReadKey]
       }).length
+      
+      const recurrenceRows = mine.filter(t => recurrenceDaysFromTicket(t).length).map(t => {
+        const days = recurrenceDaysFromTicket(t)
+        const cell = d => days.includes(d) ? "X" : "-"
+        return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(1)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(3)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(4)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(5)}</td></tr>`
+      }).join("")
+
       const incompleteTickets = mine.filter(t => {
         const missing = getTicketMissingFields(t)
         return missing.length > 0
@@ -8954,6 +9010,8 @@ async function submitSupportRequest(){
           <div class="kpi"><div class="label">Cantidad de comentarios sin ver</div><div class="value">${unreadComments}</div></div>
           <div class="kpi" style="cursor:pointer" onclick='openIncompleteTicketFieldsDetail(${JSON.stringify(incompleteTickets.map(t => ({ id: t.id, missing: getTicketMissingFields(t) })) )})'><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
         </div>
+        <div class="card" style="margin-top:10px;padding:10px"><h4 style="margin:0 0 8px">Ayudantes en las tareas</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas que ayuda</th></tr></thead><tbody>${(() => { const helpMap = {}; (mine||[]).forEach(t => (t.helpers||[]).forEach(h => { const e=String(h||"").toLowerCase(); if(!e || e===myEmail) return; helpMap[e]=helpMap[e]||[]; helpMap[e].push(`${t.id||"-"} · ${t.title||"-"}`) })); return Object.keys(helpMap).map(e => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e)||e)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpMap[e].join(" | "))}</td></tr>`).join("") || `<tr><td colspan="2" class="small" style="padding:8px">Sin ayudantes registrados.</td></tr>` })()}</tbody></table></div></div>
+        <div class="card" style="margin-top:10px;padding:10px"><h4 style="margin:0 0 8px">Tabla de recurrencias</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lun</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Mar</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Mié</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jue</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Vie</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="8" class="small" style="padding:8px">Sin tickets recurrentes.</td></tr>`}</tbody></table></div></div>
         <div style="overflow:auto;margin-top:10px">
           <table style="width:100%;border-collapse:collapse">
             <thead>
@@ -9125,7 +9183,7 @@ async function submitSupportRequest(){
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(startVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','startAt', this.value)"></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(endVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','endAt', this.value)"></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(minutes))}</td>
-            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><button class="ghost" onclick="submitAnalystHoursLog('${t.id}')">Cargar</button></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:6px;align-items:center"><input type="number" min="0" value="${htmlEscape(String((t.publicationCountByAnalyst || {})[emailKey(myEmail)] ?? 0))}" id="hours-publications-${t.id}" placeholder="Publicaciones" style="max-width:120px" oninput="updateTicketPublicationCountForCurrentAnalyst('${t.id}', this.value)"><button class="ghost" onclick="submitAnalystHoursLog('${t.id}')">Cargar</button></div></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(reasonVal)}" placeholder="Motivo de la carga" oninput="updateAnalystHoursLogDraft('${t.id}','reason', this.value)"></td>
           </tr>`
         }).join("")}
@@ -9184,13 +9242,15 @@ async function submitSupportRequest(){
       if(minutes <= 0) return alert("Completá inicio y fin válidos para cargar tiempo.")
       const reason = String(draft?.reason || "").trim()
       if(!reason) return alert("Ingresá el motivo antes de cargar el tiempo.")
+      const pubs = Math.max(0, Number(document.getElementById(`hours-publications-${ticketId}`)?.value || (ticket.publicationCountByAnalyst||{})[emailKey(myEmail)] || 0) || 0)
+      if(pubs <= 0) return alert("Cargá la cantidad de publicaciones trabajadas antes de cargar el tiempo.")
       if(!confirm("¿Estás seguro que querés cargar el tiempo?")) return
       const monthKey = monthFolderKey(new Date(draft.endAt || new Date().toISOString()))
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: myEmail, totalMinutes: 0, timerStartAt: "" }
         u.totalMinutes = Number(u.totalMinutes || 0) + minutes
         tracking.users[userKey] = u
-      }, { monthKey, minutes, analyst: myEmail, note: `Registro de horas · ${reason}` })
+      }, { monthKey, minutes, analyst: myEmail, note: `Registro de horas · ${reason}`, publications: pubs })
       showToast("Tiempo cargado desde registro de horas.", "ok", 1600)
       await updateAnalystHoursLogDraft(ticketId, "startAt", "")
       await updateAnalystHoursLogDraft(ticketId, "endAt", "")
@@ -9803,7 +9863,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
             ${currentRole === "consultor" ? `<div class="inline" style="margin-top:6px;align-items:center;gap:8px"><button class="urgentBtn" onclick="toggleUrgent('${ticketWithRead.id}')">${ticketWithRead.urgentRequested ? "Quitar urgente" : "🚨 Marcar urgente"}</button>${String(ticketWithRead.status||"")==="done" ? `<button class="ghost" onclick="reopenTicketAsConsultor('${ticketWithRead.id}')">Reabrir ticket</button>` : ""}${ticketWithRead.deadlineChangeStatus === "pending" ? `<span class="small">Solicitud de cambio de deadline: ${htmlEscape(ticketWithRead.requestedDeadline||"-")} · Motivo: ${htmlEscape(ticketWithRead.deadlineChangeReason||"Sin motivo")}</span><button class="ghost" onclick="applyDeadlineDecision('${ticketWithRead.id}', true)">Aprobar deadline</button><button class="danger" onclick="applyDeadlineDecision('${ticketWithRead.id}', false)">Rechazar</button>` : ""}</div>` : "" }
           </div>
           <div class="detailSidebar">
-            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Cantidad de publicaciones (Analista)</label><input id="detail-publication-count-analyst-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "analista") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountAnalyst ?? ticketWithRead.publicationCount ?? ""))}"></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${(ticketActivityType && currentRole !== 'consultor') ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
+            ${(currentRole === 'admin' || currentRole === 'analista' || currentRole === 'consultor') ? `<div class="detailSidebarCard" style="background:var(--surface-2);border:1px solid var(--stroke);min-height:100%"><div class="small" style="margin-bottom:6px">RESPONSABLE DE LA TAREA</div><div class="inline" style="align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px"><select id="detail-owner-${ticketWithRead.id}" onchange="autoSaveTicketDetail('${ticketWithRead.id}')" style="margin:0;max-width:260px;min-width:220px" ${(currentRole === "admin" || currentRole === "analista") ? "" : "disabled"}><option value="">Sin asignar</option>${analysts.map(a => `<option value="${htmlEscape(a)}" ${String(ticketWithRead.assignedTo||'').toLowerCase()===a?'selected':''}>${htmlEscape(userDisplayNameByEmail(a))}</option>`).join('')}</select></div><div><label>Cantidad de publicaciones (Consultor)</label><input id="detail-publication-count-consultor-${ticketWithRead.id}" type="number" min="0" ${(currentRole === "admin" || currentRole === "consultor") ? `oninput="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(String(ticketWithRead.publicationCountConsultor ?? ticketWithRead.publicationCount ?? ""))}"></div><div class="small" style="margin-top:6px">Cantidad de publicaciones total (actividad): <strong>${ticketPublicationCountTotal(ticketWithRead)}</strong></div><div><label>Planilla de trabajo</label><input id="detail-work-sheet-${ticketWithRead.id}" ${(currentRole === "admin" || currentRole === "analista") ? `onchange="autoSaveTicketDetail('${ticketWithRead.id}')"` : "disabled"} value="${htmlEscape(ticketWithRead.workSheet||"")}" placeholder="URL o referencia">${String(ticketWithRead.workSheet || "").toLowerCase().startsWith("http") ? `<div class="small" style="margin-top:2px"><a href="${htmlEscape(ticketWithRead.workSheet)}" target="_blank">Abrir planilla</a></div>` : ""}</div>${(currentRole === "admin" || currentRole === "analista") ? `<div style="margin-top:8px"><button class="danger" onclick="toggleProblemFlag('${ticketWithRead.id}')">${ticketWithRead.hasProblem ? "Resolver problema" : "Tengo un problema"}</button></div>` : ""}${(currentRole === "analista" && canEditDeadline) ? `<div style="margin-top:8px"><button class="ghost" title="Solicitar nueva deadline" onclick="requestDeadlineChangeFromDetail('${ticketWithRead.id}', event)">Solicitar nueva deadline</button></div>` : ""}${ticketHasRunningTimer(ticketWithRead) ? `<div class="small" style="margin-top:8px">🕒 Timer activo · ${ticketRunningTimerElapsed(ticketWithRead)}</div>` : ""}<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">LINEAMIENTOS DEL CLIENTE</div>${hasGuidelineFolder ? `<div class="feedType">📁 ${htmlEscape(ticketWithRead.client || "Sin cliente")}</div><div class="small" style="margin:6px 0">${clientGuidelines.length} lineamiento(s) cargado(s).</div>${currentRole === "analista" ? `<button class="ghost" onclick="openAnalystGuidelinesFromTicket('${encodeURIComponent(ticketWithRead.client || "")}')">Abrir carpeta</button>` : ""}` : `<div class="small">No tiene lineamientos cargados</div>`}</div>${(ticketActivityType && currentRole !== 'consultor') ? `<div style="margin-top:8px"><div class="small" style="margin-bottom:6px">MANUALES ÚTILES</div>${usefulManuals.length ? usefulManuals.map(m => `<div class="small"><a href="${htmlEscape(m.link || "#")}" target="_blank">${htmlEscape(m.title || "Manual")}</a></div>`).join("") : `<div class="small">No hay manuales vinculados para esta actividad.</div>`}</div>` : ""}</div>` : ""}
           </div>
         </div>
         ${renderComments(id, ticketWithRead.comments || {}, usersByEmail)}
@@ -9873,6 +9933,41 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       openTicketDetailModal(id)
     }
 
+    
+    function publicationCountByAnalystMap(ticket){
+      const map = { ...(ticket?.publicationCountByAnalyst || {}) }
+      const analystKey = emailKey(String(ticket?.assignedTo || ""))
+      if(analystKey && Number(ticket?.publicationCountAnalyst || 0) > 0 && !Number.isFinite(Number(map[analystKey]))){
+        map[analystKey] = Number(ticket.publicationCountAnalyst || 0)
+      }
+      return map
+    }
+
+    function ticketPublicationCountTotal(ticket){
+      const tracking = ticket?.timeTracking || {}
+      const selectedMonth = timeMonthTabByTicket[String(ticket?.id || "")] || monthFolderKey()
+      const monthEntries = Array.isArray(tracking?.monthlyFolders?.[selectedMonth]?.entries) ? tracking.monthlyFolders[selectedMonth].entries : []
+      const monthTotal = monthEntries.reduce((acc,e)=> acc + Math.max(0, Number(e?.publications || 0)), 0)
+      if(monthTotal > 0) return monthTotal
+      const map = publicationCountByAnalystMap(ticket)
+      const total = Object.values(map).reduce((acc,v)=>acc + Math.max(0, Number(v || 0)), 0)
+      return total > 0 ? total : Math.max(0, Number(ticket?.publicationCount || ticket?.publicationCountAnalyst || ticket?.publicationCountConsultor || 0))
+    }
+
+    async function updateTicketPublicationCountForCurrentAnalyst(ticketId, rawValue){
+      const ticket = (cachedTickets || []).find(t => String(t.id||"") === String(ticketId||""))
+      if(!ticket) return
+      const myEmail = String(currentUser?.email || "").toLowerCase()
+      if(!myEmail) return
+      const val = Math.max(0, Number(rawValue || 0) || 0)
+      const map = publicationCountByAnalystMap(ticket)
+      map[emailKey(myEmail)] = val
+      const updated = { ...ticket, publicationCountByAnalyst: map, publicationCount: Object.values(map).reduce((a,b)=>a+Math.max(0,Number(b||0)),0), updatedAt: new Date().toISOString(), updatedBy: myEmail }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      const ix = cachedTickets.findIndex(t => String(t.id||"")===String(ticket.id||""))
+      if(ix >= 0) cachedTickets[ix] = updated
+    }
+
     async function autoSaveTicketDetail(id){
       if(!(currentRole === "admin" || currentRole === "analista" || currentRole === "consultor")) return
       await getRoleTicketEditSettings()
@@ -9917,11 +10012,12 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         publicationCountAnalyst: (currentRole === "admin" || currentRole === "analista")
           ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0)
           : Number(ticket.publicationCountAnalyst ?? ticket.publicationCount ?? 0),
-        publicationCount: (currentRole === "admin" || currentRole === "analista")
+        publicationCountByAnalyst: (() => { const map = { ...(baseTicket.publicationCountByAnalyst || {}) }; const analystEmail = String(baseTicket.assignedTo || "").toLowerCase(); if(analystEmail){ map[emailKey(analystEmail)] = (currentRole === "admin" || currentRole === "analista") ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0) : Number(baseTicket.publicationCountAnalyst ?? 0) } return map })(),
+        publicationCount: (() => { const map = (() => { const m = { ...(baseTicket.publicationCountByAnalyst || {}) }; const analystEmail = String(baseTicket.assignedTo || "").toLowerCase(); if(analystEmail && (currentRole === "admin" || currentRole === "analista")) m[emailKey(analystEmail)] = Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0); return m })(); const mapped = Object.values(map).reduce((a,b)=>a+Math.max(0,Number(b||0)),0); if(mapped > 0) return mapped; return (currentRole === "admin" || currentRole === "analista")
           ? Math.max(0, Number(document.getElementById(`detail-publication-count-analyst-${id}`)?.value || 0) || 0)
           : (currentRole === "consultor"
             ? Math.max(0, Number(document.getElementById(`detail-publication-count-consultor-${id}`)?.value || 0) || 0)
-            : Number(baseTicket.publicationCount ?? baseTicket.publicationCountAnalyst ?? baseTicket.publicationCountConsultor ?? 0)),
+            : Number(baseTicket.publicationCount ?? baseTicket.publicationCountAnalyst ?? baseTicket.publicationCountConsultor ?? 0)) })(),
         workSheet: canEditAnalystFields ? normalizeUrlLike(document.getElementById(`detail-work-sheet-${id}`)?.value || "") : String(baseTicket.workSheet || ""),
         assignedTo: nextAssignedTo,
         deadline: canEditDeadline ? ((document.getElementById(`detail-deadline-${id}`)?.value || "").trim()) : baseTicket.deadline,
@@ -10157,11 +10253,11 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         const running = !!u?.timerStartAt
         const canLogManual = mine || canManageHelpers
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><input id="manual-note-${ticketId}-${uk}" type="text" placeholder="Detalle" style="margin:0;max-width:170px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><input id="manual-note-${ticketId}-${uk}" type="text" placeholder="Detalle" style="margin:0;max-width:170px"><input id="manual-pubs-${ticketId}-${uk}" type="number" min="0" placeholder="Publ." style="margin:0;max-width:80px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
       const entriesHtml = entries.length ? entries.map((e, ix) => {
         const entryKey = String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${ix}`)
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')} ${e.note ? `· ${htmlEscape(e.note)}` : ""}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="editTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Editar</button><button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')} ${e.note ? `· ${htmlEscape(e.note)}` : ""}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong><span class="small">Publ.: ${Number(e.publications||0)}</span>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="editTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Editar</button><button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
       }).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
@@ -10594,7 +10690,8 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         curr.totalMinutes = Number(curr.totalMinutes||0) + minutes
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
-      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note, publications: pubs })
+      await updateTicketPublicationCountForCurrentAnalyst(ticketId, pubs)
       if(fromStatusChange) showToast("Tiempo registrado por cambio de estado", "ok", 2200)
       showToast('Tiempo cargado','ok')
     }
@@ -10608,14 +10705,17 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
       const note = String(document.getElementById(`manual-note-${ticketId}-${userKey}`)?.value || "").trim()
+      const pubs = Math.max(0, Number(document.getElementById(`manual-pubs-${ticketId}-${userKey}`)?.value || 0) || 0)
       const minutes = hs * 60 + mins
       if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
+      if(pubs <= 0) return alert('Ingresá cantidad de publicaciones trabajadas')
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         u.totalMinutes = Number(u.totalMinutes||0) + minutes
         tracking.users[userKey] = u
-      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
+      }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note, publications: pubs })
+      await updateTicketPublicationCountForCurrentAnalyst(ticketId, pubs)
       showToast('Tiempo manual cargado','ok')
     }
 
@@ -10657,6 +10757,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       pendingTimeEditContext = { ticketId, monthKey, entryKey }
       document.getElementById("timeEntryEditHours").value = String(Number(entry.hours || 0).toFixed(2))
       document.getElementById("timeEntryEditNote").value = String(entry.note || "")
+      const pubsEl = document.getElementById("timeEntryEditPubs"); if(pubsEl) pubsEl.value = String(Math.max(0, Number(entry.publications || 0) || 0))
       document.getElementById("timeEntryEditModal")?.classList.remove("hidden")
     }
 
@@ -10680,9 +10781,10 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const nextHours = Number(document.getElementById("timeEntryEditHours")?.value || 0)
       if(!(nextHours > 0)) return alert("Ingresá horas válidas.")
       const nextNote = String(document.getElementById("timeEntryEditNote")?.value || "").trim()
+      const nextPubs = Math.max(0, Number(document.getElementById("timeEntryEditPubs")?.value || 0) || 0)
       const prevMinutes = Math.max(0, Math.round(Number(entry.hours || 0) * 60))
       const nextMinutes = Math.max(0, Math.round(nextHours * 60))
-      folder.entries[idx] = { ...entry, hours: nextHours, note: nextNote, updatedAt: new Date().toISOString() }
+      folder.entries[idx] = { ...entry, hours: nextHours, note: nextNote, publications: nextPubs, updatedAt: new Date().toISOString() }
       const analystEmail = String(entry?.analyst || "").toLowerCase()
       const analystKey = emailKey(analystEmail)
       if(tracking.users?.[analystKey]){
@@ -10747,6 +10849,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
           hours: Number(meta.minutes) / 60,
           analyst: String(meta.analyst || currentUser.email || "").toLowerCase(),
           note: String(meta.note || "").trim(),
+          publications: Math.max(0, Number(meta.publications || 0) || 0),
           createdAt: new Date().toISOString()
         }
         tracking.monthlyFolders[monthKey].entries.push(entry)
@@ -11984,7 +12087,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         const dayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === selectedDate)
         const yDate = new Date(`${selectedDate}T00:00:00`); yDate.setDate(yDate.getDate() - 1)
         const yesterdayIso = toLocalDateOnly(yDate)
-        const yesterdayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.plannedWorkDate || '') === yesterdayIso)
+        const yesterdayTasks = tickets.filter(t => String(t.assignedTo || '').toLowerCase() === email && String(t.analystLastWorkDate || '') === yesterdayIso)
         const noteRows = Object.values(notesMap[emailKey(email)] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
         const noteRowsStruct = Object.values(notesStructMap[emailKey(email)]?.[selectedDate] || {}).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
         const dayIssues = issuesMap[emailKey(email)]?.[selectedDate] || {}
