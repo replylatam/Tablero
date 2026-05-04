@@ -12579,7 +12579,7 @@ function setAdminAgendaTeam(team){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t._agendaAnalyst ? userDisplayNameByEmail(t._agendaAnalyst) : (t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")} ${(String(t.status||'')==='doing') ? '🕒' : ''}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastCommentInfo?.author || '')}">${lastWorkDate ? htmlEscape(formatDateTime24(lastWorkDate)) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastCommentInfo?.author || '')}">${lastWorkDate ? htmlEscape(formatDateDMY(String(lastWorkDate).slice(0,10))) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysSince === null ? "-" : `${daysSince} día(s)`}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
