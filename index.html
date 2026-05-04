@@ -2006,7 +2006,7 @@
       if(!["admin","analista","consultor"].includes(role)) return true
       if(role === "admin" && isAdminLevel1()) return true
       if(role === "admin" && isAdminLevel3C()){
-        const admin3c = new Set(defaultMenuVisibility.consultor)
+        const admin3c = new Set(DEFAULT_MENU_VISIBILITY_BY_ROLE?.consultor ? Array.from(DEFAULT_MENU_VISIBILITY_BY_ROLE.consultor) : [])
         return admin3c.has(menuKey)
       }
       const roleCfg = menuPermissionsByRole?.[role] || {}
@@ -8984,7 +8984,7 @@ function closeConsultorSurveyModal(){
       }
       const mine = ticketsSource
         .map(t => ({ ...t, comments: parseCommentsValue(t.comments) }))
-        .filter(t => String(t.assignedTo||"").toLowerCase() === myEmail)
+        .filter(t => { const owner = String(t.assignedTo||"").toLowerCase(); const helpers = Array.isArray(t.helpers)?t.helpers.map(h=>String(h||"").toLowerCase()):[]; return owner === myEmail || helpers.includes(myEmail) })
         .sort((a,b)=>new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
       const today = toLocalDateOnly(new Date())
       const withExpiredDeadline = mine.filter(t => !!String(t.deadline||"") && String(t.deadline) < today)
@@ -9007,11 +9007,8 @@ function closeConsultorSurveyModal(){
         return !readBy[myReadKey]
       }).length
       
-      const recurrenceRows = mine.filter(t => recurrenceDaysFromTicket(t).length).map(t => {
-        const days = recurrenceDaysFromTicket(t)
-        const cell = d => days.includes(d) ? "X" : "-"
-        return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(1)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(3)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(4)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);text-align:center">${cell(5)}</td></tr>`
-      }).join("")
+      const recurrentMine = mine.filter(t => recurrenceDaysFromTicket(t).length)
+      const recurrenceRows = buildConsultorRecurrenceTableRows(recurrentMine)
 
       const incompleteTickets = mine.filter(t => {
         const missing = getTicketMissingFields(t)
@@ -9026,7 +9023,7 @@ function closeConsultorSurveyModal(){
           <div class="kpi" style="cursor:pointer" onclick='openIncompleteTicketFieldsDetail(${JSON.stringify(incompleteTickets.map(t => ({ id: t.id, missing: getTicketMissingFields(t) })) )})'><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
         </div>
         <div class="card" style="margin-top:10px;padding:10px"><h4 style="margin:0 0 8px">Ayudantes en las tareas</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas que ayuda</th></tr></thead><tbody>${(() => { const helpMap = {}; (mine||[]).forEach(t => (t.helpers||[]).forEach(h => { const e=String(h||"").toLowerCase(); if(!e || e===myEmail) return; helpMap[e]=helpMap[e]||[]; helpMap[e].push(`${t.id||"-"} · ${t.title||"-"}`) })); return Object.keys(helpMap).map(e => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e)||e)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpMap[e].join(" | "))}</td></tr>`).join("") || `<tr><td colspan="2" class="small" style="padding:8px">Sin ayudantes registrados.</td></tr>` })()}</tbody></table></div></div>
-        <div class="card" style="margin-top:10px;padding:10px"><h4 style="margin:0 0 8px">Tabla de recurrencias</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lun</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Mar</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Mié</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jue</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Vie</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="8" class="small" style="padding:8px">Sin tickets recurrentes.</td></tr>`}</tbody></table></div></div>
+        <div class="card" style="margin-top:10px;padding:10px"><h4 style="margin:0 0 8px">Tabla de recurrencias</h4><div class="small" style="margin-bottom:8px">Mis tickets como responsable y ayudante con recurrencia (L-V).</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lun</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Mar</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Mié</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jue</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Vie</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="7" class="small" style="padding:8px">Sin tickets recurrentes.</td></tr>`}</tbody></table></div></div>
         <div style="overflow:auto;margin-top:10px">
           <table style="width:100%;border-collapse:collapse">
             <thead>
