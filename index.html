@@ -6284,7 +6284,47 @@ async function submitSupportRequest(){
       if(ix >= 0) cachedTickets[ix] = updated
       closeCloseSurveyModal()
       showToast("Ticket cerrado y encuesta enviada.", "ok")
-      loadDashboard()
+      try{ await loadDashboard() }catch(err){ console.error(err); showToast("Ticket cerrado, pero hubo un error al refrescar vista.", "warn") }
+    }
+
+    
+    function consultorSurveyDraftKey(ticketId){
+      return `consultor_survey_draft_${emailKey(String(currentUser?.email || ""))}_${emailKey(String(ticketId || ""))}`
+    }
+
+    function saveConsultorSurveyDraft(ticketId){
+      const id = String(ticketId || pendingConsultorSurveyTicket?.id || "")
+      if(!id) return
+      const container = document.getElementById("consultorSurveyFields")
+      const obs = String(document.getElementById("consultorSurveyObservation")?.value || "")
+      if(!container) return
+      const values = {}
+      container.querySelectorAll('input,select,textarea').forEach(el => {
+        if(!el?.id) return
+        if(el.type === 'radio'){ if(el.checked) values[el.id] = el.value }
+        else if(el.type === 'checkbox') values[el.id] = !!el.checked
+        else values[el.id] = el.value
+      })
+      localStorage.setItem(consultorSurveyDraftKey(id), JSON.stringify({ values, observation: obs, updatedAt: new Date().toISOString() }))
+    }
+
+    function restoreConsultorSurveyDraft(ticketId){
+      const key = consultorSurveyDraftKey(ticketId)
+      const raw = localStorage.getItem(key)
+      if(!raw) return
+      try{
+        const draft = JSON.parse(raw)
+        const values = draft?.values || {}
+        Object.entries(values).forEach(([id, value]) => {
+          const el = document.getElementById(id)
+          if(!el) return
+          if(el.type === 'radio') el.checked = String(el.value) === String(value)
+          else if(el.type === 'checkbox') el.checked = !!value
+          else el.value = value ?? ''
+        })
+        const obs = document.getElementById("consultorSurveyObservation")
+        if(obs) obs.value = String(draft?.observation || "")
+      }catch(_){ }
     }
 
     
@@ -7581,10 +7621,10 @@ async function submitSupportRequest(){
           ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...((currentRole === "consultor") ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
-          ...(isAdmin3C ? [{ icon: "📈", label: "Actividad clientes", action: "setMainViewTab('client_activity')" }, { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
+          ...(isAdmin3C ? [{ icon: "📈", label: "Actividad clientes", action: "setMainViewTab('client_activity')" }, { icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }, { icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
-          ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...((currentRole === "consultor") ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
@@ -7824,7 +7864,7 @@ async function submitSupportRequest(){
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('pending_messages')"><div class="label">Mensajes pendientes</div><div class="value" id="kpiPendingMessages">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">Tickets cerca a vencer</div><div class="value" id="kpiNearDeadline">-</div></div>`}
               </div>` : ""}
-              ${currentRole === "admin" ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><div class="small" style="margin-top:10px">Abrí “Recomendación de reasignación” para ver el detalle en ventana.</div>` : ""}
+              ${(currentRole === "admin" && !isAdminLevel3C()) ? `<h4 style="margin:12px 0 0">Resumen operativo</h4><div id="adminChartsArea" style="margin-top:8px"></div><div class="small" style="margin-top:10px">Abrí “Recomendación de reasignación” para ver el detalle en ventana.</div>` : ""}
               <div id="dashboardTicketList" class="small hidden" style="margin-top:10px"></div>
               ${currentRole === "analista" ? `<div class="analystOverviewGrid"><div class="analystOverviewPanel"><h3 style="margin:0">Resumen general</h3><div class="inline activityTabs" style="margin-top:8px"><button id="analyst-summary-dashboard" type="button" class="${analystSummaryTab==='dashboard'?'':'ghost'}" onclick="setAnalystSummaryTab('dashboard')">Dashboard</button><button id="analyst-summary-comments" type="button" class="${analystSummaryTab==='comments'?'':'ghost'}" onclick="setAnalystSummaryTab('comments')">Comentarios recientes</button><button id="analyst-summary-alerts" type="button" class="${analystSummaryTab==='alerts'?'':'ghost'}" onclick="setAnalystSummaryTab('alerts')">Alertas</button><button id="analyst-summary-deadlines" type="button" class="${analystSummaryTab==='deadlines'?'':'ghost'}" onclick="setAnalystSummaryTab('deadlines')">Deadline</button><button id="analyst-summary-states" type="button" class="${analystSummaryTab==='states'?'':'ghost'}" onclick="setAnalystSummaryTab('states')">Estados</button></div><div id="analyst-dashboard-panel" class="analystOverviewScroll ${analystSummaryTab==='dashboard'?'':'hidden'}"><div class="kpiGrid analystDashRow"><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_urgent')"><div class="label">Tickets urgentes</div><div class="value" id="analystDashUrgent">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="analystDashNearDeadline">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unread')"><div class="label">Comentarios sin leer</div><div class="value" id="analystDashUnread">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_planned_today')"><div class="label">Asignados para hoy</div><div class="value" id="analystDashPlanned">0</div></div><div class="kpi" style="cursor:pointer" onclick="showDashboardList('analyst_unassigned')"><div class="label">Tickets sin asignar</div><div class="value" id="analystDashUnassigned">0</div></div></div></div><div id="recentActivity" class="analystOverviewScroll ${analystSummaryTab === 'comments' ? '' : 'hidden'}"></div><div id="recentActivityAlerts" class="analystOverviewScroll ${analystSummaryTab === 'alerts' ? '' : 'hidden'}"></div><div id="recentActivityDeadlines" class="analystOverviewScroll ${analystSummaryTab === 'deadlines' ? '' : 'hidden'}"></div><div id="analyst-states-panel" class="analystOverviewScroll ${analystSummaryTab==='states'?'':'hidden'}"><div id="recentActivityStates" class="small"></div></div></div><div class="analystOverviewPanel"><div style="font-weight:700;margin-bottom:6px">¿Cómo te sientes hoy?</div><div class="inline" style="gap:6px;flex-wrap:nowrap"><button type="button" class="ghost moodBtn ${analystMoodToday==='feliz'?'active':''}" title="Feliz" onclick="setMoodVote('feliz')">😄</button><button type="button" class="ghost moodBtn ${analystMoodToday==='meh'?'active':''}" title="Meh" onclick="setMoodVote('meh')">😐</button><button type="button" class="ghost moodBtn ${analystMoodToday==='triste'?'active':''}" title="Triste" onclick="setMoodVote('triste')">😔</button><button type="button" class="ghost moodBtn ${analystMoodToday==='enojado'?'active':''}" title="Enojado" onclick="setMoodVote('enojado')">😠</button></div><button type="button" class="ghost" style="margin-top:8px" onclick="openMoodStatsModal()">Ver historial</button><div class="analystOverviewScroll small" style="margin-top:10px">Tu estado de ánimo diario te ayuda a ver tu historial y evolución semanal.</div></div></div>` : ""}
             </div>
@@ -8090,7 +8130,7 @@ async function submitSupportRequest(){
           return `<div class="encuentroPost"><div class="feedType" style="${r.textColor ? `color:${htmlEscape(r.textColor)};` : ""}">${linkifyEscapedText(r.message || "-")}</div>${r.gifUrl ? `<div style="margin-top:6px"><img src="${htmlEscape(r.gifUrl)}" alt="gif" style="max-width:220px;border-radius:8px"></div>` : ""}<div class="feedMeta" style="display:flex;align-items:center;gap:6px"><img class="commentAvatar encuentroAuthorAvatar" src="${htmlEscape(userAvatarByEmail(r.author||""))}" data-fallback="${htmlEscape(buildInitialAvatar(r.author||'U'))}" onerror="handleAvatarError(this)" alt="avatar"> ${htmlEscape(userDisplayNameByEmail(r.author || "-"))} · ${htmlEscape(r.role || "-")} · ${htmlEscape(formatDateTime24(r.createdAt || ""))}</div><div class="encuentroReactions">${encuentroReactionOptions.map(emoji => { const voters = reactions[emoji] || []; return `<button type="button" class="ghost encuentroReactionBtn ${voters.includes(myEmail) ? "active" : ""}" onclick="reactEncuentroPost('${jsStringEscape(r.id || "")}', '${jsStringEscape(emoji)}')">${emoji}<span>${voters.length}</span></button>` }).join("")}</div><div class="encuentroCommentList">${comments.length ? comments.map(c => `<div class="encuentroCommentItem"><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(c.author || "-"))} · ${htmlEscape(formatDateTime24(c.createdAt || ""))}</div><div>${linkifyEscapedText(c.message || "-")}</div></div>`).join("") : `<div class="small">Sin comentarios aún.</div>`}</div><div class="encuentroCommentInput"><input id="encuentro-comment-input-${htmlEscape(r.id || "")}" placeholder="Comentar esta publicación"><button type="button" class="ghost" onclick="submitEncuentroComment('${jsStringEscape(r.id || "")}')">Comentar</button></div></div>`
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
-      const users = Object.values(cachedUsersByEmail || {})
+      const users = Object.values(cachedUsersByEmail || {}).length ? Object.values(cachedUsersByEmail || {}) : (Array.isArray(window.users) ? window.users : [])
         .filter(u => u && u.active !== false && !!String(u.email||"").trim())
       const profileEmail = String(encuentroProfileUserEmail || "").toLowerCase()
       const profileCongrats = rows.filter(r => String(r?.type || "") === "felicitacion" && String(r?.message || "").toLowerCase().includes(userDisplayNameByEmail(profileEmail || "").toLowerCase())).length
@@ -10240,7 +10280,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         const running = !!u?.timerStartAt
         const canLogManual = mine || canManageHelpers
         const removable = canManageHelpers && (ticket.helpers || []).some(h => emailKey(h) === emailKey(email))
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><input id="manual-note-${ticketId}-${uk}" type="text" placeholder="Detalle" style="margin:0;max-width:170px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(email||'-'))}</strong><div class="small">${htmlEscape(email||'-')} · Total: ${fmtMinutes(u?.totalMinutes||0)}</div></div><div class="inline" style="gap:6px;align-items:center">${canLogManual ? `<input id="manual-hours-${ticketId}-${uk}" type="number" min="0" placeholder="hs" style="margin:0;max-width:70px"><input id="manual-mins-${ticketId}-${uk}" type="number" min="0" placeholder="min" style="margin:0;max-width:70px"><input id="manual-note-${ticketId}-${uk}" type="text" placeholder="Detalle" style="margin:0;max-width:170px"><input id="manual-pubs-${ticketId}-${uk}" type="number" min="0" placeholder="Publ." style="margin:0;max-width:80px"><button class="ghost" onclick="logManualTimeForUser('${ticketId}','${uk}','${selectedMonth}')">Cargar</button>` : ''}${mine ? `<button id="timer-toggle-${ticketId}-${uk}" class="ghost" onclick="toggleTicketTimerForUser('${ticketId}','${uk}','${selectedMonth}')">${running ? '🕒 Parar timer' : '🕒 Iniciar timer'}</button>` : ''}<span id="timer-live-${ticketId}-${uk}" class="timerLive">🕒 ${running ? '00:00:00' : '00:00:00'}</span>${removable ? `<button class="danger" onclick="removeHelperFromTicket('${ticketId}','${uk}')">Quitar</button>` : ''}</div></div></div>`
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
       const entriesHtml = entries.length ? entries.map((e, ix) => {
         const entryKey = String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${ix}`)
@@ -10678,6 +10718,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
         curr.timerStartAt = ''
         tracking.users[userKey] = curr
       }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
+      await updateTicketPublicationCountForCurrentAnalyst(ticketId, pubs)
       if(fromStatusChange) showToast("Tiempo registrado por cambio de estado", "ok", 2200)
       showToast('Tiempo cargado','ok')
     }
@@ -10691,14 +10732,17 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const hs = Number(document.getElementById(`manual-hours-${ticketId}-${userKey}`)?.value || 0)
       const mins = Number(document.getElementById(`manual-mins-${ticketId}-${userKey}`)?.value || 0)
       const note = String(document.getElementById(`manual-note-${ticketId}-${userKey}`)?.value || "").trim()
+      const pubs = Math.max(0, Number(document.getElementById(`manual-pubs-${ticketId}-${userKey}`)?.value || 0) || 0)
       const minutes = hs * 60 + mins
       if(minutes <= 0) return alert('Ingresá horas o minutos válidos')
+      if(pubs <= 0) return alert('Ingresá cantidad de publicaciones trabajadas')
       const ticket = cachedTickets.find(t => t.id === ticketId); if(!ticket) return
       await applyTimeUpdate(ticketId, (tracking)=>{
         const u = tracking.users[userKey] || { email: currentUser.email, totalMinutes:0, timerStartAt:'' }
         u.totalMinutes = Number(u.totalMinutes||0) + minutes
         tracking.users[userKey] = u
       }, { monthKey, minutes, analyst: currUserEmailByKey(ticket, userKey), note })
+      await updateTicketPublicationCountForCurrentAnalyst(ticketId, pubs)
       showToast('Tiempo manual cargado','ok')
     }
 
