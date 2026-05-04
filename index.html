@@ -6327,6 +6327,46 @@ async function submitSupportRequest(){
       }catch(_){ }
     }
 
+    
+    function consultorSurveyDraftKey(ticketId){
+      return `consultor_survey_draft_${emailKey(String(currentUser?.email || ""))}_${emailKey(String(ticketId || ""))}`
+    }
+
+    function saveConsultorSurveyDraft(ticketId){
+      const id = String(ticketId || pendingConsultorSurveyTicket?.id || "")
+      if(!id) return
+      const container = document.getElementById("consultorSurveyFields")
+      const obs = String(document.getElementById("consultorSurveyObservation")?.value || "")
+      if(!container) return
+      const values = {}
+      container.querySelectorAll('input,select,textarea').forEach(el => {
+        if(!el?.id) return
+        if(el.type === 'radio'){ if(el.checked) values[el.id] = el.value }
+        else if(el.type === 'checkbox') values[el.id] = !!el.checked
+        else values[el.id] = el.value
+      })
+      localStorage.setItem(consultorSurveyDraftKey(id), JSON.stringify({ values, observation: obs, updatedAt: new Date().toISOString() }))
+    }
+
+    function restoreConsultorSurveyDraft(ticketId){
+      const key = consultorSurveyDraftKey(ticketId)
+      const raw = localStorage.getItem(key)
+      if(!raw) return
+      try{
+        const draft = JSON.parse(raw)
+        const values = draft?.values || {}
+        Object.entries(values).forEach(([id, value]) => {
+          const el = document.getElementById(id)
+          if(!el) return
+          if(el.type === 'radio') el.checked = String(el.value) === String(value)
+          else if(el.type === 'checkbox') el.checked = !!value
+          else el.value = value ?? ''
+        })
+        const obs = document.getElementById("consultorSurveyObservation")
+        if(obs) obs.value = String(draft?.observation || "")
+      }catch(_){ }
+    }
+
     async function openConsultorSurveyModal(ticketId){
       const ticket = (cachedTickets || []).find(t => t.id === ticketId)
       if(!ticket) return
