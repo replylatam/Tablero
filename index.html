@@ -7943,7 +7943,8 @@ function closeConsultorSurveyModal(){
       }else if(showConsultorTodayAgenda){
         loadConsultorTodayAgenda()
       }else if(showConsultorSummary){
-        loadConsultorGeneralSummary()
+        if(isAdmin3C) loadAdmin3CSummaryDashboard()
+        else loadConsultorGeneralSummary()
       }else if(showConsultorProfile){
         loadMyProfileForm()
       }else if(showTopPerformer){
@@ -7976,10 +7977,9 @@ function closeConsultorSurveyModal(){
       }else if(showAnalystHelp){
         // Vista informativa estática, no requiere carga adicional.
       }else if(currentRole === "admin" && isAdminLevel3C() && mainViewTab === "summary_general"){
-          await loadAdmin3CSummaryDashboard()
-          return
-        }
-        if(currentRole === "analista" && mainViewTab === "my_ticket_status"){
+        loadAdmin3CSummaryDashboard()
+      }
+      if(currentRole === "analista" && mainViewTab === "my_ticket_status"){
         setupRealtimeStreams()
         loadTickets().then(()=>loadMyTicketStatus())
       }else if(currentRole === "analista" && mainViewTab === "registro_horas"){
