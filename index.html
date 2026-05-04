@@ -2006,7 +2006,7 @@
       if(!["admin","analista","consultor"].includes(role)) return true
       if(role === "admin" && isAdminLevel1()) return true
       if(role === "admin" && isAdminLevel3C()){
-        const admin3c = new Set(["main:tickets","main:encuentro","main:saved","main:portfolio","main:portfolio_overview","main:agenda_today","main:consultor_guidelines","main:support","main:profile","main:client_activity"])
+        const admin3c = new Set(defaultMenuVisibility.consultor)
         return admin3c.has(menuKey)
       }
       const roleCfg = menuPermissionsByRole?.[role] || {}
@@ -3868,7 +3868,7 @@ Cliente B`)
           return `<tr>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><strong>${htmlEscape(String(c?.name || key))}</strong></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">
-              <select style="margin:0;min-width:220px;${riskSelectStyle}" onchange="updateConsultorClientPortfolioField('${key}', 'riskLevel', this.value)">
+              <select style="margin:0;min-width:220px;${riskSelectStyle}" onchange="updateConsultorClientPortfolioField('${key}', 'riskLevel', this.value); updateConsultorClientPortfolioField('${key}', 'riskUpdatedAt', toLocalDateOnly(new Date()))">
                 <option value="">Sin definir</option>
                 <option value="bajo_control" ${riskLevel==='bajo_control'?'selected':''}>🟢 Cuenta bajo control</option>
                 <option value="atencion_preventiva" ${riskLevel==='atencion_preventiva'?'selected':''}>🟡 Atención preventiva</option>
@@ -4008,7 +4008,7 @@ Cliente B`)
       }).filter(r => r.last && r.isAnalystComment).sort((a,b)=>new Date(b.last?.createdAt||0)-new Date(a.last?.createdAt||0))
       consultorSummaryCache = { accounts, tickets, openTickets, recurrentTickets, openWithAnalystTickets, priorityBuckets }
       const recurrenceRows = buildConsultorRecurrenceTableRows(openTickets)
-      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('accounts')"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? htmlEscape(accounts.join(" · ")) : "Sin cuentas asignadas."}</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('open')"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar) · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('recurrent')"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('created_open')"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('priority')"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Recurrencia de tickets</h4><div class="small" style="margin-bottom:8px">Matriz de tareas en curso por día hábil (L-V). Click en un ticket para abrirlo.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Lunes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Martes</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Miércoles</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Jueves</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Viernes</th></tr></thead><tbody>${recurrenceRows || `<tr><td colspan="7" class="small" style="padding:8px">No hay tickets en curso para mostrar.</td></tr>`}</tbody></table></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
+      wrap.innerHTML = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px"><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('accounts')"><div class="label">Cuentas asignadas</div><div class="value">${accounts.length}</div><div class="small">${accounts.length ? htmlEscape(accounts.join(" · ")) : "Sin cuentas asignadas."}</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('open')"><div class="label">Tickets en curso</div><div class="value">${openTickets.length}</div><div class="small">Activos (sin finalizar) · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('recurrent')"><div class="label">Tickets recurrentes</div><div class="value">${recurrentCount}</div><div class="small">Con recurrencia configurada · click para detalle</div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('created_open')"><div class="label">Creados por mí y abiertos</div><div class="value">${openWithAnalyst}/${tickets.length}</div><div style="margin-top:6px;height:10px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden"><div style="height:100%;width:${createdOpenPct.toFixed(2)}%;background:var(--accent)"></div></div></div><div class="kpi" style="cursor:pointer" onclick="openConsultorSummaryDetail('priority')"><div class="label">Prioridades abiertas</div><div class="small">Alta: ${prioCount.Alta || 0} · Media: ${prioCount.Media || 0} · Baja: ${prioCount.Baja || 0}</div><div style="display:grid;gap:6px;margin-top:6px">${["Alta","Media","Baja"].map(p => { const pct = ((prioCount[p] || 0)/totalOpen)*100; return `<div><div class=\"small\" style=\"display:flex;justify-content:space-between\"><span>${p}</span><strong>${prioCount[p] || 0}</strong></div><div style=\"height:8px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden\"><div style=\"height:100%;width:${pct.toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}\"></div></div></div>` }).join("")}</div></div></div><div class="card" style="padding:10px"><h4 style="margin:0 0 8px">Comentarios unificados</h4>${commentsRows.length ? commentsRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">Estado: ${htmlEscape(STATUS[row.ticket.status] || row.ticket.status || "-")} · Analista: ${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="consultorUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder en el ticket..."><button class="ghost" onclick="replyUnifiedConsultorComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class=\"small\">No hay comentarios recientes de analistas en tickets en curso.</div>`}</div>`
     }
 
     function setConsultorPortfolioSearch(value){
@@ -5463,30 +5463,33 @@ async function submitSupportRequest(){
     }
 
     
-    async function ensureQualityRulesTextLoaded(){
+    async function ensureQualityRulesTextLoaded(role = "analista"){
+      const roleKey = role === "consultor" ? "consultor" : "analista"
       try{
-        const raw = (await db.ref("app_settings/quality_rules_text").once("value")).val()
+        const raw = (await db.ref("app_settings/quality_rules_text").child(roleKey).once("value")).val()
         if(String(raw||"").trim()) qualityRulesText = String(raw).trim()
       }catch(_){}
       return qualityRulesText
     }
 
-    async function saveQualityRulesText(){
+    async function saveQualityRulesText(role = "analista"){
+      const roleKey = role === "consultor" ? "consultor" : "analista"
       if(currentRole !== "admin") return
-      const value = String(document.getElementById("qualityRulesTextInput")?.value || "").trim()
+      const value = String(document.getElementById(`qualityRulesTextInput_${roleKey}`)?.innerHTML || "").trim()
       if(!value) return showToast("Ingresá el texto de reglas.", "warn", 1800)
-      await db.ref("app_settings/quality_rules_text").set(value)
+      await db.ref("app_settings/quality_rules_text").child(roleKey).set(value)
       qualityRulesText = value
       showToast("Reglas de puntuación guardadas.", "ok", 1600)
     }
 
     function renderQualityQuestions(containerId, role){
+      ensureQualityRulesTextLoaded(role)
       const wrap = document.getElementById(containerId)
       const forms = qualitySurveyForms || DEFAULT_QUALITY_FORMS
       let items = Array.isArray(forms?.[role]) ? forms[role] : []
       if(!items.length) items = JSON.parse(JSON.stringify(DEFAULT_QUALITY_FORMS[role] || []))
       if(!wrap) return
-      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">${htmlEscape(qualityRulesText || "Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10).")}</div></div>`
+      const rulesHtml = `<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación</div><div class="small">${qualityRulesText || "Deficiente (1 a 3) · Regular (4 a 6) · Bueno (7 a 8) · Excelente (9 a 10)."}</div></div>`
       const tableRows = items.map((q, idx) => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(q.label || `Pregunta ${idx + 1}`)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2);width:140px"><select data-quality-input="${htmlEscape(q.id || `q_${idx}`)}" style="margin:0"><option value="">Puntaje</option>${(Array.isArray(q.options)?q.options:[]).map(opt=>`<option value="${htmlEscape(String(opt))}">${htmlEscape(String(opt))}</option>`).join("")}</select></td></tr>`).join("")
       wrap.innerHTML = `${rulesHtml}<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Pregunta</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Puntaje</th></tr></thead><tbody>${tableRows}</tbody></table></div>`
     }
@@ -5848,11 +5851,13 @@ async function submitSupportRequest(){
       }
       const qualityTabs = `<div class="inline" style="margin:8px 0 12px;gap:8px"><button class="${qualityAdminSection==='results'?'':'ghost'}" onclick="setAdminQualitySection('results')">Resultados</button><button class="${qualityAdminSection==='edit_analista'?'':'ghost'}" onclick="setAdminQualitySection('edit_analista')">Modificar encuesta analista</button><button class="${qualityAdminSection==='edit_consultor'?'':'ghost'}" onclick="setAdminQualitySection('edit_consultor')">Modificar encuesta consultores</button></div>`
       if(qualityAdminSection === "edit_analista"){
-        container.innerHTML = `${qualityTabs}<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación (visible para analista y consultor)</div><div class="inline" style="gap:8px;align-items:center"><input id="qualityRulesTextInput" value="${htmlEscape(qualityRulesText||"")}" placeholder="Definí reglas de puntuación" style="flex:1;min-width:280px"><button class="ghost" onclick="saveQualityRulesText()">Guardar reglas</button></div></div>${renderQualityBuilderAdminHtml("analista")}`
+        await ensureQualityRulesTextLoaded("analista")
+        container.innerHTML = `${qualityTabs}<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación (solo analista)</div><div id="qualityRulesTextInput_analista" contenteditable="true" style="min-height:70px;border:1px solid var(--stroke);border-radius:10px;padding:8px">${qualityRulesText||""}</div><div class="inline" style="margin-top:6px"><button class="ghost" onclick="document.execCommand('bold')">Negrita</button><button class="ghost" onclick="saveQualityRulesText('analista')">Guardar reglas</button></div></div>${renderQualityBuilderAdminHtml("analista")}`
         return
       }
       if(qualityAdminSection === "edit_consultor"){
-        container.innerHTML = `${qualityTabs}${renderQualityBuilderAdminHtml("consultor")}`
+        await ensureQualityRulesTextLoaded("consultor")
+        container.innerHTML = `${qualityTabs}<div class="feedItem" style="margin-bottom:10px"><div class="feedType">Reglas de puntuación (solo consultor)</div><div id="qualityRulesTextInput_consultor" contenteditable="true" style="min-height:70px;border:1px solid var(--stroke);border-radius:10px;padding:8px">${qualityRulesText||""}</div><div class="inline" style="margin-top:6px"><button class="ghost" onclick="document.execCommand('bold')">Negrita</button><button class="ghost" onclick="saveQualityRulesText('consultor')">Guardar reglas</button></div></div>${renderQualityBuilderAdminHtml("consultor")}`
         return
       }
       if(!surveys.length){ container.innerHTML = `${qualityTabs}<div class="feedItem"><div class="feedType">Resultados</div><div class="feedMeta">Sin encuestas todavía.</div></div>`; return }
@@ -6337,7 +6342,7 @@ async function submitSupportRequest(){
       await ensureQualityFormsLoaded()
       const info = document.getElementById("consultorSurveyTicketInfo")
       if(info){
-        info.innerHTML = `<strong>${htmlEscape(ticket.id||"-")} · ${htmlEscape(ticket.title||"-")}</strong><br>Analista: ${htmlEscape(userDisplayNameByEmail(ticket.assignedTo||"-"))}`
+        info.innerHTML = `<strong><a href="#" onclick="openTicketDetailModal('${ticket.id||''}');return false">${htmlEscape(ticket.id||"-")}</a> · ${htmlEscape(ticket.title||"-")}</strong><br>Analista: ${htmlEscape(userDisplayNameByEmail(ticket.assignedTo||"-"))}`
       }
       const detail = document.getElementById("consultorSurveyTicketDetail")
       if(detail){ detail.innerHTML = `<div class="feedItem"><div class="feedMeta">Cliente: <strong>${htmlEscape(ticket.client||"-")}</strong> · Estado: <strong>${htmlEscape(STATUS[ticket.status] || ticket.status || "-")}</strong> · Prioridad: <strong>${htmlEscape(ticket.priority||"-")}</strong><br>Descripción: ${htmlEscape(ticket.description||"Sin descripción")}</div></div>` }
@@ -7654,7 +7659,7 @@ async function submitSupportRequest(){
             </div>
             <div class="inline" style="justify-content:space-between;align-items:flex-start;gap:12px;margin-top:10px">
               <div style="flex:2;min-width:280px"><h4 style="margin:0 0 8px">Actividad del equipo</h4><div id="encuentroFeed"></div></div>
-              <div style="flex:1;min-width:240px"><h4 style="margin:0 0 8px">Miembros</h4><div id="encuentroMembers"></div></div>
+              <div style="flex:1;min-width:240px"><h4 style="margin:0 0 8px">Miembros para felicitar</h4><div id="encuentroMembers"></div></div>
             </div>
           </div>
         ` : showSavedItems ? `
@@ -12539,7 +12544,7 @@ function setAdminAgendaTeam(team){
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista asignado</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado de la tarea</th>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha del ult. comentario</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última fecha de trabajo</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Últ. atención</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Deadline</th>
                 <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Planificación de trabajo</th>
@@ -12555,13 +12560,13 @@ function setAdminAgendaTeam(team){
             </thead>
             <tbody>
               ${orderedAgendaRows.map((t, idx) => {
-                const lastComment = ticketLastCommentAt(t)
+                const lastWorkDate = String(t.lastWorkDate || t.lastWorkedAt || "").trim() || ticketLastCommentAt(t)
                 const lastCommentInfo = ticketLastCommentInfo(t)
                 const owner = String(t._agendaAnalyst || t.assignedTo || "").toLowerCase()
                 const roleIcon = String(t._agendaRoleIcon || "👑")
                 const prev = orderedAgendaRows[idx-1]
                 const analystChanged = idx>0 && String(prev?._agendaAnalyst||prev?.assignedTo||"").toLowerCase() !== String(t._agendaAnalyst||t.assignedTo||"").toLowerCase()
-                const daysSince = lastComment ? Math.floor((Date.now() - new Date(lastComment).getTime()) / 86400000) : null
+                const daysSince = lastWorkDate ? Math.floor((Date.now() - new Date(lastWorkDate).getTime()) / 86400000) : null
                 const ownerColors = ["rgba(61,110,245,.10)","rgba(34,197,94,.10)","rgba(245,158,11,.10)","rgba(168,85,247,.10)","rgba(236,72,153,.10)","rgba(14,165,233,.10)"]
                 const ownerHash = owner ? owner.split("").reduce((acc,ch)=>acc+ch.charCodeAt(0),0) : 0
                 const rowBg = owner ? ownerColors[ownerHash % ownerColors.length] : "transparent"
@@ -12574,7 +12579,7 @@ function setAdminAgendaTeam(team){
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t._agendaAnalyst ? userDisplayNameByEmail(t._agendaAnalyst) : (t.assignedTo ? userDisplayNameByEmail(t.assignedTo) : "Sin asignar"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t)||"-"))}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(STATUS[t.status] || t.status || "-")} ${(String(t.status||'')==='doing') ? '🕒' : ''}</td>
-                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastCommentInfo?.author || '')}">${lastComment ? htmlEscape(formatDateTime24(lastComment)) : "-"}</td>
+                  <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(lastCommentInfo?.author || '')}">${lastWorkDate ? htmlEscape(formatDateDMY(String(lastWorkDate).slice(0,10))) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${daysSince === null ? "-" : `${daysSince} día(s)`}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${t.deadline ? htmlEscape(formatDateDMY(t.deadline)) : "-"}</td>
                   <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="date" value="${htmlEscape(t.plannedWorkDate||"")}" onchange="updateTicketPlanningDate('${t.id}', this.value)"></td>
