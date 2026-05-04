@@ -7563,9 +7563,9 @@ async function submitSupportRequest(){
         ]},
         { title: "Técnico", items: [
           ...(adminCanAccess("support") ? [{ icon: "🛟", label: "Soporte técnico", action: "setAdminTab('support')" }] : []),
+          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" },
           { icon: "❓", label: "Ayuda", action: "setAdminTab('help')" },
-          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : []),
-          { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
+          ...(adminCanAccess("connections") ? [{ icon: "🔌", label: "Conexiones", action: "setAdminTab('connections')" }] : [])
         ].filter(Boolean)},
         { title: "Centro de control", items: [
           ...(adminCanAccess("control_center") ? [{ icon: "🎛️", label: "Centro de control", action: "setAdminTab('control_center')" }] : [])
@@ -8091,7 +8091,7 @@ async function submitSupportRequest(){
         }).join("")
         : `<div class="small">Todavía no hay publicaciones en Encuentro.</div>`
       const users = Object.values(cachedUsersByEmail || {})
-        .filter(u => u && u.active !== false && ["analista","consultor","admin","admin_lvl2","admin_lvl3c"].includes(String(u.role||"")))
+        .filter(u => u && u.active !== false && !!String(u.email||"").trim())
       const profileEmail = String(encuentroProfileUserEmail || "").toLowerCase()
       const profileCongrats = rows.filter(r => String(r?.type || "") === "felicitacion" && String(r?.message || "").toLowerCase().includes(userDisplayNameByEmail(profileEmail || "").toLowerCase())).length
       const profileComments = Object.values((await db.ref("encuentro_member_comments").child(emailKey(profileEmail)).once("value")).val() || {})
@@ -8909,8 +8909,8 @@ async function submitSupportRequest(){
       const mine = surveys.filter(s => String(s?.ratedEmail || "").toLowerCase() === myEmail)
       if(!mine.length){
         if(currentRole === "analista"){
-          qualityResultsMode = "satisfaction"
-          return loadQualityResultsView()
+          wrap.innerHTML = "<p class='small'>Sin resultados de encuesta de satisfacción todavía.</p>"
+          return
         }
         wrap.innerHTML = "<p class='small'>Sin resultados todavía.</p>"
         return
