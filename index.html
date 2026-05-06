@@ -2293,7 +2293,7 @@
       const dd = String(d.getDate()).padStart(2, "0")
       const mo = String(d.getMonth() + 1).padStart(2, "0")
       const yy = d.getFullYear()
-      return `${hh}:${mm} - ${dd}/${mo}/${yy}`
+      return `${dd}/${mo}/${yy} ${hh}:${mm}`
     }
 
     function userDisplayNameByEmail(email){
@@ -7615,12 +7615,13 @@ function closeConsultorSurveyModal(){
       ] : [
         { title: "General", items: [
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
-          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : []),
-          ...((currentRole === "admin" && !isAdmin3C) || currentRole === "analista" ? [{ icon: "🛠️", label: "Top performer", action: "setMainViewTab('top_performer')" }] : []),
-          { icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }
+          
+          ...(isAnalyst ? [{ icon: "🗂️", label: "Dailys", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "📋", label: "Estado de mis tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : [])
         ]},
         { title: "Herramientas", items: [
-          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
           ...(isAdmin3C ? [{ icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }, { icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
@@ -7629,9 +7630,9 @@ function closeConsultorSurveyModal(){
           ...((currentRole === "consultor") ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "📋", label: "Estado tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
+          
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
-          ...(isAnalyst ? [{ icon: "🗂️", label: "Daily's", action: "setMainViewTab('dailys')" }] : []),
+          
           ...(isAnalyst ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...(isAnalyst ? [{ icon: "👥", label: "Cartera consultores", action: "setMainViewTab('portfolio_overview')" }] : []),
           { icon: uiTheme === "light" ? "🌙" : "☀️", label: uiTheme === "light" ? "Modo oscuro" : "Modo claro", action: "toggleTheme()" }
@@ -9054,7 +9055,7 @@ function closeConsultorSurveyModal(){
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de tickets asignados", ${JSON.stringify(mine.map(t=>t.id))})'><div class="label">Cantidad de tickets asignados</div><div class="value">${mine.length}</div></div>
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de tickets con deadline vencida", ${JSON.stringify(withExpiredDeadline.map(t=>t.id))})'><div class="label">Cantidad de tickets con deadline vencida</div><div class="value">${withExpiredDeadline.length}</div></div>
           <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Próximos a vencerse", ${JSON.stringify(nearDeadline.map(t=>t.id))})'><div class="label">Próximos a vencerse (5 días)</div><div class="value">${nearDeadline.length}</div></div>
-          <div class="kpi"><div class="label">Cantidad de comentarios sin ver</div><div class="value">${unreadComments}</div></div>
+          <div class="kpi" style="cursor:pointer" onclick='openMyTicketStatusDetail("Cantidad de comentarios sin ver", ${JSON.stringify(mine.filter(t => { const lastConsultorComment = Object.values(t.comments || {}).sort((a,b)=>new Date(b?.createdAt || 0)-new Date(a?.createdAt || 0)).find(c => String(usersByEmail?.[emailKey(String(c?.author || "").toLowerCase())]?.role || "").toLowerCase() === "consultor"); if(!lastConsultorComment) return false; const readBy = lastConsultorComment.readBy || {}; return !readBy[myReadKey] }).map(t=>t.id))})'><div class="label">Cantidad de comentarios sin ver</div><div class="value">${unreadComments}</div></div>
           <div class="kpi" style="cursor:pointer" onclick='openIncompleteTicketFieldsDetail(${JSON.stringify(incompleteTickets.map(t => ({ id: t.id, missing: getTicketMissingFields(t) })) )})'><div class="label">Tickets sin campos completados</div><div class="value">${incompleteTickets.length}</div></div>
         </div>
         <div class="card" style="margin-top:10px;padding:10px"><h4 style="margin:0 0 8px">Ayudantes en las tareas</h4><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas que ayuda</th></tr></thead><tbody>${(() => { const helpMap = {}; (mine||[]).forEach(t => (t.helpers||[]).forEach(h => { const e=String(h||"").toLowerCase(); if(!e || e===myEmail) return; helpMap[e]=helpMap[e]||[]; helpMap[e].push(`${t.id||"-"} · ${t.title||"-"}`) })); return Object.keys(helpMap).map(e => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(e)||e)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpMap[e].join(" | "))}</td></tr>`).join("") || `<tr><td colspan="2" class="small" style="padding:8px">Sin ayudantes registrados.</td></tr>` })()}</tbody></table></div></div>
@@ -9084,7 +9085,7 @@ function closeConsultorSurveyModal(){
                 const consolidated = Number(tracking?.consolidatedMinutes || recomputeConsolidatedMinutes(tracking))
                 const missing = getTicketMissingFields(t)
                 const missingLabel = missing.length ? missing.join(" · ") : "Sin campos pendientes"
-                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer"><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(ticketAgeLabel(t))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt || "" ) || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.updatedAt || t.createdAt || "") || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpers.join(", ") || "Sin ayudantes")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(consolidated))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(myMinutes))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(missingLabel)}">${missing.length}</td></tr>`
+                return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(ticketAgeLabel(t))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.createdAt || "" ) || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(t.updatedAt || t.createdAt || "") || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(helpers.join(", ") || "Sin ayudantes")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(consolidated))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(myMinutes))}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)" title="${htmlEscape(missingLabel)}">${missing.length}</td></tr>`
               }).join("") || `<tr><td colspan="9" style="padding:10px;border-bottom:1px solid var(--stroke-2);text-align:center" class="small">Sin tickets asignados.</td></tr>`}
             </tbody>
           </table>
@@ -9190,7 +9191,7 @@ function closeConsultorSurveyModal(){
       const tickets = (cachedTickets || [])
         .filter(t => String(t?.status || "") !== "done")
         .filter(t => String(t?.assignedTo || "").toLowerCase() === myEmail || (Array.isArray(t?.helpers) && t.helpers.some(h => String(h || "").toLowerCase() === myEmail)))
-        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+        
 
       if(!tickets.length){
         wrap.innerHTML = `<div class="small">No tenés tickets activos asignados o en colaboración.</div>`
@@ -9220,7 +9221,7 @@ function closeConsultorSurveyModal(){
           const minutes = calcDraftMinutes(startVal, endVal)
           const roleTag = String(t.assignedTo || "").toLowerCase() === myEmail ? "Responsable" : "Ayudante"
           const statusOptions = Object.entries(STATUS).map(([k,v]) => `<option value="${htmlEscape(k)}" ${String(t.status||"")===k?"selected":""}>${htmlEscape(v)}</option>`).join("")
-          return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
+          return `<tr>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id || "-")}</td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.title || "-")}</td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || "-")}</td>
@@ -9231,7 +9232,7 @@ function closeConsultorSurveyModal(){
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(endVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','endAt', this.value)"></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(minutes))}</td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:6px;align-items:center"><input type="number" min="0" value="${htmlEscape(String((t.publicationCountByAnalyst || {})[emailKey(myEmail)] ?? 0))}" id="hours-publications-${t.id}" placeholder="Publicaciones" style="max-width:120px" oninput="updateTicketPublicationCountForCurrentAnalyst('${t.id}', this.value)"><button class="ghost" onclick="submitAnalystHoursLog('${t.id}')">Cargar</button></div></td>
-            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(reasonVal)}" placeholder="Motivo de la carga" oninput="updateAnalystHoursLogDraft('${t.id}','reason', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(reasonVal)}" placeholder="Motivo de la carga" onchange="updateAnalystHoursLogDraft('${t.id}','reason', this.value)"></td>
           </tr>`
         }).join("")}
         </tbody></table></div>`
@@ -10620,16 +10621,8 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const users = { ...((ticket.timeTracking||{}).users || {}) }
       const email = String((users[userKey]||{}).email || '')
       if(!confirm(`¿Quitar ayudante ${email || userKey}?`)) return
-      delete users[userKey]
       const helpers = (ticket.helpers || []).filter(h => emailKey(h) !== userKey)
-      const monthlyFolders = { ...((ticket.timeTracking||{}).monthlyFolders || {}) }
-      Object.keys(monthlyFolders).forEach(mk => {
-        const folder = monthlyFolders[mk] || {}
-        const entries = Array.isArray(folder.entries) ? folder.entries : []
-        monthlyFolders[mk] = { ...folder, entries: entries.filter(e => emailKey(String(e?.analyst || "")) !== userKey) }
-      })
       const tracking = { ...(ticket.timeTracking || {}), users }
-      tracking.monthlyFolders = monthlyFolders
       tracking.consolidatedMinutes = recomputeConsolidatedMinutes(tracking)
       const updated = { ...ticket, helpers, timeTracking: tracking, updatedAt: new Date().toISOString(), updatedBy: currentUser.email }
       await db.ref('tickets').child(ticket.dbKey || emailKey(ticket.id)).update(updated)
@@ -12941,7 +12934,7 @@ function setAdminAgendaTeam(team){
                 const lastInfo = ticketLastCommentInfo(t)
                 const roleIcon = String(t.assignedTo || "").toLowerCase() === myEmail ? "👑" : "🤝"
                 const timeInfo = ticketTimeSummary(t)
-                return `<tr onclick="openTicketDetailModal('${t.id}')" style="cursor:pointer">
+                return `<tr>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleIcon}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.id||"-")}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client||"-")}</td>
