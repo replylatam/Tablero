@@ -7617,6 +7617,8 @@ function closeConsultorSurveyModal(){
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
           
           ...(isAnalyst ? [{ icon: "🗂️", label: "Dailys", action: "setMainViewTab('dailys')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado de mis tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : [])
         ]},
@@ -7630,7 +7632,9 @@ function closeConsultorSurveyModal(){
           ...((currentRole === "consultor") ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          
+          ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
+          ...(isAnalyst ? [{ icon: "🏅", label: "Top Performer", action: "setMainViewTab('top_performer')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           
           ...(isAnalyst ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
@@ -9227,11 +9231,11 @@ function closeConsultorSurveyModal(){
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(t.client || "-")}</td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(resolveInformerEmail(t) || "-"))}</td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${roleTag}</td>
-            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><select style="margin:0;min-width:150px" class="${htmlEscape(String(t.status || ""))}" onchange="updateAnalystHoursLogStatus('${t.id}', this.value, event)">${statusOptions}</select></td>
-            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(startVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','startAt', this.value)"></td>
-            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" value="${htmlEscape(formatDateTimeLocalInput(endVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','endAt', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><select style="margin:0;min-width:130px;font-size:12px;padding:7px 8px" class="${htmlEscape(String(t.status || ""))}" onchange="updateAnalystHoursLogStatus('${t.id}', this.value, event)">${statusOptions}</select></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" style="max-width:160px;font-size:12px;padding:7px 8px" value="${htmlEscape(formatDateTimeLocalInput(startVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','startAt', this.value)"></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="datetime-local" style="max-width:160px;font-size:12px;padding:7px 8px" value="${htmlEscape(formatDateTimeLocalInput(endVal))}" onchange="updateAnalystHoursLogDraft('${t.id}','endAt', this.value)"></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(fmtMinutes(minutes))}</td>
-            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:6px;align-items:center"><input type="number" min="0" value="${htmlEscape(String((t.publicationCountByAnalyst || {})[emailKey(myEmail)] ?? 0))}" id="hours-publications-${t.id}" placeholder="Publicaciones" style="max-width:120px" oninput="updateTicketPublicationCountForCurrentAnalyst('${t.id}', this.value)"><button class="ghost" onclick="submitAnalystHoursLog('${t.id}')">Cargar</button></div></td>
+            <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><div class="inline" style="gap:4px;align-items:center;flex-wrap:nowrap"><input type="number" min="0" value="${htmlEscape(String((t.publicationCountByAnalyst || {})[emailKey(myEmail)] ?? 0))}" id="hours-publications-${t.id}" placeholder="Publ." style="max-width:72px;font-size:12px;padding:7px 8px" oninput="updateTicketPublicationCountForCurrentAnalyst('${t.id}', this.value)"><button class="ghost" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="submitAnalystHoursLog('${t.id}')">Guardar</button></div></td>
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(reasonVal)}" placeholder="Motivo de la carga" onchange="updateAnalystHoursLogDraft('${t.id}','reason', this.value)"></td>
           </tr>`
         }).join("")}
