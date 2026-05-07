@@ -3847,7 +3847,7 @@ Cliente B`)
       }
       const items = Object.entries(clientsObj)
         .filter(([key, c]) => {
-          if(String(c?.assignedConsultor || "").toLowerCase() !== me) return false
+          if(!(currentRole === "admin" && isAdminLevel3C()) && String(c?.assignedConsultor || "").toLowerCase() !== me) return false
           if(!query) return true
           return String(c?.name || key).toLowerCase().includes(query)
         })
@@ -3909,7 +3909,7 @@ Cliente B`)
           ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Riesgo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última actualización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días sin actualizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Actualización</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Ads</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Consultoría</th></tr></thead><tbody>${rows}</tbody></table></div>`
           : `<div class="small">No hay clientes asignados para la búsqueda indicada.</div>`
       }</div>`
-      const consultorSection = `<div class="card" style="padding:12px;margin-top:20px;border-top:1px solid var(--stroke)"><h4 style="margin:6px 0 8px">Cuentas asignadas a consultores</h4><div class="small" style="margin-bottom:8px">Vista general de la asignación de cuentas en el equipo.</div>${peersTable}</div>`
+      const consultorSection = `<div class="card" style="padding:12px;margin-top:20px;border-top:1px solid var(--stroke)"><h4 style="margin:6px 0 8px">Listado de clientes</h4><div class="small" style="margin-bottom:8px">Vista general de la asignación de cuentas en el equipo.</div>${peersTable}</div>`
       wrap.innerHTML = `${summaryCards}${riskSection}<div style="height:14px"></div>${consultorSection}`
     }
 
@@ -3992,7 +3992,7 @@ Cliente B`)
       const consultorBars = Object.entries(byConsultor).sort((a,b)=>b[1]-a[1]).map(([email,count]) => `<div><div class="small" style="display:flex;justify-content:space-between"><span>${htmlEscape(userDisplayNameByEmail(email)||email||"Sin consultor")}</span><strong>${count}</strong></div><div style="height:9px;background:rgba(148,163,184,.2);border-radius:999px;overflow:hidden"><div style="height:100%;width:${((count/max)*100).toFixed(2)}%;background:linear-gradient(90deg,#3d6ef5,#22d4bf)"></div></div></div>`).join("") || `<div class='small'>Sin datos.</div>`
       const prioBars = ["Alta","Media","Baja"].map(p => { const total=Math.max(1,open.length); const v=byPriority[p]||0; return `<div><div class="small" style="display:flex;justify-content:space-between"><span>${p}</span><strong>${v}</strong></div><div style="height:9px;background:rgba(148,163,184,.2);border-radius:999px;overflow:hidden"><div style="height:100%;width:${((v/total)*100).toFixed(2)}%;background:${p==='Alta'?'#e04040':p==='Media'?'#f0a030':'#22d4bf'}"></div></div></div>` }).join("")
       dashboardListCache.admin3c_risk_real = riskReal.map(([k,c]) => ({ id:k, title:String(c?.name||k), client:String(c?.name||k), consultor:userDisplayNameByEmail(String(c?.assignedConsultor||''))||String(c?.assignedConsultor||'Sin asignar') }))
-      wrap.innerHTML = `<div class='kpiGrid'><div class='kpi'><div class='label'>Tickets por consultor</div><div style='display:grid;gap:6px;margin-top:6px'>${consultorBars}</div></div><div class='kpi'><div class='label'>Tickets por prioridad</div><div style='display:grid;gap:6px;margin-top:6px'>${prioBars}</div></div><div class='kpi' style='cursor:pointer' onclick="showAdmin3CRiskRealDetail()"><div class='label'>Clientes en Riesgo real</div><div class='value'>${riskReal.length}</div><div class='small'>Click para ver clientes y consultor asignado</div></div></div>`
+      wrap.innerHTML = `<div class='kpiGrid'><div class='kpi'><div class='label'>Tickets por consultor</div><div style='display:grid;gap:6px;margin-top:6px'>${consultorBars}</div></div><div class='kpi'><div class='label'>Tickets por prioridad</div><div style='display:grid;gap:6px;margin-top:6px'>${prioBars}</div></div><div class='kpi' style='cursor:pointer' onclick="showAdmin3CRiskRealDetail()"><div class='label'>Clientes en Riesgo real</div><div class='value'>${riskReal.length}</div><div class='small'>Click para ver clientes y consultor asignado</div></div><div class='kpi' style='cursor:pointer' onclick="showAdmin3CRiskRealDetail()"><div class='label'>Cuentas con riesgo alto</div><div class='value'>${riskReal.length}</div><div class='small'>Mismo dato que riesgo real</div></div></div>`
     }
     function showAdmin3CRiskRealDetail(){
       const rows = dashboardListCache.admin3c_risk_real || []
@@ -7631,7 +7631,7 @@ function closeConsultorSurveyModal(){
           
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "📊", label: "Resumen general", action: "setMainViewTab('summary_general')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "👥", label: "Cartera de clientes", action: "setMainViewTab('portfolio')" }] : []),
-          ...(isAdmin3C ? [{ icon: "👥", label: "Cartera de consultores", action: "setMainViewTab('portfolio_overview')" }, { icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
+          ...(isAdmin3C ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "🗓️", label: "Agenda de hoy", action: "setMainViewTab('agenda_today')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "📚", label: "Lineamientos", action: "setMainViewTab('consultor_guidelines')" }] : []),
           ...((currentRole === "consultor") ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
@@ -7869,7 +7869,7 @@ function closeConsultorSurveyModal(){
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
-                     ${currentRole === "admin" ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}`
+                     ${(currentRole === "admin" && !isAdminLevel3C()) ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
