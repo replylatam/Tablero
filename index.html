@@ -9243,8 +9243,35 @@ function closeConsultorSurveyModal(){
         </tbody></table></div>
         <div class="card" style="padding:10px;margin-top:12px">
           <h4 style="margin:0 0 8px">Comentarios unificados</h4>
-          ${unifiedRows.length ? unifiedRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Responder desde ticket</button></div></div>`).join("") : `<div class="small">No hay comentarios recientes para tus tickets activos.</div>`}
+          ${unifiedRows.length ? unifiedRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><input id="analystUnifiedReply_${emailKey(row.ticket.id || "")}" placeholder="Responder comentario..."><button class="ghost" onclick="replyUnifiedAnalystComment('${row.ticket.id || ""}')">Responder</button><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Abrir ticket</button></div></div>`).join("") : `<div class="small">No hay comentarios recientes para tus tickets activos.</div>`}
         </div>`
+    }
+
+    async function replyUnifiedAnalystComment(ticketId){
+      if(currentRole !== "analista") return
+      const input = document.getElementById(`analystUnifiedReply_${emailKey(ticketId || "")}`)
+      const message = String(input?.value || "").trim()
+      if(!message) return alert("Escribí una respuesta antes de enviar.")
+      const ticket = (cachedTickets || []).find(t => String(t.id || "") === String(ticketId || ""))
+      if(!ticket) return
+      const comments = parseCommentsValue(ticket.comments)
+      const id = generateId()
+      comments[id] = {
+        id,
+        author: String(currentUser?.email || "").toLowerCase(),
+        role: "analista",
+        message,
+        messageHtml: htmlEscape(message).replace(/\n/g, "<br>"),
+        createdAt: new Date().toISOString()
+      }
+      const updated = { ...ticket, comments, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() }
+      await db.ref("tickets").child(ticket.dbKey || emailKey(ticket.id)).update(updated)
+      mirrorToSheet("updateTicket", { id: ticket.id, ...updated })
+      const ix = cachedTickets.findIndex(t => String(t.id || "") === String(ticketId || ""))
+      if(ix >= 0) cachedTickets[ix] = updated
+      if(input) input.value = ""
+      showToast("Respuesta enviada.", "ok", 1200)
+      await loadAnalystHoursLog()
     }
 
     async function updateAnalystHoursLogStatus(ticketId, nextStatus, ev){
