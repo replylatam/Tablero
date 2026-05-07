@@ -3778,6 +3778,21 @@ Cliente B`)
       loadClientsAdmin()
     }
 
+    async function updateClientDedicationFromPortfolio(clientKey, value){
+      if(!(currentRole === "consultor" || (currentRole === "admin" && isAdminLevel3C()))) return
+      const normalizedValue = String(value ?? "").trim().replace(",", ".")
+      const pct = Math.max(0, Math.min(100, Number(normalizedValue || 0)))
+      if(!Number.isFinite(pct)) return
+      const client = (await db.ref("clients").child(String(clientKey || "")).once("value")).val() || {}
+      if(currentRole === "consultor"){
+        const me = String(currentUser?.email || "").toLowerCase()
+        if(String(client?.assignedConsultor || "").toLowerCase() !== me) return alert("Solo podés editar dedicación de tus clientes asignados.")
+      }
+      await db.ref("clients").child(String(clientKey || "")).update({ dedicationPct: pct, dedicationUpdatedAt: new Date().toISOString(), dedicationUpdatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Dedicación guardada.", "ok", 1000)
+      loadConsultorPortfolio()
+    }
+
     function portfolioRiskLabel(level){
       const key = String(level || "").toLowerCase()
       if(key === "bajo_control") return "🟢 Cuenta bajo control"
@@ -3839,12 +3854,6 @@ Cliente B`)
       const users = Object.values((await db.ref("users_by_email").once("value")).val() || {})
       const consultors = users.filter(u => String(u?.role||"").toLowerCase() === "consultor" && u?.active !== false)
       const query = String(consultorPortfolioSearch || "").trim().toLowerCase()
-      const assignSelect = document.getElementById("consultorAssignClientSelect")
-      if(assignSelect){
-        const allClients = Object.entries(clientsObj)
-          .sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
-        assignSelect.innerHTML = `<option value="">Seleccionar cliente</option>${allClients.map(([key, c]) => `<option value="${htmlEscape(key)}">${htmlEscape(String(c?.name || key))}</option>`).join("")}`
-      }
       const items = Object.entries(clientsObj)
         .filter(([key, c]) => {
           if(!(currentRole === "admin" && isAdminLevel3C()) && String(c?.assignedConsultor || "").toLowerCase() !== me) return false
@@ -3895,9 +3904,9 @@ Cliente B`)
       const clientsByConsultor = Object.fromEntries(consultors.map(c => [String(c.email||"").toLowerCase(), []]))
       Object.entries(clientsObj).forEach(([key,c]) => {
         const owner = String(c?.assignedConsultor || "").toLowerCase()
-        if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push(String(c?.name || key))
+        if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push({ key, name: String(c?.name || key), dedicationPct: Number(c?.dedicationPct || 0) })
       })
-      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(name => `• ${htmlEscape(name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td></tr>` }).join("")}</tbody></table></div>`
+      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% dedicación</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(item => `• ${htmlEscape(item.name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(item => `• ${htmlEscape(item.name)} <input type="text" inputmode="decimal" pattern="^\\d{1,3}([\\.,]\\d{1,2})?$" value="${Number.isFinite(item.dedicationPct) ? item.dedicationPct : 0}" ${!(currentRole === "admin" && isAdminLevel3C()) && String(currentUser?.email||"").toLowerCase() !== key ? "disabled" : ""} style="width:86px;margin-left:6px" onblur="updateClientDedicationFromPortfolio('${item.key}', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"> %`).join("<br>") : `<span class=\"small\">-</span>`}</td></tr>` }).join("")}</tbody></table></div>`
       const summaryCards = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:12px">
         <div class="kpi"><div class="label">🟢 Bajo control</div><div class="value">${riskSummary.bajo}</div></div>
         <div class="kpi"><div class="label">🟡 Atención preventiva</div><div class="value">${riskSummary.preventiva}</div></div>
@@ -3909,8 +3918,14 @@ Cliente B`)
           ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Riesgo</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Última actualización</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Fecha próxima acción</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Días sin actualizar</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Actualización</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Ads</th><th style="text-align:center;padding:8px;border-bottom:1px solid var(--stroke)">Grant Consultoría</th></tr></thead><tbody>${rows}</tbody></table></div>`
           : `<div class="small">No hay clientes asignados para la búsqueda indicada.</div>`
       }</div>`
+      const assignControlsSection = `<div class="card" style="padding:12px;margin-top:12px"><div class="row"><div><label>Cuentas asignadas a consultores</label><div class="inline"><select id="consultorAssignClientSelect"><option value="">Seleccionar cliente</option></select><button onclick="saveConsultorClient(this)">Asignar cliente</button></div></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div></div></div>`
       const consultorSection = `<div class="card" style="padding:12px;margin-top:20px;border-top:1px solid var(--stroke)"><h4 style="margin:6px 0 8px">Listado de clientes</h4><div class="small" style="margin-bottom:8px">Vista general de la asignación de cuentas en el equipo.</div>${peersTable}</div>`
-      wrap.innerHTML = `${summaryCards}${riskSection}<div style="height:14px"></div>${consultorSection}`
+      wrap.innerHTML = `${summaryCards}${riskSection}${assignControlsSection}<div style="height:14px"></div>${consultorSection}`
+      const assignSelect = document.getElementById("consultorAssignClientSelect")
+      if(assignSelect){
+        const allClients = Object.entries(clientsObj).sort((a,b) => String(a?.[1]?.name || a?.[0] || "").localeCompare(String(b?.[1]?.name || b?.[0] || ""), "es"))
+        assignSelect.innerHTML = `<option value="">Seleccionar cliente</option>${allClients.map(([key, c]) => `<option value="${htmlEscape(key)}">${htmlEscape(String(c?.name || key))}</option>`).join("")}`
+      }
     }
 
     function openConsultorSummaryDetail(kind){
@@ -6487,7 +6502,7 @@ function closeConsultorSurveyModal(){
         currentUser = { email: user.email, adminLevel: Number(user.adminLevel || normalizedLoginRole.adminLevel) || null }
         currentRole = normalizedLoginRole.role
         if(currentRole === "admin" && Number(currentUser?.adminLevel || 0) === 3){
-          mainViewTab = "summary_general"
+          mainViewTab = "tickets"
           adminPanelTab = "panel"
         }
         persistSession()
@@ -7725,7 +7740,7 @@ function closeConsultorSurveyModal(){
         ` : showConsultorTodayAgenda ? `
           <div class="card"><h3 style="margin-top:0">Agenda de hoy</h3><div class="small" style="margin-bottom:8px">Tickets creados por vos y planificados para hoy en la agenda operativa del analista.</div><div id="consultorTodayAgendaList" class="small"></div></div>
         ` : showConsultorPortfolio ? `
-          <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná clientes del listado general para sumarlos a tu cartera y actualizá su riesgo operativo.</div><div class="row"><div><label>Nuevos clientes</label><div class="inline"><input id="consultorClientNewName" placeholder="Escribí un cliente nuevo"><button class="ghost" onclick="saveClient(this,'consultor')">Guardar</button></div></div><div><label>Cuentas asignadas a consultores</label><div class="inline"><select id="consultorAssignClientSelect"><option value=\"\">Seleccionar cliente</option></select><button onclick="saveConsultorClient(this)">Asignar cliente</button></div></div><div><label>Buscar cliente</label><input placeholder="Buscar..." value="${htmlEscape(consultorPortfolioSearch)}" oninput="setConsultorPortfolioSearch(this.value)"></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
+          <div class="card"><h3 style="margin-top:0">Cartera de clientes</h3><div class="small" style="margin-bottom:8px">Seleccioná clientes del listado general para sumarlos a tu cartera y actualizá su riesgo operativo.</div><div class="row"><div><label>Nuevos clientes</label><div class="inline"><input id="consultorClientNewName" placeholder="Escribí un cliente nuevo"><button class="ghost" onclick="saveClient(this,'consultor')">Guardar</button></div></div></div><div id="consultorPortfolioList" style="margin-top:10px"></div></div>
         ` : showConsultorSummary ? `
           <div class="card"><h3 style="margin-top:0">Resumen general</h3><div id="consultorGeneralSummary" class="small"></div></div>
         ` : showConsultorProfile ? `
@@ -7869,7 +7884,8 @@ function closeConsultorSurveyModal(){
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
-                     ${(currentRole === "admin" && !isAdminLevel3C()) ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}`
+                     ${(currentRole === "admin" && !isAdminLevel3C()) ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}
+                     ${(currentRole === "admin" && isAdminLevel3C()) ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('admin3c_risk_real')"><div class="label">Clientes en Riesgo real</div><div class="value" id="kpiAdmin3CRiskReal">-</div><div class="small">Click para ver detalle</div></div>` : ""}`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
@@ -12219,9 +12235,9 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
 
       wrap.innerHTML = `
         ${renderDailyWeekStrip('analyst', selectedDate, 'setDailyReferenteDate', false)}
-        <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar información al Team Leader." : "Vista analista: ves los registros de tu grupo."}</div>
+        <div class="small" style="margin-bottom:8px">${isReferente ? "Vista referente: podés cargar observaciones y elevar información al Team Leader." : "Vista analista: misma visual del referente en modo solo lectura."}</div>
         <div class="agendaSection"><h4 style="margin-bottom:8px">Miembros del equipo</h4><div class="dailyMemberGrid">${memberCards}</div></div>
-        ${isReferente ? (selectedAnalystSection || `<div class="agendaSection"><div class="small">Seleccioná un analista para ver su información.</div></div>`) : `<div style="overflow:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Ticket</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Cliente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Título</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Comentario agenda</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Observaciones referente</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Estado</th></tr></thead><tbody>${scopedRows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(r.analystEmail || "") || r.analystEmail || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.ticketId || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.client || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.title || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.agendaComment || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.referenteObservation || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(r.status || "draft")}</td></tr>`).join("") || `<tr><td colspan="7" class="small" style="padding:8px">Sin filas para tu grupo.</td></tr>`}</tbody></table></div>`}
+        <div style="${isReferente ? "" : "pointer-events:none;opacity:.85;"}">${selectedAnalystSection || `<div class="agendaSection"><div class="small">Seleccioná un analista para ver su información.</div></div>`}</div>
         ${isReferente ? `<div class="agendaSection"><h4 style="margin-bottom:8px">No se cumplió con la planificación</h4>${noPlanYesterday.length ? noPlanYesterday.map(issue => `<div class="feedItem"><div class="feedType">${htmlEscape(issue.ticketId || '-')}</div><div class="small">${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')} · ${htmlEscape(issue.problemDescription || 'Marcado como no trabajado')}</div></div>`).join('') : `<div class="small">No hay tareas marcadas como no trabajadas ayer.</div>`}</div><div class="agendaSection"><h4 style="margin-bottom:8px">Pendientes por elevar / no solucionados</h4>${pendingIssues.length ? pendingIssues.map(issue => { const solveInputId = `pendingSolve_${emailKey(issue.analystEmail || '')}_${String(issue.date || '').replaceAll('-','')}_${emailKey(issue.ticketId || '')}`; return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(issue.ticketId || '-') } · ${htmlEscape(userDisplayNameByEmail(issue.analystEmail || '') || issue.analystEmail || '-')}</div><div class="feedMeta">${htmlEscape(formatDateDMY(issue.date || todayIso))} · Escalar a: ${htmlEscape(issue.escalateTo || '-')}</div></div><span class="badge ${issue.solved ? 'ok' : 'off'}">${issue.solved ? 'Solucionado' : 'Pendiente'}</span></div><div>${htmlEscape(issue.problemDescription || 'Sin descripción')}</div><div class="inline" style="margin-top:6px"><input id="${solveInputId}" value="${htmlEscape(issue.solutionDetail || '')}" placeholder="Detalle de solución"><button class="ghost" onclick="solveDailyIssueFromPending('${String(issue.analystEmail || '').toLowerCase()}','${issue.date || ''}','${issue.ticketId || ''}')">Marcar solucionado</button></div></div>` }).join('') : `<div class="small">No hay pendientes abiertos.</div>`}</div>` : ""}
       `
     }
@@ -13432,8 +13448,10 @@ function setAdminAgendaTeam(team){
         analyst_near_deadline: "Mis tickets a 3 días de deadline",
         analyst_unread: "Mis tickets con comentarios sin leer",
         analyst_planned_today: "Mis tickets asignados para hoy",
-        analyst_unassigned: "Tickets sin asignar"
+        analyst_unassigned: "Tickets sin asignar",
+        admin3c_risk_real: "Clientes en Riesgo real"
       }
+      if(type === "admin3c_risk_real") return showAdmin3CRiskRealDetail()
       const label = map[type] || "Tickets"
       renderDashboardList(label, dashboardListCache[type] || [], "dashboardListModalContent")
       const title = document.getElementById("dashboardListModalTitle")
@@ -13491,6 +13509,7 @@ function setAdminAgendaTeam(team){
         const kpiNearDeadline = document.getElementById("kpiNearDeadline")
         const kpiPendingMessages = document.getElementById("kpiPendingMessages")
         const kpiImportantComments = document.getElementById("kpiImportantComments")
+        const kpiAdmin3CRiskReal = document.getElementById("kpiAdmin3CRiskReal")
         if(kpiUnassigned) kpiUnassigned.innerText = unassignedTickets.length
         if(kpiDoing) kpiDoing.innerText = doingTickets.length
         if(kpiProblems) kpiProblems.innerText = problemTickets.length
@@ -13498,6 +13517,12 @@ function setAdminAgendaTeam(team){
         if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
         if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
         if(kpiImportantComments) kpiImportantComments.innerText = importantCommentTickets.length
+        if(currentRole === "admin" && isAdminLevel3C()){
+          const clientsObj = (await db.ref("clients").once("value")).val() || {}
+          const riskRealRows = Object.entries(clientsObj).filter(([_,c]) => String(c?.riskLevel || "") === "riesgo_real")
+          dashboardListCache.admin3c_risk_real = riskRealRows.map(([k,c]) => ({ id:k, client:String(c?.name||k), consultor:userDisplayNameByEmail(String(c?.assignedConsultor||'')) || String(c?.assignedConsultor||'Sin asignar') }))
+          if(kpiAdmin3CRiskReal) kpiAdmin3CRiskReal.innerText = riskRealRows.length
+        }
         if(currentRole === "admin" && isAdminLevel3C() && mainViewTab === "summary_general"){
           await loadAdmin3CSummaryDashboard()
           return
@@ -13864,7 +13889,7 @@ function setAdminAgendaTeam(team){
             currentUser = { email: user.email, adminLevel: Number(user.adminLevel || normalizedSavedRole.adminLevel) || null }
             currentRole = normalizedSavedRole.role
             if(currentRole === "admin" && Number(currentUser?.adminLevel || 0) === 3){
-              mainViewTab = "summary_general"
+              mainViewTab = "tickets"
               adminPanelTab = "panel"
             }
             persistSession()
