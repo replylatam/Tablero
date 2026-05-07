@@ -3778,6 +3778,20 @@ Cliente B`)
       loadClientsAdmin()
     }
 
+    async function updateClientDedicationFromPortfolio(clientKey, value){
+      if(!(currentRole === "consultor" || (currentRole === "admin" && isAdminLevel3C()))) return
+      const pct = Math.max(0, Math.min(100, Number(value || 0)))
+      if(!Number.isFinite(pct)) return
+      const client = (await db.ref("clients").child(String(clientKey || "")).once("value")).val() || {}
+      if(currentRole === "consultor"){
+        const me = String(currentUser?.email || "").toLowerCase()
+        if(String(client?.assignedConsultor || "").toLowerCase() !== me) return alert("Solo podés editar dedicación de tus clientes asignados.")
+      }
+      await db.ref("clients").child(String(clientKey || "")).update({ dedicationPct: pct, dedicationUpdatedAt: new Date().toISOString(), dedicationUpdatedBy: String(currentUser?.email || "").toLowerCase() })
+      showToast("Dedicación guardada.", "ok", 1000)
+      loadConsultorPortfolio()
+    }
+
     function portfolioRiskLabel(level){
       const key = String(level || "").toLowerCase()
       if(key === "bajo_control") return "🟢 Cuenta bajo control"
@@ -3889,9 +3903,9 @@ Cliente B`)
       const clientsByConsultor = Object.fromEntries(consultors.map(c => [String(c.email||"").toLowerCase(), []]))
       Object.entries(clientsObj).forEach(([key,c]) => {
         const owner = String(c?.assignedConsultor || "").toLowerCase()
-        if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push(String(c?.name || key))
+        if(owner && clientsByConsultor[owner]) clientsByConsultor[owner].push({ key, name: String(c?.name || key), dedicationPct: Number(c?.dedicationPct || 0) })
       })
-      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Dedicación (consultor/admin 3C)</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; const dedication = list.map(name => `• ${htmlEscape(name)}: 50% / 50%`).join("<br>"); return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(name => `• ${htmlEscape(name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? dedication : `<span class=\"small\">-</span>`}</td></tr>` }).join("")}</tbody></table></div>`
+      const peersTable = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Consultor</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Clientes asignados</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">% dedicación</th></tr></thead><tbody>${consultors.map(con => { const key = String(con.email||"").toLowerCase(); const list = clientsByConsultor[key] || []; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(userDisplayNameByEmail(con.email || "") || con.email || "-")}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(item => `• ${htmlEscape(item.name)}`).join("<br>") : `<span class=\"small\">Sin clientes asignados</span>`}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${list.length ? list.map(item => `• ${htmlEscape(item.name)} <input type="number" min="0" max="100" value="${Number.isFinite(item.dedicationPct) ? item.dedicationPct : 0}" ${!(currentRole === "admin" && isAdminLevel3C()) && String(currentUser?.email||"").toLowerCase() !== key ? "disabled" : ""} style="width:86px;margin-left:6px" onchange="updateClientDedicationFromPortfolio('${item.key}', this.value)"> %`).join("<br>") : `<span class=\"small\">-</span>`}</td></tr>` }).join("")}</tbody></table></div>`
       const summaryCards = `<div class="kpiGrid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:12px">
         <div class="kpi"><div class="label">🟢 Bajo control</div><div class="value">${riskSummary.bajo}</div></div>
         <div class="kpi"><div class="label">🟡 Atención preventiva</div><div class="value">${riskSummary.preventiva}</div></div>
@@ -7869,7 +7883,8 @@ function closeConsultorSurveyModal(){
                   ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('urgent')"><div class="label">Urgentes</div><div class="value" id="kpiUrgent">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Con problemas</div><div class="value" id="kpiProblems">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('near_deadline')"><div class="label">A 3 días de deadline</div><div class="value" id="kpiNearDeadline">-</div></div>
-                     ${(currentRole === "admin" && !isAdminLevel3C()) ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}`
+                     ${(currentRole === "admin" && !isAdminLevel3C()) ? `<div class="kpi kpiControl"><div class="label">Período dashboard</div><div class="inline"><input id="adminChartMonth" type="month" onchange="loadDashboard()"><button class="ghost" onclick="loadDashboard()">Actualizar</button></div></div><div class="kpi" style="cursor:pointer" onclick="openAdminReassignWindowModal()"><div class="label">Recomendación de reasignación</div><div class="value" id="adminReassignSummary">-</div><div class="small">Abrir análisis en ventana</div></div>` : ""}
+                     ${(currentRole === "admin" && isAdminLevel3C()) ? `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('admin3c_risk_real')"><div class="label">Clientes en Riesgo real</div><div class="value" id="kpiAdmin3CRiskReal">-</div><div class="small">Click para ver detalle</div></div>` : ""}`
                   : `<div class="kpi" style="cursor:pointer" onclick="showDashboardList('unassigned')"><div class="label">Pendientes por asignar</div><div class="value" id="kpiUnassigned">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('doing')"><div class="label">En curso</div><div class="value" id="kpiDoing">-</div></div>
                      <div class="kpi" style="cursor:pointer" onclick="showDashboardList('problems')"><div class="label">Tickets con problemas</div><div class="value" id="kpiProblems">-</div></div>
@@ -13432,8 +13447,10 @@ function setAdminAgendaTeam(team){
         analyst_near_deadline: "Mis tickets a 3 días de deadline",
         analyst_unread: "Mis tickets con comentarios sin leer",
         analyst_planned_today: "Mis tickets asignados para hoy",
-        analyst_unassigned: "Tickets sin asignar"
+        analyst_unassigned: "Tickets sin asignar",
+        admin3c_risk_real: "Clientes en Riesgo real"
       }
+      if(type === "admin3c_risk_real") return showAdmin3CRiskRealDetail()
       const label = map[type] || "Tickets"
       renderDashboardList(label, dashboardListCache[type] || [], "dashboardListModalContent")
       const title = document.getElementById("dashboardListModalTitle")
@@ -13491,6 +13508,7 @@ function setAdminAgendaTeam(team){
         const kpiNearDeadline = document.getElementById("kpiNearDeadline")
         const kpiPendingMessages = document.getElementById("kpiPendingMessages")
         const kpiImportantComments = document.getElementById("kpiImportantComments")
+        const kpiAdmin3CRiskReal = document.getElementById("kpiAdmin3CRiskReal")
         if(kpiUnassigned) kpiUnassigned.innerText = unassignedTickets.length
         if(kpiDoing) kpiDoing.innerText = doingTickets.length
         if(kpiProblems) kpiProblems.innerText = problemTickets.length
@@ -13498,6 +13516,12 @@ function setAdminAgendaTeam(team){
         if(kpiNearDeadline) kpiNearDeadline.innerText = nearDeadlineTickets.length
         if(kpiPendingMessages) kpiPendingMessages.innerText = pendingMessageTickets.length
         if(kpiImportantComments) kpiImportantComments.innerText = importantCommentTickets.length
+        if(currentRole === "admin" && isAdminLevel3C()){
+          const clientsObj = (await db.ref("clients").once("value")).val() || {}
+          const riskRealRows = Object.entries(clientsObj).filter(([_,c]) => String(c?.riskLevel || "") === "riesgo_real")
+          dashboardListCache.admin3c_risk_real = riskRealRows.map(([k,c]) => ({ id:k, client:String(c?.name||k), consultor:userDisplayNameByEmail(String(c?.assignedConsultor||'')) || String(c?.assignedConsultor||'Sin asignar') }))
+          if(kpiAdmin3CRiskReal) kpiAdmin3CRiskReal.innerText = riskRealRows.length
+        }
         if(currentRole === "admin" && isAdminLevel3C() && mainViewTab === "summary_general"){
           await loadAdmin3CSummaryDashboard()
           return
