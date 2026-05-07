@@ -7617,7 +7617,7 @@ function closeConsultorSurveyModal(){
           { icon: "🎫", label: "Tickets", action: "setMainViewTab('tickets')" },
           
           ...(isAnalyst ? [{ icon: "🗂️", label: "Dailys", action: "setMainViewTab('dailys')" }] : []),
-          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystPanelTab('agenda')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗓️", label: "Mi agenda", action: "setAnalystTab('agenda')" }] : []),
           ...(isAnalyst ? [{ icon: "💾", label: "Guardados", action: "setMainViewTab('saved')" }] : []),
           ...(isAnalyst ? [{ icon: "📋", label: "Estado de mis tickets", action: "setMainViewTab('my_ticket_status')" }] : []),
           ...(["analista","consultor"].includes(currentRole) ? [{ icon: "🤝", label: "Encuentro", action: "setMainViewTab('encuentro')" }] : [])
@@ -7632,8 +7632,8 @@ function closeConsultorSurveyModal(){
           ...((currentRole === "consultor") ? [{ icon: "🛟", label: "Soporte", action: "setMainViewTab('support')" }] : []),
           ...((currentRole === "consultor" || isAdmin3C) ? [{ icon: "⚙️", label: "Configuración", action: "setMainViewTab('profile')" }] : []),
           ...(isAnalyst ? [{ icon: "📈", label: "Calidad", action: "setMainViewTab('quality_results')" }] : []),
-          ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystPanelTab('guidelines')" }] : []),
-          ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystPanelTab('manuals')" }] : []),
+          ...(isAnalyst ? [{ icon: "📚", label: "Lineamientos", action: "setAnalystTab('guidelines')" }] : []),
+          ...(isAnalyst ? [{ icon: "🗂️", label: "Manuales", action: "setAnalystTab('manuals')" }] : []),
           ...(isAnalyst ? [{ icon: "🏅", label: "Top Performer", action: "setMainViewTab('top_performer')" }] : []),
           ...(isAnalyst ? [{ icon: "⏱️", label: "Registro de horas", action: "setMainViewTab('registro_horas')" }] : []),
           
