@@ -9004,13 +9004,7 @@ function closeConsultorSurveyModal(){
         return "Revisá consistencia de ejecución, tiempos de respuesta y calidad de cierre."
       }
       wrap.innerHTML = rows.map(row => {
-        const byAnswer = {}
-        mine.forEach(s => {
-          const key = String(row.answer(s) || "-")
-          byAnswer[key] = (byAnswer[key] || 0) + 1
-        })
-        const answers = Object.entries(byAnswer).sort((a,b)=>b[1]-a[1])
-        return `<div class="feedItem"><div class="feedTop"><div class="feedType">${htmlEscape(row.label)}</div><div class="badge ok">Promedio ${row.score.toFixed(2)} / 10</div></div><div class="feedMeta">${answers.map(([answer,count]) => `${htmlEscape(answer)}: ${count}`).join(" · ")}</div><div class="small" style="margin-top:6px">💡 Consejo: ${htmlEscape(buildAdvice(row.label, row.score))}</div></div>`
+        return `<div class="feedItem"><div class="feedTop"><div class="feedType">${htmlEscape(row.label)}</div><div class="badge ok">Promedio ${row.score.toFixed(2)} / 10</div></div><div class="small" style="margin-top:6px">💡 Consejo: ${htmlEscape(buildAdvice(row.label, row.score))}</div></div>`
       }).join("")
     }
 
@@ -9202,6 +9196,13 @@ function closeConsultorSurveyModal(){
         return
       }
 
+      const unifiedRows = tickets.map(t => {
+        const comments = Object.values(parseCommentsValue(t.comments) || {})
+          .filter(c => String(c?.author || "").toLowerCase() !== myEmail)
+          .sort((a,b)=>new Date(b?.createdAt||0)-new Date(a?.createdAt||0))
+        return { ticket: t, last: comments[0] || null }
+      }).filter(r => r.last)
+
       wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
         <thead><tr>
           <th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Número</th>
@@ -9239,7 +9240,11 @@ function closeConsultorSurveyModal(){
             <td style="padding:8px;border-bottom:1px solid var(--stroke-2)" onclick="event.stopPropagation()"><input type="text" value="${htmlEscape(reasonVal)}" placeholder="Motivo de la carga" onchange="updateAnalystHoursLogDraft('${t.id}','reason', this.value)"></td>
           </tr>`
         }).join("")}
-        </tbody></table></div>`
+        </tbody></table></div>
+        <div class="card" style="padding:10px;margin-top:12px">
+          <h4 style="margin:0 0 8px">Comentarios unificados</h4>
+          ${unifiedRows.length ? unifiedRows.map(row => `<div class="feedItem"><div class="feedType">${htmlEscape(row.ticket.id || "-")} · ${htmlEscape(row.ticket.title || "-")}</div><div class="feedMeta">${htmlEscape(userDisplayNameByEmail(row.last.author || "-"))} · ${htmlEscape(formatDateTime24(row.last.createdAt || ""))}</div><div style="margin-top:6px">${htmlEscape(commentPlainTextFromHtml(row.last.messageHtml || row.last.message || ""))}</div><div class="inline" style="margin-top:8px"><button class="ghost" onclick="openTicketDetailModal('${row.ticket.id || ""}','comments')">Responder desde ticket</button></div></div>`).join("") : `<div class="small">No hay comentarios recientes para tus tickets activos.</div>`}
+        </div>`
     }
 
     async function updateAnalystHoursLogStatus(ticketId, nextStatus, ev){
@@ -10309,7 +10314,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       }).join('') : '<div class="small">Todavía no hay tiempos cargados.</div>'
       const entriesHtml = entries.length ? entries.map((e, ix) => {
         const entryKey = String(e.id || `${e.createdAt||e.loggedDate||""}_${e.analyst||""}_${ix}`)
-        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(e.loggedDate||'-')} ${e.note ? `· ${htmlEscape(e.note)}` : ""}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong><span class="small">Publ.: ${Number(e.publications||0)}</span>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="editTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Editar</button><button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
+        return `<div class="feedItem"><div class="inline" style="justify-content:space-between;gap:8px"><div><strong>${htmlEscape(userDisplayNameByEmail(e.analyst||'-'))}</strong><div class="small">${htmlEscape(formatDateTime24(e.loggedDate||e.createdAt||'' )||'-')} ${e.note ? `· ${htmlEscape(e.note)}` : ""}</div></div><div class="inline" style="gap:6px"><strong>${Number(e.hours||0).toFixed(2)} h</strong><span class="small">Publ.: ${Number(e.publications||0)}</span>${(currentRole === "admin" || currentRole === "analista") ? `<button class="ghost" onclick="editTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Editar</button><button class="ghost" onclick="removeTimeEntry('${ticketId}','${selectedMonth}','${htmlEscape(entryKey)}')">Eliminar</button>` : ""}</div></div></div>`
       }).join("") : '<div class="small">Sin tiempos cargados en esta carpeta.</div>'
 
       return `<div>
@@ -11835,7 +11840,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
 
     async function saveDailyIssueField(analystEmail, dateIso, ticketId, field, rawValue){
       if(currentRole !== 'analista') return
-      const allowed = new Set(["hadProblem","problemDescription","escalateTo","escalated","solved","solutionDetail"])
+      const allowed = new Set(["workedYesterday","hadProblem","problemDescription","escalateTo","escalated","solved","solutionDetail"])
       if(!allowed.has(String(field || ""))) return
       const referenteKey = emailKey(currentUser?.email || "")
       const analystKey = emailKey(analystEmail || "")
@@ -11843,7 +11848,7 @@ function getVisibleTicketsForCurrentView(data, includeSearch = true){
       const ticketKey = emailKey(ticketId || "")
       const ref = db.ref("daily_issue_tracking").child(referenteKey).child(analystKey).child(dateKey).child(ticketKey)
       const current = (await ref.once("value")).val() || {}
-      const value = (field === "hadProblem" || field === "escalated" || field === "solved") ? !!rawValue : String(rawValue || "")
+      const value = (field === "workedYesterday" || field === "hadProblem" || field === "escalated" || field === "solved") ? !!rawValue : String(rawValue || "")
       await ref.set({ ...current, analystEmail: String(analystEmail || "").toLowerCase(), ticketId: String(ticketId || ""), date: dateKey, [field]: value, updatedAt: new Date().toISOString(), updatedBy: String(currentUser?.email || "").toLowerCase() })
     }
 
