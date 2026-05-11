@@ -2068,6 +2068,7 @@
       }
       if(adminPanelTab === tab && mainViewTab === "tickets") return
       adminPanelTab = tab
+      if(tab === "capacity") adminCapacityViewMode = "cards"
       if(tab !== "guidelines" && tab !== "continuous_improvement") adminGuidelinesClient = ""
       if(tab === "continuous_improvement" && !["guidelines","manuals","internal_quality"].includes(adminContinuousTab)) adminContinuousTab = "guidelines"
       mainViewTab = "tickets"
