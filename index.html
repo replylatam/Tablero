@@ -1756,6 +1756,8 @@
     var adminCapacityClientFilter = ""
     var adminCapacityExpandedClients = {}
     var adminCapacityViewMode = "cards"
+    var adminCapacityAnalystTimeViewEmail = ""
+    var adminCapacityAnalystTimeMetric = "hours"
     var adminCapacityProjectionRows = []
     var adminCapacityProjectionMeta = {}
     var adminCapacityProjectionLeavers = 0
@@ -4179,7 +4181,17 @@ Cliente B`)
     }
 
     function setAdminCapacityViewMode(mode){
-      adminCapacityViewMode = mode === "chart" || mode === "projections" || mode === "microservices" ? mode : "cards"
+      adminCapacityViewMode = mode === "chart" || mode === "projections" || mode === "microservices" || mode === "analyst_times" ? mode : "cards"
+      loadAdminHoursTable()
+    }
+
+    function setAdminCapacityAnalystTimeViewEmail(value){
+      adminCapacityAnalystTimeViewEmail = String(value || "").toLowerCase()
+      loadAdminHoursTable()
+    }
+
+    function setAdminCapacityAnalystTimeMetric(value){
+      adminCapacityAnalystTimeMetric = value === "percentage" ? "percentage" : "hours"
       loadAdminHoursTable()
     }
 
@@ -4902,11 +4914,30 @@ Cliente B`)
           microservicesMap[microservice].hours += entries.reduce((acc,e)=> acc + (Number(e?.minutes || Number(e?.hours || 0) * 60 || 0) / 60), 0)
         })
         const microserviceRows = Object.entries(microservicesMap).sort((a,b)=>b[1].hours-a[1].hours)
-        const microservicesHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Microservicios</h4><div class="small" style="margin-bottom:8px">Listado de tareas por microservicio y tiempo promedio diario/mensual del período.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Microservicio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio diario (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio mensual (h)</th></tr></thead><tbody>${microserviceRows.length ? microserviceRows.map(([name, data]) => { const dailyAvg = Number(daysElapsed || 1) > 0 ? data.hours / Number(daysElapsed || 1) : 0; const monthlyAvg = data.tasks > 0 ? data.hours / data.tasks : 0; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(name)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${data.tasks}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${dailyAvg.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${monthlyAvg.toFixed(2)}</td></tr>` }).join("") : `<tr><td colspan="4" class="small" style="padding:8px">Sin información de microservicios para el período.</td></tr>`}</tbody></table></div></div>`
-        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button><button class="${adminCapacityViewMode==='projections'?'':'ghost'}" onclick="setAdminCapacityViewMode('projections')">Proyecciones</button><button class="${adminCapacityViewMode==='microservices'?'':'ghost'}" onclick="setAdminCapacityViewMode('microservices')">Microservicios</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : (adminCapacityViewMode==='projections' ? projectionsHtml : (adminCapacityViewMode==='microservices' ? microservicesHtml : cardsHtml))}`
+        const microservicesHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Microservicios</h4><div class="small" style="margin-bottom:8px">Listado del mes en curso con cantidad de tareas y horas cargadas por microservicio.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Microservicio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Tareas</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio diario (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Promedio por tarea (h)</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Horas totales mes (h)</th></tr></thead><tbody>${microserviceRows.length ? microserviceRows.map(([name, data]) => { const dailyAvg = Number(daysElapsed || 1) > 0 ? data.hours / Number(daysElapsed || 1) : 0; const taskAvg = data.tasks > 0 ? data.hours / data.tasks : 0; return `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(name)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${data.tasks}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${dailyAvg.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${taskAvg.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${data.hours.toFixed(2)}</td></tr>` }).join("") : `<tr><td colspan="5" class="small" style="padding:8px">Sin información de microservicios para el período.</td></tr>`}</tbody></table></div></div>`
+        const analystTimeOptions = visibleAnalysts.map(u => ({ email: String(u?.email || "").toLowerCase(), label: userDisplayNameByEmail(String(u?.email || "").toLowerCase()) || String(u?.email || "").toLowerCase() }))
+        if(!adminCapacityAnalystTimeViewEmail || !analystTimeOptions.some(opt => opt.email === adminCapacityAnalystTimeViewEmail)){
+          adminCapacityAnalystTimeViewEmail = analystTimeOptions[0]?.email || ""
+        }
+        const analystDailyMap = {}
+        ;(entriesByAnalyst[adminCapacityAnalystTimeViewEmail] || []).forEach(entry => {
+          const date = String(entry?.date || "").slice(0,10)
+          if(!date || !date.startsWith(monthKey)) return
+          analystDailyMap[date] = (analystDailyMap[date] || 0) + (Number(entry?.minutes || 0) / 60)
+        })
+        const selectedCapacityRow = getAdminHoursRowValues(adminCapacityAnalystTimeViewEmail)
+        const currentMonthDates = []
+        for(let d = 1; d <= monthDays; d += 1) currentMonthDates.push(`${monthKey}-${String(d).padStart(2,"0")}`)
+        const analystCalendarRows = currentMonthDates.map(date => {
+          const loggedHours = Number(analystDailyMap[date] || 0)
+          const pct = selectedCapacityRow.adjustedHours > 0 ? (loggedHours / selectedCapacityRow.adjustedHours) * 100 : 0
+          return `<div class="adminCalendarDay ${date===today?'today':''}"><div class="adminCalendarDate">${date.slice(-2)}</div><div class="small">${adminCapacityAnalystTimeMetric === "percentage" ? `${pct.toFixed(2)}%` : `${loggedHours.toFixed(2)} h`}</div></div>`
+        }).join("")
+        const analystTimesHtml = `<div style="grid-column:1/-1" class="card"><h4 style="margin:0 0 8px">Tiempos por analista</h4><div class="inline" style="align-items:flex-end;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div><label style="margin:0">Analista</label><select onchange="setAdminCapacityAnalystTimeViewEmail(this.value)" style="margin:0;min-width:220px">${analystTimeOptions.map(opt => `<option value="${htmlEscape(opt.email)}" ${opt.email===adminCapacityAnalystTimeViewEmail?'selected':''}>${htmlEscape(opt.label)}</option>`).join("")}</select></div><div><label style="margin:0">Vista</label><select onchange="setAdminCapacityAnalystTimeMetric(this.value)" style="margin:0;min-width:140px"><option value="hours" ${adminCapacityAnalystTimeMetric==='hours'?'selected':''}>Horas</option><option value="percentage" ${adminCapacityAnalystTimeMetric==='percentage'?'selected':''}>Porcentaje</option></select></div></div><div class="small" style="margin-bottom:8px">${adminCapacityAnalystTimeMetric === "percentage" ? `Porcentaje diario calculado sobre ${selectedCapacityRow.adjustedHours.toFixed(2)} horas ajustadas.` : "Horas totales cargadas por día en el mes en curso."}</div><div class="adminCalendarGrid">${analystCalendarRows || `<div class="small">Sin registros.</div>`}</div></div>`
+        miniDash.innerHTML = `<div style="grid-column:1/-1" class="inline"><button class="${adminCapacityViewMode==='cards'?'':'ghost'}" onclick="setAdminCapacityViewMode('cards')">Mostrar cuadros</button><button class="${adminCapacityViewMode==='chart'?'':'ghost'}" onclick="setAdminCapacityViewMode('chart')">Mostrar gráfico de línea</button><button class="${adminCapacityViewMode==='projections'?'':'ghost'}" onclick="setAdminCapacityViewMode('projections')">Proyecciones</button><button class="${adminCapacityViewMode==='microservices'?'':'ghost'}" onclick="setAdminCapacityViewMode('microservices')">Microservicios</button><button class="${adminCapacityViewMode==='analyst_times'?'':'ghost'}" onclick="setAdminCapacityViewMode('analyst_times')">Tiempos por analista</button></div>${adminCapacityViewMode==='chart' ? `<div style="grid-column:1/-1" class="card">${chartHtml}<div class="inline" style="margin-top:10px;align-items:flex-end"><div><label style="margin:0">Año de estacionalidad</label><input type="number" min="2000" max="3000" value="${htmlEscape(adminCapacitySeasonalityYear)}" onchange="setAdminCapacitySeasonalityYear(this.value)" style="max-width:150px;margin:0"></div></div><div style="margin-top:8px">${seasonalityChartHtml}</div></div>` : (adminCapacityViewMode==='projections' ? projectionsHtml : (adminCapacityViewMode==='microservices' ? microservicesHtml : (adminCapacityViewMode==='analyst_times' ? analystTimesHtml : cardsHtml)))}`
       }
-      if(adminCapacityViewMode === "chart" || adminCapacityViewMode === "projections" || adminCapacityViewMode === "microservices"){
-        const modeLabel = adminCapacityViewMode === "chart" ? "gráfico" : (adminCapacityViewMode === "projections" ? "proyecciones" : "microservicios")
+      if(adminCapacityViewMode === "chart" || adminCapacityViewMode === "projections" || adminCapacityViewMode === "microservices" || adminCapacityViewMode === "analyst_times"){
+        const modeLabel = adminCapacityViewMode === "chart" ? "gráfico" : (adminCapacityViewMode === "projections" ? "proyecciones" : (adminCapacityViewMode === "microservices" ? "microservicios" : "tiempos por analista"))
         wrap.innerHTML = `<div class="small">Modo ${modeLabel} activo: para ver asistencia y gestión de horas, cambiá a “Mostrar cuadros”.</div>`
         return
       }
