@@ -6932,6 +6932,8 @@ function closeConsultorSurveyModal(){
         loadTopPerformerSummaryTable()
       }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "activity_quality"){
         loadTopPerformerSatisfaccionTable()
+      }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "internal_quality"){
+        loadTopPerformerInternalQuality()
       }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "grupo_axo"){
         loadTopPerformerGrupoAxoFromDb().then(()=>renderApp())
       }else if(currentRole === "admin" && mainViewTab === "top_performer" && adminTopPerformerTab === "incidencias"){
@@ -7400,6 +7402,31 @@ function closeConsultorSurveyModal(){
       wrap.innerHTML = `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Analista</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Satisfacción promedio</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--stroke)">Encuestas</th></tr></thead><tbody>${rows.map(r => `<tr><td style="padding:8px;border-bottom:1px solid var(--stroke-2)"><button class="ghost" style="padding:4px 8px" onclick="openTopPerformerSatisfaccionDetail('${r.email}','${month}')">${htmlEscape(userDisplayNameByEmail(r.email) || r.email)}</button></td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.avg.toFixed(2)} / 10</td><td style="padding:8px;border-bottom:1px solid var(--stroke-2)">${r.count}</td></tr>`).join("") || `<tr><td colspan="3" class="small" style="padding:8px">Sin encuestas en este período.</td></tr>`}</tbody></table></div><div id="topPerformerSatisfaccionDetail" class="small" style="margin-top:10px"></div>`
     }
 
+    async function loadTopPerformerInternalQuality(){
+      const wrap = document.getElementById("topPerformerInternalQualityWrap")
+      if(!wrap || currentRole !== "admin" || adminTopPerformerTab !== "internal_quality") return
+      wrap.innerHTML = `<div class="small">Cargando calidad interna...</div>`
+      const detailCard = `
+        <div class="feedItem">
+          <div class="feedType">Criterios oficiales de evaluación (utilizados para el puntaje)</div>
+          <div class="feedMeta">
+            <strong>1) Registro de tiempo (35%)</strong>: daily vs carga de tiempo por ticket (mismo día=10, +1=7, +2=5, +3 o más=3, sin carga=0).<br>
+            <strong>2) Updates y seguimiento (25%)</strong>: daily vs update/comentario (mismo día=10, +1=6, +2 o más=3, sin update=0).<br>
+            <strong>3) Estados del ticket (15%)</strong>: secuencia correcta En curso y estado esperado (Recurrente/Por hacer/Finalizado) en día o +1.<br>
+            <strong>4) Campos de la tarea (5%)</strong>: completitud de Planilla de trabajo.<br>
+            <strong>5) Agenda (20%)</strong>: avisos por errores/inconvenientes del analista (0 avisos=10, 1=8, 2=5, 3=3, 4+=0).<br><br>
+            El cálculo se realiza por ticket, se promedia por día y luego por período (semanal/mensual), aplicando la ponderación configurada.
+          </div>
+        </div>`
+      try{
+        const internalHtml = await renderInternalQualityAdminSection()
+        wrap.innerHTML = detailCard + internalHtml
+      }catch(err){
+        console.error("Error cargando Calidad interna en Top Performer:", err)
+        wrap.innerHTML = `${detailCard}<div class="feedItem"><div class="feedType">No se pudo cargar la calidad interna</div><div class="feedMeta">Reintentá en unos segundos.</div></div>`
+      }
+    }
+
     async function openTopPerformerSatisfaccionDetail(email, month){
       const wrap = document.getElementById("topPerformerSatisfaccionDetail")
       if(!wrap) return
@@ -7453,7 +7480,7 @@ function closeConsultorSurveyModal(){
         return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Resumen</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerSummaryTable" class="small" style="margin-top:10px"></div></div>`
       }
       if(["internal_quality"].includes(adminTopPerformerTab)){
-        return `<div class="card" style="padding:18px;text-align:center"><h3 style="margin:0 0 8px">${htmlEscape(tabs.find(t => t.key === adminTopPerformerTab)?.label || "Módulo")}</h3><div style="font-size:24px;font-weight:800;letter-spacing:.08em">PROXIMAMENTE</div></div>`
+        return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Calidad interna</h3><div class="small" style="margin-bottom:8px">Detalle completo de criterios y análisis operativo utilizado para puntuar analistas.</div><div id="topPerformerInternalQualityWrap" class="small" style="margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:4px"></div></div>`
       }
       if(adminTopPerformerTab === "activity_quality"){
         return `<div class="card"><h3 style="margin:0 0 8px">Top performer · Satisfacción</h3><div class="row"><div><label>Mes</label><input type="month" value="${htmlEscape(topPerformerSummaryMonth)}" onchange="setTopPerformerSummaryMonth(this.value)"></div></div><div id="topPerformerSatisfaccionTable" class="small" style="margin-top:10px"></div></div>`
@@ -7988,6 +8015,8 @@ function closeConsultorSurveyModal(){
           loadTopPerformerSummaryTable()
         }else if(currentRole === "admin" && adminTopPerformerTab === "activity_quality"){
           loadTopPerformerSatisfaccionTable()
+        }else if(currentRole === "admin" && adminTopPerformerTab === "internal_quality"){
+          loadTopPerformerInternalQuality()
         }else if(currentRole === "admin" && adminTopPerformerTab === "grupo_axo"){
           const month = String(topPerformerSummaryMonth || toLocalDateOnly(new Date()).slice(0, 7))
           if(topPerformerGrupoAxoLoadedKey !== month){
