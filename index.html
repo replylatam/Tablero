@@ -1834,14 +1834,11 @@
     ]
 
     const DEFAULT_INTERNAL_QUALITY_CONFIG = {
-      responseWeight: 15,
-      sameDayWeight: 15,
-      delayedWeight: 15,
-      closeLoadWeight: 15,
-      noTimeAfterMoveWeight: 15,
-      fieldsWeight: 15,
-      agendaTomorrowWeight: 10,
-      delayedHoursThreshold: 6
+      timeLogWeight: 35,
+      updatesWeight: 25,
+      ticketStatusWeight: 15,
+      taskFieldsWeight: 5,
+      agendaWeight: 20
     }
 
     const DEFAULT_QUALITY_FORMS = {
@@ -5656,13 +5653,11 @@ async function submitSupportRequest(){
 
     function openInternalQualityMetricHelp(metric){
       const map = {
-        response: "Respuesta a consultor: mide cuántos minutos pasan desde un comentario del consultor hasta la respuesta del analista responsable.",
-        sameDay: "Carga de tiempo mismo día: evalúa si al mover estado también se registra tiempo durante ese mismo día.",
-        delayed: "Demora estado → carga: evalúa si la carga de tiempo posterior ocurre dentro del umbral configurado (horas).",
-        closeLoad: "Cierre + tiempo: evalúa si el ticket se cierra y la carga queda en el mismo día, día siguiente o más tarde.",
-        noTimeAfterMove: "Movimientos sin tiempo: penaliza cambios de estado que no tienen carga de tiempo asociada.",
-        fields: "Campos obligatorios: revisa completitud de cantidad de publicaciones y planilla de trabajo.",
-        agendaTomorrow: "Agenda de mañana: revisa si se completó la columna de agenda de mañana en tickets activos."
+        timeLog: "Registro de tiempo: compara fecha declarada en daily vs primera carga de horas del ticket.",
+        updates: "Updates y seguimiento: compara fecha de daily vs primer comentario/update del analista en el ticket.",
+        ticketStatus: "Estados del ticket: valida secuencia En curso y estado final esperado en el día o al día siguiente.",
+        taskFields: "Campos de la tarea: valida completitud de Planilla de trabajo.",
+        agenda: "Agenda: puntúa por cantidad de avisos del analista en el período."
       }
       alert(map[String(metric || "")] || "Métrica no encontrada.")
     }
@@ -5681,14 +5676,14 @@ async function submitSupportRequest(){
       const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
       const rows = await Promise.all(analysts.map(async email => ({ email, now: await computeInternalQualityForAnalyst(email, period, new Date()), history: await buildInternalQualityHistory(email, period, 4) })))
       const feedbackMap = (await db.ref("quality_internal_feedback").once("value")).val() || {}
-      const metricHelp = `<div class="feedItem"><div class="feedType">Qué analiza la calidad interna</div><div class="feedMeta"><strong onclick="openInternalQualityMetricHelp('response')" style="cursor:pointer">Respuesta a consultor</strong>: tiempo de respuesta del responsable.<br><strong onclick="openInternalQualityMetricHelp('sameDay')" style="cursor:pointer">Carga mismo día</strong>: si al mover estado también carga horas ese día.<br><strong onclick="openInternalQualityMetricHelp('delayed')" style="cursor:pointer">Demora estado → carga</strong>: tiempo entre movimiento y carga.<br><strong onclick="openInternalQualityMetricHelp('closeLoad')" style="cursor:pointer">Cierre + tiempo</strong>: qué tan cerca del cierre se cargaron horas.<br><strong onclick="openInternalQualityMetricHelp('noTimeAfterMove')" style="cursor:pointer">Sin tiempo</strong>: penaliza mover estado sin carga.<br><strong onclick="openInternalQualityMetricHelp('fields')" style="cursor:pointer">Campos obligatorios</strong>: publicaciones + planilla.<br><strong onclick="openInternalQualityMetricHelp('agendaTomorrow')" style="cursor:pointer">Agenda mañana</strong>: completitud de agenda de mañana.</div></div>`
-      const cfgHtml = `${metricHelp}<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div class="feedType">Configuración editable por admin</div><button class="ghost" onclick="toggleInternalQualityConfigPanel()">Configuraciones</button></div><div id="internalQualityConfigPanel" class="hidden" style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Variable</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Peso</th></tr></thead><tbody><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Respuesta a consultor</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqResponseWeight" type="number" min="0" value="${Number(cfg.responseWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Carga de tiempo mismo día</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqSameDayWeight" type="number" min="0" value="${Number(cfg.sameDayWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Demora estado → carga</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqDelayedWeight" type="number" min="0" value="${Number(cfg.delayedWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Carga al cerrar ticket</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqCloseLoadWeight" type="number" min="0" value="${Number(cfg.closeLoadWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Mover estado sin tiempo</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqNoTimeWeight" type="number" min="0" value="${Number(cfg.noTimeAfterMoveWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Campos obligatorios</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqFieldsWeight" type="number" min="0" value="${Number(cfg.fieldsWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Agenda de mañana</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqAgendaTomorrowWeight" type="number" min="0" value="${Number(cfg.agendaTomorrowWeight||10)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Tope demora (hs)</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqDelayedHours" type="number" min="1" value="${Number(cfg.delayedHoursThreshold||6)}"></td></tr></tbody></table><div class="inline" style="justify-content:flex-end;margin-top:8px"><button onclick="saveInternalQualityConfig()">Guardar configuración</button></div></div></div>`
+      const metricHelp = `<div class="feedItem"><div class="feedType">Qué analiza la calidad interna</div><div class="feedMeta"><strong onclick="openInternalQualityMetricHelp('timeLog')" style="cursor:pointer">Registro de tiempo</strong>: cruce entre fecha declarada en daily y fecha real de carga de horas.<br><strong onclick="openInternalQualityMetricHelp('updates')" style="cursor:pointer">Updates y seguimiento</strong>: fecha de update/comentario respecto a la daily.<br><strong onclick="openInternalQualityMetricHelp('ticketStatus')" style="cursor:pointer">Estados del ticket</strong>: secuencia En curso → estado final esperado según la daily.<br><strong onclick="openInternalQualityMetricHelp('taskFields')" style="cursor:pointer">Campos de la tarea</strong>: completitud de Planilla de trabajo.<br><strong onclick="openInternalQualityMetricHelp('agenda')" style="cursor:pointer">Agenda</strong>: avisos por errores/inconvenientes del analista.</div></div>`
+      const cfgHtml = `${metricHelp}<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div class="feedType">Configuración editable por admin</div><button class="ghost" onclick="toggleInternalQualityConfigPanel()">Configuraciones</button></div><div id="internalQualityConfigPanel" class="hidden" style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Variable</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Peso</th></tr></thead><tbody><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Registro de tiempo</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqTimeLogWeight" type="number" min="0" value="${Number(cfg.timeLogWeight||35)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Updates y seguimiento</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqUpdatesWeight" type="number" min="0" value="${Number(cfg.updatesWeight||25)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Estados del ticket</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqTicketStatusWeight" type="number" min="0" value="${Number(cfg.ticketStatusWeight||15)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Campos de la tarea</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqTaskFieldsWeight" type="number" min="0" value="${Number(cfg.taskFieldsWeight||5)}"></td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Agenda</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)"><input id="iqAgendaWeight" type="number" min="0" value="${Number(cfg.agendaWeight||20)}"></td></tr></tbody></table><div class="inline" style="justify-content:flex-end;margin-top:8px"><button onclick="saveInternalQualityConfig()">Guardar configuración</button></div></div></div>`
       if(!rows.length) return cfgHtml + `<div class="small">No hay analistas activos.</div>`
       const summaryCards = rows.map(row => `<div class="kpi"><div class="label">${htmlEscape(userDisplayNameByEmail(row.email) || row.email)}</div><div class="value">${row.now.score.toFixed(2)}</div><div class="small">/10</div></div>`).join("")
       const analystCards = rows.map(row => {
         const periodKey = `${period}_${String(row.now.periodStart).slice(0,10)}`
         const adminFb = String(feedbackMap?.[emailKey(row.email)]?.[periodKey]?.feedback || "")
-        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cierre+tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Sin tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda mañana</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(internalQualityPeriodLabel(h, period))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.closeLoad}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.noTimeAfterMove}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.agendaTomorrow}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
+        return `<div class="feedItem"><div class="feedTop"><div><div class="feedType">${htmlEscape(userDisplayNameByEmail(row.email)||row.email)}</div><div class="feedMeta">Puntaje actual: <strong>${row.now.score.toFixed(2)} / 10</strong> · Auto feedback: ${htmlEscape(row.now.autoFeedback)}</div></div><button class="ghost" onclick="openInternalQualityModal('${jsStringEscape(row.email)}')">Ver detalle</button></div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Updates</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estados</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${row.history.map(h => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(internalQualityPeriodLabel(h, period))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.timeLog}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.updates}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.ticketStatus}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.taskFields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${h.metrics.agenda}</td></tr>`).join("")}</tbody></table></div><div style="margin-top:8px"><label>Feedback del admin (${periodKey})</label><textarea id="iqAdminFeedback_${emailKey(row.email)}_${periodKey}" placeholder="Feedback para el analista">${htmlEscape(adminFb)}</textarea><div class="inline" style="justify-content:flex-end"><button class="ghost" onclick="saveInternalQualityAdminFeedback('${jsStringEscape(row.email)}','${periodKey}')">Guardar feedback</button></div></div></div>`
       }).join("")
       return cfgHtml + `<div class="kpiGrid" style="margin-bottom:10px">${summaryCards}</div><div class="inline" style="margin-bottom:8px"><label style="margin:0">Histórico</label><select onchange="internalQualitySelectedPeriod=this.value;loadAdminInternalQualityTab()" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select></div>` + analystCards
     }
@@ -6065,106 +6060,92 @@ async function submitSupportRequest(){
       })
       Object.keys(entriesByTicket).forEach(k => entriesByTicket[k].sort((a,b)=>a-b))
 
-      const responsePairs = []
+      const dayDiff = (fromIso, toIso) => {
+        const a = new Date(fromIso || ""); const b = new Date(toIso || "")
+        if(Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 999
+        const ad = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime()
+        const bd = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime()
+        return Math.round((bd - ad) / 86400000)
+      }
+      const dailyEntries = Object.values((await db.ref("daily_entries").once("value")).val() || {}).filter(d => String(d?.analystEmail || "").toLowerCase() === email && inRangeIso(d.createdAt || d.updatedAt, start, end))
+      const dailyByDate = {}
+      dailyEntries.forEach(d => {
+        const dateKey = toLocalDateOnly(d.createdAt || d.updatedAt || "")
+        if(!dailyByDate[dateKey]) dailyByDate[dateKey] = []
+        dailyByDate[dateKey].push(String(d.ticketId || "").trim())
+      })
+      const commentsByTicket = {}
       tickets.forEach(t => {
-        const comments = Object.values(parseCommentsValue(t.comments||{})).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
-        comments.forEach((c, i) => {
-          const authorEmail = String(c?.author||"").toLowerCase()
-          const role = String(usersByEmail?.[emailKey(authorEmail)]?.role || "").toLowerCase()
-          if(role !== "consultor") return
-          const response = comments.slice(i+1).find(n => {
-            const e = String(n?.author||"").toLowerCase()
-            return e === email
+        commentsByTicket[String(t.id || "")] = Object.values(parseCommentsValue(t.comments || {})).filter(c => String(c?.author || "").toLowerCase() === email).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0))
+      })
+      const movesByTicket = {}
+      statusMoves.forEach(m => {
+        const key = String(m.ticketId || "")
+        if(!movesByTicket[key]) movesByTicket[key] = []
+        movesByTicket[key].push(m)
+      })
+      Object.values(movesByTicket).forEach(list => list.sort((a,b)=>new Date(a.timestampIso||0)-new Date(b.timestampIso||0)))
+      const timeEntriesByTicket = {}
+      timeEntries.forEach(e => {
+        const key = String(e?.ticketId || e?.ticket || "")
+        if(!timeEntriesByTicket[key]) timeEntriesByTicket[key] = []
+        timeEntriesByTicket[key].push(e)
+      })
+      const perDayScores = { timeLog: [], updates: [], ticketStatus: [] }
+      Object.entries(dailyByDate).forEach(([dateKey, ticketIds]) => {
+        const uniq = Array.from(new Set(ticketIds.filter(Boolean)))
+        uniq.forEach(ticketId => {
+          const entries = (timeEntriesByTicket[ticketId] || []).sort((a,b)=>new Date(a.createdAt||a.loggedDate||0)-new Date(b.createdAt||b.loggedDate||0))
+          const firstEntryDate = entries[0] ? (entries[0].createdAt || entries[0].loggedDate || entries[0].date) : ""
+          const tDiff = firstEntryDate ? dayDiff(dateKey, firstEntryDate) : 999
+          perDayScores.timeLog.push(tDiff === 0 ? 10 : tDiff === 1 ? 7 : tDiff === 2 ? 5 : tDiff >= 3 && tDiff < 999 ? 3 : 0)
+          const comments = commentsByTicket[ticketId] || []
+          const firstUpdate = comments.find(c => dayDiff(dateKey, c.createdAt) >= 0)
+          const uDiff = firstUpdate ? dayDiff(dateKey, firstUpdate.createdAt) : 999
+          perDayScores.updates.push(uDiff === 0 ? 10 : uDiff === 1 ? 6 : uDiff >= 2 && uDiff < 999 ? 3 : 0)
+          const ticket = tickets.find(t => String(t.id || "") === ticketId)
+          const finalExpected = String(ticket?.title || "").includes("RCT - ") ? "recurrent" : (String(ticket?.status || "") === "done" ? "done" : "todo")
+          const moves = (movesByTicket[ticketId] || []).filter(m => {
+            const d = dayDiff(dateKey, m.timestampIso)
+            return d >= 0 && d <= 1
           })
-          if(inRangeIso(c.createdAt, start, end)){
-            const consultorTime = new Date(c.createdAt || "").getTime()
-            if(!Number.isFinite(consultorTime)) return
-            if(!response){
-              responsePairs.push(1440)
-              return
-            }
-            const mins = Math.max(0, (new Date(response.createdAt) - new Date(c.createdAt)) / 60000)
-            responsePairs.push(mins)
-          }
+          const hasDoingSameDay = moves.some(m => dayDiff(dateKey, m.timestampIso) === 0 && String(m.nextStatus || "") === "doing")
+          const hasFinalSameDay = moves.some(m => dayDiff(dateKey, m.timestampIso) === 0 && String(m.nextStatus || "") === finalExpected)
+          const hasDoingNextDay = moves.some(m => dayDiff(dateKey, m.timestampIso) === 1 && String(m.nextStatus || "") === "doing")
+          const hasFinalNextDay = moves.some(m => dayDiff(dateKey, m.timestampIso) === 1 && String(m.nextStatus || "") === finalExpected)
+          let statusPoints = 0
+          if(hasDoingSameDay && hasFinalSameDay) statusPoints = 10
+          else if((hasDoingNextDay && hasFinalNextDay) || (hasDoingSameDay && hasFinalNextDay)) statusPoints = 5
+          perDayScores.ticketStatus.push(statusPoints)
         })
       })
-      const avgResponseMin = responsePairs.length ? responsePairs.reduce((a,b)=>a+b,0)/responsePairs.length : 180
-      const responseScore = Math.max(0, Math.min(10, 10 - (avgResponseMin/60)/3))
-
-      const entriesByDay = {}
-      timeEntries.forEach(e => {
-        const day = toLocalDateOnly(e.createdAt || e.loggedDate)
-        entriesByDay[day] = (entriesByDay[day] || 0) + 1
-      })
-      const sameDayCount = statusMoves.filter(m => entriesByDay[toLocalDateOnly(m.timestampIso)] > 0).length
-      const sameDayScore = statusMoves.length ? (sameDayCount / statusMoves.length) * 10 : 10
-
-      const delayedLimitMs = Number(cfg.delayedHoursThreshold || 6) * 3600000
-      let delayedOk = 0
-      statusMoves.forEach(m => {
-        const moveTime = new Date(m.timestampIso || 0).getTime()
-        const ticketId = String(m.ticketId || "")
-        const nextEntry = (entriesByTicket[ticketId] || []).find(ts => ts >= moveTime)
-        if(nextEntry && (nextEntry - moveTime) <= delayedLimitMs) delayedOk += 1
-      })
-      const delayedScore = statusMoves.length ? (delayedOk / statusMoves.length) * 10 : 10
-
-      const closeMoves = statusMoves.filter(m => String(m.nextStatus || "") === "done")
-      const closeLoadPoints = closeMoves.map(m => {
-        const moveTime = new Date(m.timestampIso || 0).getTime()
-        const ticketId = String(m.ticketId || "")
-        const nextEntry = (entriesByTicket[ticketId] || []).find(ts => ts >= moveTime)
-        if(!nextEntry) return 0
-        const moveDay = new Date(new Date(m.timestampIso || 0).setHours(0,0,0,0))
-        const entryDay = new Date(new Date(nextEntry).setHours(0,0,0,0))
-        const dayDiff = Math.round((entryDay.getTime() - moveDay.getTime()) / 86400000)
-        if(dayDiff <= 0) return 10
-        if(dayDiff === 1) return 8
-        if(dayDiff === 2) return 5
-        return 2
-      })
-      const closeLoadScore = closeLoadPoints.length ? closeLoadPoints.reduce((a,b)=>a+b,0) / closeLoadPoints.length : 10
-
-      const noTimeMoves = statusMoves.filter(m => {
-        const moveDay = toLocalDateOnly(m.timestampIso || "")
-        return entriesByDay[moveDay] > 0 ? false : true
-      }).length
-      const noTimeAfterMoveScore = statusMoves.length ? Math.max(0, 10 - (noTimeMoves / statusMoves.length) * 10) : 10
-
+      const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 10
+      const timeLogScore = avg(perDayScores.timeLog)
+      const updatesScore = avg(perDayScores.updates)
+      const ticketStatusScore = avg(perDayScores.ticketStatus)
       const periodTickets = tickets.filter(t => inRangeIso(t.updatedAt || t.createdAt, start, end))
-      const completeCount = periodTickets.filter(t => {
-        const publicationCount = Number(t?.publicationCountAnalyst ?? t?.publicationCount ?? 0)
-        const worksheet = String(t?.workSheet || "").trim()
-        return Number.isFinite(publicationCount) && publicationCount > 0 && !!worksheet
-      }).length
-      const fieldsScore = periodTickets.length ? (completeCount / periodTickets.length) * 10 : 10
+      const taskFieldsScore = periodTickets.length ? (periodTickets.filter(t => String(t?.workSheet || "").trim()).length / periodTickets.length) * 10 : 10
+      const alerts = Object.values((await db.ref("analyst_alerts").once("value")).val() || {}).filter(a => String(a?.analystEmail || "").toLowerCase() === email && inRangeIso(a.createdAt, start, end))
+      const agendaScore = alerts.length === 0 ? 10 : alerts.length === 1 ? 8 : (alerts.length === 2 ? 5 : alerts.length === 3 ? 3 : 0)
 
-      const agendaTickets = tickets.filter(t => String(t.status || "") !== "done" && inRangeIso(t.updatedAt || t.createdAt, start, end))
-      const agendaCompleted = agendaTickets.filter(t => !!t.agendaTomorrowUpdatedAt).length
-      const agendaTomorrowScore = agendaTickets.length ? (agendaCompleted / agendaTickets.length) * 10 : 10
-
-      const totalWeight = [cfg.responseWeight,cfg.sameDayWeight,cfg.delayedWeight,cfg.closeLoadWeight,cfg.noTimeAfterMoveWeight,cfg.fieldsWeight,cfg.agendaTomorrowWeight].reduce((a,b)=>a+Number(b||0),0) || 1
+      const totalWeight = [cfg.timeLogWeight,cfg.updatesWeight,cfg.ticketStatusWeight,cfg.taskFieldsWeight,cfg.agendaWeight].reduce((a,b)=>a+Number(b||0),0) || 1
       const weighted = (
-        responseScore * Number(cfg.responseWeight||0) +
-        sameDayScore * Number(cfg.sameDayWeight||0) +
-        delayedScore * Number(cfg.delayedWeight||0) +
-        closeLoadScore * Number(cfg.closeLoadWeight||0) +
-        noTimeAfterMoveScore * Number(cfg.noTimeAfterMoveWeight||0) +
-        fieldsScore * Number(cfg.fieldsWeight||0) +
-        agendaTomorrowScore * Number(cfg.agendaTomorrowWeight||0)
+        timeLogScore * Number(cfg.timeLogWeight||0) +
+        updatesScore * Number(cfg.updatesWeight||0) +
+        ticketStatusScore * Number(cfg.ticketStatusWeight||0) +
+        taskFieldsScore * Number(cfg.taskFieldsWeight||0) +
+        agendaScore * Number(cfg.agendaWeight||0)
       ) / totalWeight
 
       const metrics = {
-        response: Number(responseScore.toFixed(2)),
-        sameDay: Number(sameDayScore.toFixed(2)),
-        delayed: Number(delayedScore.toFixed(2)),
-        closeLoad: Number(closeLoadScore.toFixed(2)),
-        noTimeAfterMove: Number(noTimeAfterMoveScore.toFixed(2)),
-        fields: Number(fieldsScore.toFixed(2)),
-        agendaTomorrow: Number(agendaTomorrowScore.toFixed(2))
+        timeLog: Number(timeLogScore.toFixed(2)),
+        updates: Number(updatesScore.toFixed(2)),
+        ticketStatus: Number(ticketStatusScore.toFixed(2)),
+        taskFields: Number(taskFieldsScore.toFixed(2)),
+        agenda: Number(agendaScore.toFixed(2))
       }
-      const weakest = Object.entries(metrics).sort((a,b)=>a[1]-b[1])[0]?.[0] || "response"
-      const labelByMetric = { response: "tiempos de respuesta", sameDay: "carga de tiempo en el mismo día", delayed: "demora entre cambio de estado y carga", closeLoad: "carga de tiempo al cerrar tickets", noTimeAfterMove: "movimientos de estado sin carga de tiempo", fields: "cantidad de publicaciones y planilla", agendaTomorrow: "agenda de mañana" }
+      const weakest = Object.entries(metrics).sort((a,b)=>a[1]-b[1])[0]?.[0] || "timeLog"
+      const labelByMetric = { timeLog: "registro de tiempo", updates: "updates y seguimiento", ticketStatus: "cambios de estado", taskFields: "completitud de planilla", agenda: "gestión de agenda" }
       const autoFeedback = weighted >= 8
         ? "Excelente gestión interna. Mantené la consistencia diaria."
         : weighted >= 6
@@ -6175,11 +6156,11 @@ async function submitSupportRequest(){
         score: Number(weighted.toFixed(2)),
         metrics,
         autoFeedback,
-        analyzed: ["tiempos de respuesta a consultores","carga de tiempo al cambiar estado","demora de carga posterior","cierre del ticket vs carga de tiempo","movimientos sin tiempo cargado","cantidad de publicaciones + planilla de trabajo","completitud de agenda de mañana"],
+        analyzed: ["registro de tiempo (daily vs carga)","updates/comentarios por ticket","estados del ticket según daily","planilla de trabajo completa","avisos de agenda"],
         period,
         periodStart: start.toISOString(),
         periodEnd: end.toISOString(),
-        counts: { statusMoves: statusMoves.length, entries: timeEntries.length, tickets: periodTickets.length, closeMoves: closeMoves.length, noTimeMoves }
+        counts: { statusMoves: statusMoves.length, entries: timeEntries.length, tickets: periodTickets.length, dailyEntries: dailyEntries.length, alerts: alerts.length }
       }
     }
 
@@ -6206,7 +6187,7 @@ async function submitSupportRequest(){
       const feedbackMap = (await db.ref("quality_internal_feedback").child(emailKey(email)).once("value")).val() || {}
       const periodKey = `${period}_${String(data.periodStart).slice(0,10)}`
       const adminFeedback = String(feedbackMap?.[periodKey]?.feedback || "")
-      body.innerHTML = `<div class="feedItem"><div class="feedType">Qué se analiza (detalle)</div><div class="feedMeta">${data.analyzed.map(it => `• ${htmlEscape(it)}`).join("<br>")}</div><div class="small" style="margin-top:8px">Período: ${htmlEscape(internalQualityPeriodLabel(data, period))}</div><div class="small">Base del cálculo: ${Number(data.counts?.statusMoves||0)} cambios de estado · ${Number(data.counts?.entries||0)} cargas · ${Number(data.counts?.tickets||0)} tickets.</div></div><div class="feedItem"><div class="feedType">Puntaje ${period === 'week' ? 'semanal' : 'mensual'}: ${data.score.toFixed(2)} / 10</div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Métrica</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Qué evalúa</th></tr></thead><tbody><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Respuesta a consultor</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Tiempo de respuesta del responsable al consultor.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Carga mismo día</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Si se cargan horas el mismo día del cambio de estado.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Demora estado → carga</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Si la carga ocurre dentro del umbral configurado.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Cierre + tiempo</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.closeLoad}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Proximidad entre cierre de ticket y carga de horas.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Sin tiempo</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.noTimeAfterMove}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Movimientos de estado sin horas cargadas.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Campos obligatorios</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Publicaciones + planilla de trabajo completos.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Agenda mañana</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.agendaTomorrow}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Completitud de agenda para el día siguiente.</td></tr></tbody></table></div></div><div class="feedItem"><div class="feedType">Feedback automático</div><div class="feedMeta">${htmlEscape(data.autoFeedback)}</div>${adminFeedback ? `<div class="feedMeta" style="margin-top:6px"><strong>Feedback del admin:</strong> ${htmlEscape(adminFeedback)}</div>` : ""}</div>`
+      body.innerHTML = `<div class="feedItem"><div class="feedType">Qué se analiza (detalle)</div><div class="feedMeta">${data.analyzed.map(it => `• ${htmlEscape(it)}`).join("<br>")}</div><div class="small" style="margin-top:8px">Período: ${htmlEscape(internalQualityPeriodLabel(data, period))}</div><div class="small">Base del cálculo: ${Number(data.counts?.statusMoves||0)} cambios de estado · ${Number(data.counts?.entries||0)} cargas · ${Number(data.counts?.tickets||0)} tickets.</div></div><div class="feedItem"><div class="feedType">Puntaje ${period === 'week' ? 'semanal' : 'mensual'}: ${data.score.toFixed(2)} / 10</div><div style="overflow:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Métrica</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Qué evalúa</th></tr></thead><tbody><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Registro de tiempo</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.timeLog}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Daily vs fecha de carga de tiempo en ticket.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Updates y seguimiento</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.updates}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Daily vs fecha de update/comentario del analista.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Estados del ticket</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.ticketStatus}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Secuencia En curso → estado esperado según daily.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Campos de la tarea</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.taskFields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Completitud de planilla de trabajo.</td></tr><tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Agenda</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${data.metrics.agenda}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">Avisos por errores/inconvenientes de agenda.</td></tr></tbody></table></div></div><div class="feedItem"><div class="feedType">Feedback automático</div><div class="feedMeta">${htmlEscape(data.autoFeedback)}</div>${adminFeedback ? `<div class="feedMeta" style="margin-top:6px"><strong>Feedback del admin:</strong> ${htmlEscape(adminFeedback)}</div>` : ""}</div>`
       document.getElementById("internalQualityModal")?.classList.remove("hidden")
     }
 
@@ -6217,14 +6198,11 @@ async function submitSupportRequest(){
     async function saveInternalQualityConfig(){
       if(currentRole !== "admin") return
       const payload = {
-        responseWeight: Number(document.getElementById("iqResponseWeight")?.value || 15),
-        sameDayWeight: Number(document.getElementById("iqSameDayWeight")?.value || 15),
-        delayedWeight: Number(document.getElementById("iqDelayedWeight")?.value || 15),
-        closeLoadWeight: Number(document.getElementById("iqCloseLoadWeight")?.value || 15),
-        noTimeAfterMoveWeight: Number(document.getElementById("iqNoTimeWeight")?.value || 15),
-        fieldsWeight: Number(document.getElementById("iqFieldsWeight")?.value || 15),
-        agendaTomorrowWeight: Number(document.getElementById("iqAgendaTomorrowWeight")?.value || 10),
-        delayedHoursThreshold: Number(document.getElementById("iqDelayedHours")?.value || 6),
+        timeLogWeight: Number(document.getElementById("iqTimeLogWeight")?.value || 35),
+        updatesWeight: Number(document.getElementById("iqUpdatesWeight")?.value || 25),
+        ticketStatusWeight: Number(document.getElementById("iqTicketStatusWeight")?.value || 15),
+        taskFieldsWeight: Number(document.getElementById("iqTaskFieldsWeight")?.value || 5),
+        agendaWeight: Number(document.getElementById("iqAgendaWeight")?.value || 20),
         updatedAt: new Date().toISOString(),
         updatedBy: String(currentUser?.email || "").toLowerCase()
       }
@@ -9004,9 +8982,9 @@ function closeConsultorSurveyModal(){
           const myEmail = String(currentUser?.email || "").toLowerCase()
           const period = internalQualitySelectedPeriod === "week" ? "week" : "month"
           const history = await buildInternalQualityHistory(myEmail, period, internalQualityHistoryWindow)
-          const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { response:0,sameDay:0,delayed:0,closeLoad:0,noTimeAfterMove:0,fields:0,agendaTomorrow:0 } }
+          const current = history[0] || { score: 0, autoFeedback: "Sin datos", metrics: { timeLog:0,updates:0,ticketStatus:0,taskFields:0,agenda:0 } }
           const scoreDeg = Math.max(0, Math.min(360, (Number(current.score || 0) / 10) * 360))
-          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div><div class="small" style="margin-top:6px">Variables evaluadas: ${(current.analyzed||[]).map(v => `• ${htmlEscape(v)}`).join(" ") || "Sin detalle"}</div><div class="small" style="margin-top:4px">Base del cálculo actual: ${Number(current.counts?.statusMoves||0)} cambios de estado · ${Number(current.counts?.entries||0)} cargas de tiempo · ${Number(current.counts?.tickets||0)} tickets.</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Resp.</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Mismo día</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Demora</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Cierre+tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Sin tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda mañana</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.response}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.sameDay}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.delayed}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.closeLoad}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.noTimeAfterMove}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.fields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agendaTomorrow}</td></tr>`).join("")}</tbody></table></div>`
+          wrap.innerHTML = `<div class="feedItem"><div class="inline" style="justify-content:space-between;align-items:center"><div><div class="feedType">Calidad interna (${period === 'week' ? 'semanal' : 'mensual'})</div><div class="feedMeta">Puntaje actual: <strong>${current.score.toFixed(2)} / 10</strong></div></div><div class="inline" style="gap:8px;align-items:center"><div class="qualityOrb" onclick="openInternalQualityModal()" style="position:relative;left:auto;top:auto;transform:none;--quality-deg:${scoreDeg}deg;width:62px;height:62px;cursor:pointer"><div>${current.score.toFixed(1)}</div><div class="smallLabel">CI</div></div><select onchange="setInternalQualityPeriod(this.value)" style="margin:0"><option value="month" ${period==='month'?'selected':''}>Mensual</option><option value="week" ${period==='week'?'selected':''}>Semanal</option></select><button class="ghost" onclick="openInternalQualityModal()">Ver qué se analiza</button></div></div><div class="small" style="margin-top:6px">Feedback automático: ${htmlEscape(current.autoFeedback)}</div><div class="small" style="margin-top:6px">Variables evaluadas: ${(current.analyzed||[]).map(v => `• ${htmlEscape(v)}`).join(" ") || "Sin detalle"}</div><div class="small" style="margin-top:4px">Base del cálculo actual: ${Number(current.counts?.statusMoves||0)} cambios de estado · ${Number(current.counts?.entries||0)} cargas de tiempo · ${Number(current.counts?.tickets||0)} tickets.</div></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Período</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Puntaje</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Tiempo</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Updates</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Estados</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Campos</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--stroke)">Agenda</th></tr></thead><tbody>${history.map(row => `<tr><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${htmlEscape(formatDateTime24(row.periodStart).slice(0,10))}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.score.toFixed(2)}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.timeLog}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.updates}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.ticketStatus}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.taskFields}</td><td style="padding:6px;border-bottom:1px solid var(--stroke-2)">${row.metrics.agenda}</td></tr>`).join("")}</tbody></table></div>`
         }catch(_){
           wrap.innerHTML = "<p class='small'>No se pudo cargar la calidad interna en este momento. Reintentá en unos segundos.</p>"
         }
